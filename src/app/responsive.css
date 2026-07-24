@@ -1,0 +1,261 @@
+/* ============================================================================
+   Responsive layer.
+
+   Added on top of the ported desktop CSS, never edited into it. Everything that
+   changes layout lives inside a media query, so above 1100px the design renders
+   exactly as the original single-file build did — `npm run verify:parity` still
+   compares globals.css against the source untouched.
+
+   Layout the app has to survive: a fixed 220px sidebar, KPI/quick-action grids
+   with hard column counts, and data tables that are 560-900px wide by design.
+   The tables already sit in `overflow-x:auto` wrappers in the markup, so they
+   scroll on their own; what needed solving was the sidebar, the grids, and the
+   inline `grid-template-columns` in the ported markup.
+   ============================================================================ */
+
+/* Mobile browser chrome shrinks the viewport as you scroll; dvh tracks it,
+   where 100vh does not and leaves the bottom of the app cut off. */
+@supports (height: 100dvh) {
+  body,
+  #sidebar {
+    height: 100dvh;
+  }
+}
+
+/* The off-canvas controls exist in the DOM at every size; only the drawer
+   breakpoint reveals them. */
+.mnav-toggle,
+.mnav-backdrop {
+  display: none;
+}
+
+/* ── Tablet ───────────────────────────────────────────────────────────────
+   Four KPI cards across is too tight below ~1100px, but the sidebar still
+   earns its space here. */
+@media (max-width: 1100px) {
+  .grid.g4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid.g3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ── Drawer breakpoint ────────────────────────────────────────────────────
+   Below 900px the sidebar costs more than it gives, so it slides in over the
+   content instead of holding a column open. */
+@media (max-width: 900px) {
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1200;
+    width: min(82vw, 264px);
+    height: auto;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
+  }
+  body.nav-open #sidebar {
+    transform: none;
+  }
+
+  .mnav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    background: rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  body.nav-open .mnav-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .mnav-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 6px;
+    left: 8px;
+    z-index: 1250;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #fff;
+    color: var(--navy);
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  body.nav-open .mnav-toggle {
+    background: var(--navy);
+    color: #fff;
+    border-color: var(--navy);
+  }
+
+  #main {
+    width: 100%;
+    min-width: 0;
+  }
+  #topbar {
+    padding: 0 12px 0 56px; /* clear of the toggle */
+    gap: 10px;
+  }
+  .topbar-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #content {
+    padding: 14px;
+  }
+
+  /* auto-fit lets each grid pick its own column count from the space it has,
+     collapsing to one column on a phone without a separate rule per grid. */
+  .grid.g2,
+  .grid.g3,
+  .grid.g4 {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .qa-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* The ported markup sets grid-template-columns inline in 14 places, and an
+     inline style beats a stylesheet rule — hence !important. Scoped to
+     #content .page so the holiday calendar's 7-column week grid, which is a
+     body-level overlay, keeps its shape. */
+  #content .page [style*="grid-template-columns"] {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)) !important;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .card-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .card-body {
+    padding: 14px;
+    overflow-x: auto;
+  }
+
+  /* Most wide tables ship inside an `overflow-x:auto` wrapper already. The
+     stragglers (the receipt log sits straight in a .card) get one here, so the
+     table scrolls on its own instead of dragging the whole content column
+     sideways and taking the page header with it. */
+  #content .page div:has(> table) {
+    overflow-x: auto;
+  }
+
+  /* Inline `display:flex` rows in the ported markup set no flex-wrap, so a
+     summary row with four fixed-width columns just overhangs the screen. The
+     inline style does not declare flex-wrap, so this needs no !important. */
+  #content .page [style*="display:flex"] {
+    flex-wrap: wrap;
+  }
+
+  .page-title {
+    font-size: 18px;
+  }
+  .kpi {
+    padding: 14px;
+    gap: 10px;
+  }
+  .kpi-val {
+    font-size: 22px;
+  }
+  .kpi-icon {
+    width: 38px;
+    height: 38px;
+    font-size: 17px;
+  }
+
+  /* Anything under 16px makes iOS Safari zoom the page in on focus, which then
+     leaves the form off-screen. !important because 18 of the standalone
+     controls (the CRS/month/year selects, the date pickers) carry an inline
+     font-size — they are exactly the fields that need this, and the dense grid
+     cells set no inline size, so nothing else is affected. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  .modal {
+    width: min(480px, calc(100vw - 24px));
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+  .login-card {
+    width: min(380px, calc(100vw - 28px));
+  }
+  #login-screen {
+    padding: 20px;
+  }
+
+  /* Full-screen statement / DSS viewer */
+  #fsv-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px !important;
+  }
+  #fsv-content {
+    padding: 10px !important;
+  }
+
+  /* Body-level overlays (role picker, holiday calendar, inspection entry) */
+  #role-select-overlay,
+  #holiday-cal-overlay {
+    padding: 16px;
+  }
+}
+
+/* ── Phones ───────────────────────────────────────────────────────────────── */
+@media (max-width: 560px) {
+  #content {
+    padding: 10px;
+  }
+  .card-body {
+    padding: 12px;
+  }
+  .qa-grid {
+    gap: 8px;
+  }
+  .page-title {
+    font-size: 17px;
+  }
+  .page-sub {
+    font-size: 12px;
+  }
+  .tb-date {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+  .btn {
+    padding: 8px 12px;
+  }
+
+  /* Stacked buttons beat a cramped row of three on a 360px screen. */
+  .modal-foot {
+    flex-direction: column;
+  }
+  .modal-foot .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .empty-state {
+    padding: 32px 16px;
+  }
+}

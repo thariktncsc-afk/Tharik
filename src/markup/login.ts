@@ -1,0 +1,58 @@
+// Login screen + role picker
+// Verbatim from TNCSC_CRS_Demo_19 (1).html lines 182-233.
+const html = `
+
+<!-- ─── LOGIN ──────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-gov">
+    <h1>Government of Tamil Nadu</h1>
+    <p>Tamil Nadu Civil Supplies Corporation</p>
+  </div>
+  <div class="login-card" style="margin-top:16px">
+    <div class="login-header">
+      <div class="login-badge">TN</div>
+      <h2>CRS Statement Management System</h2>
+      <p>Enter phone number or shop code (crs1...crs30)</p>
+    </div>
+    <div class="login-body">
+      <div id="login-form-section">
+      <div class="login-input-wrap">
+        <span class="login-icon">👤</span>
+        <input class="login-input" type="text" placeholder="Phone number or crs1, crs2..." id="login-user" value="" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('login-pass').focus();}"/>
+      </div>
+      <div class="login-input-wrap">
+        <span class="login-icon">🔒</span>
+        <input class="login-input" type="password" placeholder="Password (pds123)" id="login-pass" value="" onkeydown="if(event.key==='Enter'){event.preventDefault();doLogin();}"/>
+        <button type="button" onclick="toggleLoginPwd()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:var(--muted)" id="login-eye-btn">👁</button>
+      </div>
+      <div id="login-err" style="display:none;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.3);border-radius:8px;padding:9px 12px;color:#FCA5A5;font-size:12px;margin-bottom:6px;text-align:center"></div>
+      <button class="login-btn" onclick="doLogin()" id="login-submit-btn">Sign In</button></div>
+      <!-- Role picker — shown inline when CRS has BC+Packer -->
+      <div id="login-role-section" style="display:none;padding:4px 0">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:4px">Multiple staff found for</div>
+          <div id="login-role-crs-label" style="font-weight:800;font-size:16px;color:#fff"></div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:3px">Who are you? Select your role</div>
+        </div>
+        <div id="login-role-options" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
+        <button onclick="cancelRoleSelect()" style="width:100%;padding:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);border-radius:10px;font-size:13px;cursor:pointer;font-weight:600">
+          &#8592; Back to Login
+        </button>
+      </div>
+      <div class="login-forgot">Forgot your password?</div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1)">
+        <div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.1em;text-align:center;margin-bottom:8px">Quick Login</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
+          <button onclick="quickLogin('9344114086','pds123')" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer">👑 Admin</button>
+          <button onclick="quickLogin('crs9','pds123')" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer">🏪 CRS 9</button>
+          <button onclick="quickLogin('crs1','pds123')" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer">🏪 CRS 1</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="login-footer">© 2026 Tamil Nadu Civil Supplies Corporation. All rights reserved.</div>
+</div>
+
+`;
+
+export default html;

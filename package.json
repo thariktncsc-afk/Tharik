@@ -1,0 +1,26 @@
+{
+  "name": "tncsc-crs-nextjs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TNCSC CRS Statement Management System - Next.js port",
+  "scripts": {
+    "bundle:engine": "node tools/bundle-engine.mjs",
+    "verify:parity": "node tools/verify-parity.mjs",
+    "predev": "npm run bundle:engine",
+    "dev": "next dev",
+    "prebuild": "npm run bundle:engine",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^16.2.11",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.7.0"
+  }
+}
