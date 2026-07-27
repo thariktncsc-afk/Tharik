@@ -60,9 +60,11 @@ const html = `
         <!-- Monthly form -->
         <div id="me-form-wrap" style="display:none">
 
+          <!-- [+redesign-start] Success banner wording, to match the renamed action button. -->
           <div id="me-success" style="display:none;background:#DCFCE7;border:1px solid #86EFAC;border-radius:10px;padding:12px 16px;margin-bottom:14px;color:#15803D;font-size:13px;font-weight:600">
-            ✅ Monthly entry saved successfully.
+            &#9989; &#2990;&#3006;&#2980; &#2997;&#3007;&#2993;&#3021;&#2986;&#2985;&#3016; &#2984;&#3007;&#2993;&#3016;&#2997;&#3009; — this month's entry, remittance, gunny stock and card details are saved.
           </div>
+          <!-- [+redesign-end] -->
 
           <!-- Header -->
           <div style="background:linear-gradient(135deg,#0369A1,#0EA5E9);border-radius:12px 12px 0 0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center">
@@ -215,13 +217,18 @@ const html = `
                   <div id="me-sum-grand" style="font-weight:900;font-size:18px;color:#16A34A">₹0.00</div>
                 </div>
               </div>
+              <!-- [+redesign-start] Monthly Entry action bar, redesigned after the port: the
+                   save button carries its Tamil name and sits as the primary action on the far
+                   right. The port's own text for this block is held in REDESIGNED in
+                   tools/verify-parity.mjs and spliced back before the byte comparison. -->
               <!-- ── Actions ───────────────────────────────────────────────── -->
-              <div style="display:flex;gap:10px;margin-top:14px">
+              <div style="display:flex;align-items:center;gap:10px;margin-top:14px;width:100%">
                 <button class="btn btn-outline btn-sm" onclick="clearMonthlyForm()">🗑 Clear</button>
-                <button onclick="saveMonthlyEntry()" style="background:linear-gradient(135deg,#0284C7,#0EA5E9);color:#fff;border:none;padding:10px 22px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(14,165,233,.3)">
-                  💾 Save Monthly Entry
+                <button id="me-save-btn" onclick="saveMonthlyEntry()" title="&#2990;&#3006;&#2980; &#2997;&#3007;&#2993;&#3021;&#2986;&#2985;&#3016; &#2984;&#3007;&#2993;&#3016;&#2997;&#3009; — store this month's entry, remittance, gunny stock and card details" style="margin-left:auto;background:linear-gradient(135deg,#0284C7,#0EA5E9);color:#fff;border:none;padding:10px 22px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(14,165,233,.3)">
+                  &#128190; &#2990;&#3006;&#2980; &#2997;&#3007;&#2993;&#3021;&#2986;&#2985;&#3016; &#2984;&#3007;&#2993;&#3016;&#2997;&#3009;
                 </button>
               </div>
+              <!-- [+redesign-end] -->
               <!-- ── Monthly Remittance Section (below save button) ─────── --> ──────────────────────────── -->
               <div id="me-remit-section" style="display:none;width:100%;margin-top:20px">
                 <div style="background:linear-gradient(135deg,#1E40AF,#2563EB);border-radius:10px 10px 0 0;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
@@ -302,36 +309,77 @@ const html = `
                 </div>
               </div>
 
+              <!-- [+redesign-start] Card Details, redesigned after the port: the Remarks column
+                   is replaced by an Allotment panel, and the section carries its own
+                   No Change / Save actions. The port's own text for this block is held in
+                   REDESIGNED in tools/verify-parity.mjs and spliced back before the byte
+                   comparison, so every line OUTSIDE these markers is still held to parity. -->
               <!-- ── Card Details Section ──────────────────────────────────── -->
               <div id="me-card-section" style="display:none;width:100%;margin-top:20px">
                 <div style="background:linear-gradient(135deg,#0F766E,#14B8A6);border-radius:10px 10px 0 0;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
                   <div>
-                    <div style="color:#fff;font-weight:800;font-size:13px">&#129530; Card Details</div>
+                    <div style="color:#fff;font-weight:800;font-size:13px">&#129530; Card Details &amp; Allotment</div>
                     <div id="me-card-subtitle" style="color:rgba(255,255,255,.7);font-size:10px;margin-top:1px"></div>
                   </div>
-                  <div style="color:rgba(255,255,255,.6);font-size:10px">ration card count by type</div>
+                  <div style="color:rgba(255,255,255,.6);font-size:10px">card count carries forward &middot; allotment is entered each month</div>
                 </div>
-                <div style="border:1px solid #CCFBF1;border-top:none;border-radius:0 0 10px 10px;overflow:hidden">
-                  <table style="width:100%;border-collapse:collapse;font-size:12px">
-                    <thead>
-                      <tr style="background:#F0FDFA">
-                        <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:55px">S.NO</th>
-                        <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4">CARD DETAILS</th>
-                        <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:140px">CARD COUNT</th>
-                        <th style="padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4">REMARKS</th>
-                      </tr>
-                    </thead>
-                    <tbody id="me-card-tbody"></tbody>
-                    <tfoot>
-                      <tr style="background:#0F766E">
-                        <td colspan="2" style="padding:9px 14px;font-weight:800;color:#fff;font-size:12px;text-align:right;letter-spacing:.03em">TOTAL CARD</td>
-                        <td id="me-card-total" style="padding:9px 10px;font-weight:900;font-size:15px;color:#CCFBF1;text-align:center">0</td>
-                        <td style="padding:9px 10px"></td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                <div style="border:1px solid #CCFBF1;border-top:none;border-radius:0 0 10px 10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+
+                  <!-- Left: card counts -->
+                  <div style="border:1px solid #CCFBF1;border-radius:9px;overflow:hidden">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                      <thead>
+                        <tr style="background:#F0FDFA">
+                          <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:48px">S.NO</th>
+                          <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4">CARD DETAILS</th>
+                          <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:120px">CARD COUNT</th>
+                        </tr>
+                      </thead>
+                      <tbody id="me-card-tbody"></tbody>
+                      <tfoot>
+                        <tr style="background:#0F766E">
+                          <td colspan="2" style="padding:9px 14px;font-weight:800;color:#fff;font-size:12px;text-align:right;letter-spacing:.03em">TOTAL CARD</td>
+                          <td id="me-card-total" style="padding:9px 10px;font-weight:900;font-size:15px;color:#CCFBF1;text-align:center">0</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  <!-- Right: allotment -->
+                  <div style="border:1px solid #CCFBF1;border-radius:9px;overflow:hidden">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                      <thead>
+                        <tr style="background:#F0FDFA">
+                          <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:48px">S.NO</th>
+                          <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4">ALLOTMENT</th>
+                          <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:150px">QUANTITY</th>
+                        </tr>
+                      </thead>
+                      <tbody id="me-allot-tbody"></tbody>
+                      <tfoot>
+                        <tr style="background:#0F766E">
+                          <td colspan="2" style="padding:9px 14px;font-weight:800;color:#fff;font-size:12px;text-align:right;letter-spacing:.03em">COMMODITIES ENTERED</td>
+                          <td id="me-allot-total" style="padding:9px 10px;font-weight:900;font-size:15px;color:#CCFBF1;text-align:center">0</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+                  <span id="me-card-status" style="display:none;font-size:11px;font-weight:600"></span>
+                  <button type="button" onclick="meCardNoChange()" title="Copy last month's card counts into this month"
+                    style="margin-left:auto;background:#fff;border:1px solid #99F6E4;color:#0F766E;padding:9px 18px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">
+                    &#8630; No Change
+                  </button>
+                  <button type="button" onclick="meCardSave()" title="Store these card counts and allotment for this month"
+                    style="background:linear-gradient(135deg,#0F766E,#14B8A6);color:#fff;border:none;padding:9px 22px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(20,184,166,.3)">
+                    &#128190; Save
+                  </button>
                 </div>
               </div>
+              <!-- [+redesign-end] -->
 
             </div>
           </div>
