@@ -46,6 +46,103 @@ unchanged — `npm run verify:parity` proves it byte-for-byte. Nothing about the
 layout, the calculations, the statement formats or the print/Excel output has
 been altered.
 
+### Adding to the ported files
+
+Work done after the port is kept separable from it, so the parity check stays
+meaningful:
+
+- New behaviour is a new file — `src/legacy/20-`, `21-`, `22-` — listed in
+  `NEW_MARKUP` / `NEW_ENGINE` in `tools/verify-parity.mjs`, which excludes it
+  from the comparison. A whole new screen would add a `src/markup/page*.ts`
+  the same way.
+- A one-line addition inside a ported file is tagged `[+]`. Parity drops tagged
+  lines before comparing, so everything untagged still has to match the
+  original byte-for-byte — an untouched-looking edit is still a failure.
+- A block that is genuinely *redesigned* (not merely added to) is fenced with
+  `[+redesign-start]` / `[+redesign-end]` comments and registered in
+  `REDESIGNED` in `tools/verify-parity.mjs`, with the port's own text for that
+  block kept in `tools/redesigned/`. Parity splices the original back in before
+  comparing and prints a note naming the block, so the divergence is recorded
+  rather than waved through and the rest of the file is still held to parity.
+  The Daily Entry remittance + action bar is the first of these.
+
+Behaviour that belongs to a ported screen but not to the original file is added
+by *wrapping*, not editing: a new engine part reassigns the ported function
+(`saveEntryForm`, `showPage`, …) and calls through to it. Because the parts are
+concatenated into one classic script, the last definition wins, so nothing in
+`src/legacy/01-`–`18-` has to change.
+
+## Daily Entry: remittance and the two completion buttons
+
+A day sheet cannot be completed without a remittance. **Remittance Amount** and
+**Remittance Date** are both required, and a day may carry more than one — a
+deposit split across two challans is one day with two remittance rows. Enter an
+amount and date and press **Add** to build the list; a single deposit can just
+be left in the fields and it is taken as one row on save.
+
+The day's rows are stored on the saved sheet as `remits`, with the ported
+single-value fields kept in step as the aggregate — `remitAmount` is their sum
+and `remitDate` the earliest of their dates — so the statements, the PV/DSS
+builders and the exports read exactly what they always did. Sheets saved before
+this existed (and the sample data) carry only the single pair and are read back
+as one row.
+
+The action bar reads **Clear · தினசரி விற்பனை நிறைவு** on the left, with
+**மாத விற்பனை நிறைவு** on the far right. The first saves the day sheet, the
+second is the monthly Sales Close. Both are gated on the remittance: Sales Close
+saves the marked day on its way through, and the ported version ignores what
+that save returns, so the gate is applied to it directly rather than letting a
+month close on an unremitted day.
+
+## Monthly Entry: Card Details and Allotment
+
+Monthly Entry is the one place card counts and the month's allotment are typed.
+Both feed the generated statement, so neither is entered twice:
+
+| Entered here | Reaches |
+| --- | --- |
+| Card count | CRS PAGE1 (left column) · CARD DETAILS sheet |
+| Allotment | CRS PAGE1 (right column) · COLL *Allotment* column |
+
+The Remarks column is gone; the right-hand half of the section is now the
+allotment — the 15 main ration commodities, each with its own KG / LTR unit.
+The packet lines (salt, OOTY, TAN), the empty packing materials and the police
+ration are not asked for, because none of them is issued as a monthly
+allotment; they are exactly the lines CRS PAGE1 and COLL's main section print.
+This narrowing is the allotment panel's alone — Daily Entry, the Monthly sales
+grid and the statements still carry every commodity.
+
+**The two behave differently on purpose.** Card counts barely move month to
+month, so they carry forward: opening a month that has none *shows* last
+month's figures, **No Change** accepts them as they stand, and **Save** stores
+whatever is on screen — which becomes next month's starting point by virtue of
+being this month's. Allotment is re-issued every month and is never carried, so
+each month starts blank and has to be filled in.
+
+Carried counts are a **preview, not data**. They are held separately from
+`meCardStore` and only promoted into it by the first edit, Save, or No Change —
+because the statements read that store directly and cannot tell a carried
+figure from a typed one, so writing on render would make every month someone
+merely glanced at report last month's cards as its own. Until it is promoted,
+the month reports no card details anywhere and the monthly close still refuses
+it. Promotion adopts the whole set, so editing one row does not leave the
+others behind.
+
+Monthly Entry's own action bar is **Clear** on the left and
+**மாத விற்பனை நிறைவு** as the primary action on the far right — the ported
+save, renamed, with its tooltip and success banner carrying the same words. It
+still stores the month's entry, remittance, gunny stock and card details in one
+go; none of that logic changed.
+
+The Daily Entry button of the same name (the monthly Sales Close) will not run
+until the month has card counts, those counts have been saved or accepted, and
+an allotment has been entered. It runs from Daily Entry, so the message names
+the shop and month to go and complete.
+
+A month with no allotment falls back to the ported behaviour — CRS PAGE1 draws
+its allotment from the Receipt module as it always did — so old months keep
+rendering exactly as before.
+
 ## Responsive behaviour
 
 The original was desktop-only. `src/app/responsive.css` adds the small-screen
