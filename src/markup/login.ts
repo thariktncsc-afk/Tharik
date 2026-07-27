@@ -10,7 +10,13 @@ const html = `
   </div>
   <div class="login-card" style="margin-top:16px">
     <div class="login-header">
-      <div class="login-badge">TN</div>
+      <!-- [+redesign-start] The "TN" lettering is replaced by the Seal of Tamil Nadu. The
+           port's own text for this line is held in REDESIGNED in tools/verify-parity.mjs. -->
+      <div class="login-badge" style="background:#fff;padding:4px">
+        <img src="/img/seal-of-tamil-nadu.svg" alt="Seal of Tamil Nadu" width="44" height="44"
+             style="width:100%;height:100%;object-fit:contain;display:block"/>
+      </div>
+      <!-- [+redesign-end] -->
       <h2>CRS Statement Management System</h2>
       <p>Enter phone number or shop code (crs1...crs30)</p>
     </div>

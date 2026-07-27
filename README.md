@@ -73,6 +73,173 @@ by *wrapping*, not editing: a new engine part reassigns the ported function
 concatenated into one classic script, the last definition wins, so nothing in
 `src/legacy/01-`–`18-` has to change.
 
+## Branding
+
+The sidebar and login badges carry the **Seal of Tamil Nadu**
+(`public/img/seal-of-tamil-nadu.svg`) in place of the port's "TN" lettering. It
+is served as a file rather than inlined — at ~666 KB it would otherwise land in
+every page's HTML — and sits on a white badge with `object-fit:contain`, so the
+taller-than-wide seal is never stretched.
+
+## Shop names
+
+The real Tamil shop names live in `src/legacy/02a-crs-names.js`, which
+overwrites the placeholder English names on each record of `CRS_LIST`.
+
+That one file is the whole change, because no screen keeps its own copy of a
+shop name — every dropdown, page title, statement and export reads
+`CRS_LIST.find(...).name` when it renders. It is also the one added part that
+does not sort at the end: the bundler concatenates by filename, so `02a-` lands
+straight after `02-masters.js`, where the list is built, and before
+`03-daily-entry.js`, whose init already fills a dropdown from it.
+
+## CRS Master Configuration
+
+**CRS Shops** is the master the office works from, preloaded from *TNCSC
+Statement Closer — Sheet5*: shop code, the Bill Clerk and Packer with their
+mobile numbers, whether the shop files a **COLL** statement, whether it has a
+**police ration**, and whether it is in use.
+
+**Logins are generated from the master.** One account per person the sheet
+names and none for a person it does not: 22 Bill Clerks, 5 Packers, plus the
+administrator. Both roles of a shop share the username `crs<n>` and the role
+chooser separates them, so the chooser now appears exactly when the shop really
+has two people — the port's fixed demo list gave every shop a single BC, which
+is why the five shops with a real packer never offered it and CRS 9 offered one
+for a packer the sheet does not have. A shop set to *No Usage* has its logins
+disabled and re-enabled when it is set back to Active.
+
+**The master is where every screen gets a shop's staff.** `getUsersForCRS()` is
+the engine's only accessor for a shop's Bill Clerk and Packer, and all three of
+its callers — the dashboard card, the signature block printed on statements, and
+the statement data object — go through it, so redirecting that one function
+moves the whole application onto the master. The signed-in user's own name and
+number are synced too, which is what the sidebar, the "Welcome," line and the
+role-chooser read; the ported user list keeps only what the master does not
+carry (usernames, roles, passwords, which shop a login belongs to).
+
+Where the master has a record it is taken as **complete**: a blank packer means
+the shop has no packer, not that one is unknown, so nothing is filled in from
+the demo list behind it — that is how sample staff used to reappear on a shop
+the sheet leaves empty. The statement builders print a ruled blank for missing
+staff, which is the honest output.
+
+Eight shops the sheet lists under *No usage* (2, 3, 4, 6, 13, 18, 21, 22) start
+inactive. Nothing about them is deleted: an admin can set one back to **Active**
+at any time and it keeps its code and staff. While a shop is out of use the CRS
+pickers stop offering it, but a month already keyed against it stays readable.
+
+## DSS statement totals
+
+The official DSS form totals money only, so the total rows — row 25 on the main
+section and row 7 on the police section — leave the opening, receipt, total,
+sales and closing cells blank and print just the ₹ and the section amount. This
+applies to **every shop**, on screen and in the Excel export.
+
+Both builders are ported, so neither is edited: the on-screen sheet is corrected
+on the rendered DOM and the workbook on its way to `XLSX.writeFile`, which is
+the only reachable seam (the export's cell-writing helper is a local). Both find
+the total rows by their Tamil label rather than by a fixed cell address, so a
+change of layout cannot silently blank the wrong cells.
+
+## CRS 29 — Refugee Camp
+
+The refugee camp files a different family of statements, reproduced in
+`src/legacy/26-crs29.js` from *CRS 29-REFUGEE CAMP JUNE'26.xlsx*. It is chosen
+by shop number alone: select CRS 29 on the Statements screen and its section
+list and builders take over; select anything else and none of that file runs,
+so **CRS 1–28 and CRS 30 keep the ported formats untouched**.
+
+The camp carries **eight commodities and no others** — B.RICE, R.R.A, SUGAR,
+WHEAT, T.DHALL, CYL, P.OIL, KEROSENE — on every sheet, and they are all the
+allotment panel offers for this shop. Card Details counts cards as a single
+total rather than by type. CRS PAGE1 has no card-details column, only the
+allotment.
+
+Three sheets have no standard equivalent (**C Rice, Sales Report, Indent**), and
+there is no COLL, Free Com, Cost Com, CRS Police or RBI — asking for one of
+those returns a note rather than the wrong format. Receipt, CRS Daily Sale and
+Remittance keep the ported layouts, which the camp's workbook matches.
+
+`STMT_SECTIONS` is read by name across the ported statement screen, so the
+array object is kept and its contents swapped for whichever list applies; ticks
+belonging to a section the new list lacks are dropped on the swap.
+
+### Entry screens
+
+Daily Entry, Monthly Entry and Receipt show the camp only **BRA, RRA, Sugar,
+Wheat, Toor Dal, Palm Oil and Kerosene**, plus the existing Poly and C.Box
+lines; there is no police section. The allotment offers the same seven. Card
+Details is a single **Total Cards** figure rather than nine categories.
+
+Kerosene is not a ported commodity, so `27-crs29-entry.js` defines it and it
+appears only in the camp's list. It is issued by the litre out of a barrel, so
+it carries **no gunny count** — its gunny cells on Monthly Entry are the same
+ruled dash the packing lines show. CYL is printed on the statements but is not
+stocked or allotted, so it is not asked for and its stock columns read zero.
+
+The ported render, recalculate and save routines all reach for `DSS_A`/`DSS_B`
+by name from inside themselves, so there is no argument to override. Their
+**contents are swapped for the duration of one call** and put back in a
+`finally`, which is why the swap never outlives a synchronous call — a statement
+for CRS 7 rendered while Daily Entry sits on CRS 29 still sees all twenty-one
+commodities. `ME_CARD_TYPES` is handled the same way.
+
+### Dashboard, reports and the police section
+
+The camp has **no police section anywhere**: the Section B blocks and their
+summary tiles come off Daily Entry and Monthly Entry, and the police rows and
+headings are gone from its reports, its Monthly Statement panel and its DSS
+sheet. Its Closing Stock widget lists the seven stocked commodities and the
+dashboard's figures count those alone.
+
+Four printed outputs build straight from `DSS_A`/`DSS_B` rather than from the
+screens — `generateMonthlyStatement`, `openDSSPreview`, `downloadDSSExcel` and
+`generateReport` — so each is wrapped too; hiding the on-screen grid alone would
+have left them printing all twenty-one commodities and a police table. The
+Excel export builds its sheets inside an asynchronous callback, so the scope is
+put around the callback rather than the call.
+
+**What each output counts differs on purpose.** The dashboard counts the seven
+stocked commodities, because its headline figure is a weight and Poly/C.Box are
+counts of packing. A report keeps them: they are paid lines (₹2.50 and ₹0.60)
+that were explicitly retained on the camp's entry screen, and dropping them
+would leave the report's money short of the remittance it reconciles against.
+Neither ever keeps a removed commodity or the police side. A report over *every*
+shop still resolves the camp's Kerosene by name and unit rather than falling
+back to the raw id in KG.
+
+### Free / cost rice
+
+Daily Entry gains a **BRA Rice — Free / Cost split** panel for the camp. Enter
+either figure and the other is worked out so the two always total the day's BRA
+sales; neither can exceed it. Which box was typed is remembered, so when the BRA
+sales figure later changes the same half is held and the other re-derived rather
+than the split being silently reassigned. It saves with the day sheet.
+
+## COLL statement
+
+Each column now draws on its own source, where the ported builder printed the
+monthly receipt in both Allotment and Received:
+
+| Column | Source |
+| --- | --- |
+| Opening balance | unchanged — the ported monthly opening |
+| Allotment | Monthly Entry → Allotment |
+| Received from godown | the Daily Entry receipt, **less any advance load** |
+| Total | Opening + Received |
+| Closing balance | Total − shortage + excess − sales |
+
+**Advance load** is stock drawn ahead of the month it belongs to. It is entered
+per commodity beside the allotment on Monthly Entry, and only ever reduces what
+this month's statement claims to have received. Worked through: opening 100,
+300 actually received of which 100 was an advance, prints 200 received and a
+total of 300; sales of 300 leave a closing of 0.
+
+The shortage and excess come from the Daily Entry inspection adjustments and
+are applied *after* the total, before sales. A shop the master marks as having
+no police ration gets no POLICE section.
+
 ## Daily Entry: remittance and the two completion buttons
 
 A day sheet cannot be completed without a remittance. **Remittance Amount** and

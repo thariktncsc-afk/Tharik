@@ -54,11 +54,24 @@ const html = `
       </div>
 
       <!-- CRS Staff Info (shown for CRS users) -->
+      <!-- [+redesign-start] The shop card now carries the whole CRS Master record — shop
+           name and code, COLL / police requirement and usage status alongside the staff —
+           and every field is filled from CRS_MASTER rather than the demo user list. The
+           port's own text for this block is held in REDESIGNED in tools/verify-parity.mjs
+           and spliced back before the byte comparison. -->
       <div id="dash-crs-info" style="display:none;margin-bottom:16px">
         <div style="background:linear-gradient(135deg,#0369A1,#0EA5E9);border-radius:14px;padding:18px 22px">
-          <div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Your Civil Ration Shop</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+            <div style="color:rgba(255,255,255,.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Your Civil Ration Shop</div>
+            <div id="dash-crs-flags" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          </div>
           <div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:16px;align-items:center">
-            <div style="text-align:center"><div style="color:rgba(255,255,255,.6);font-size:10px">CRS No.</div><div id="dash-crs-num" style="color:#fff;font-weight:900;font-size:28px;line-height:1;margin-top:2px"></div></div>
+            <div style="text-align:center;min-width:150px">
+              <div style="color:rgba(255,255,255,.6);font-size:10px">CRS No.</div>
+              <div id="dash-crs-num" style="color:#fff;font-weight:900;font-size:28px;line-height:1;margin-top:2px"></div>
+              <div id="dash-crs-name" style="color:#fff;font-weight:700;font-size:13px;margin-top:5px"></div>
+              <div id="dash-crs-code" style="color:#BAE6FD;font-size:11px;font-family:monospace;margin-top:2px"></div>
+            </div>
             <div id="dash-bc-block" style="display:none;background:rgba(255,255,255,.12);border-radius:10px;padding:10px 14px">
               <div style="color:rgba(255,255,255,.6);font-size:10px;text-transform:uppercase;letter-spacing:.05em">Bill Clerk (BC)</div>
               <div id="dash-bc-name" style="color:#fff;font-weight:800;font-size:14px;margin-top:3px"></div>
@@ -72,6 +85,7 @@ const html = `
           </div>
         </div>
       </div>
+      <!-- [+redesign-end] -->
 
       <!-- ── KPI CARDS ─────────────────────────────────────────────────────── -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
