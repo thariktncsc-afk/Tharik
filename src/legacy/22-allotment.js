@@ -39,7 +39,16 @@ var ME_ALLOT_EXCLUDE = {SALT_CIS:1, SALT_RFFS:1, OOTY:1, TAN:1, EMPTY_BOX:1, EMP
 
 // The 15 main ration commodities, each keeping its own unit — exactly the lines
 // CRS PAGE1 and COLL's main section print.
+//
+// CRS 29 (the refugee camp) carries its own short list instead; 26-crs29.js
+// defines it, and it is asked for here so the allotment panel offers the same
+// commodities the camp's statements print. The lookup is by function so this
+// file does not depend on load order.
 function meAllotItems(){
+  if(typeof crs29AllotItems === 'function'){
+    var special = crs29AllotItems(meMoKey && meMoKey());
+    if(special) return special;
+  }
   var a = (typeof DSS_A !== 'undefined') ? DSS_A : [];
   return a.filter(function(c){ return !ME_ALLOT_EXCLUDE[c.id]; })
           .map(function(c){ return {c: c, sec: 'a'}; });
@@ -187,6 +196,10 @@ function buildMeAllotTable(){
   if(!mo){ tbody.innerHTML = ''; return; }
 
   var saved = meAllotStore[mo.key] || {};
+  // Advance load lives in 24-coll.js; it only ever reduces what the COLL
+  // statement reports as received from the godown, so it is typed here beside
+  // the allotment rather than on a screen of its own.
+  var adv = (typeof meAdvanceStore !== 'undefined' && meAdvanceStore[mo.key]) ? meAdvanceStore[mo.key] : {};
   var rows = '', n = 0;
 
   meAllotItems().forEach(function(it){
@@ -194,6 +207,8 @@ function buildMeAllotTable(){
     n++;
     var v  = saved[c.id];
     var val = (v === undefined || v === '' || v === null) ? '' : v;
+    var av  = adv[c.id];
+    var aval = (av === undefined || av === '' || av === null) ? '' : av;
     var bg = n % 2 === 0 ? '#F0FDFA' : '#fff';
 
     rows +=
@@ -210,6 +225,14 @@ function buildMeAllotTable(){
           ' style="width:96px;border:2px solid #99F6E4;border-radius:7px;padding:5px 8px;' +
                  'font-size:12.5px;font-weight:800;text-align:right;color:#0F766E;background:#F0FDFA"/>' +
           '<span style="font-size:9.5px;font-weight:700;color:var(--muted);margin-left:6px">' + c.unit + '</span>' +
+        '</td>' +
+        '<td style="padding:4px 8px;text-align:center;border-bottom:1px solid #CCFBF1;white-space:nowrap">' +
+          '<input type="number" min="0" step="0.001" placeholder="0.000"' +
+          ' data-advance-id="' + c.id + '" value="' + aval + '"' +
+          ' title="Stock drawn ahead of its month. Deducted from Received from godown on the COLL statement."' +
+          ' onchange="meAdvanceCalc(this)" oninput="meAdvanceCalc(this)"' +
+          ' style="width:92px;border:2px solid #FDE68A;border-radius:7px;padding:5px 8px;' +
+                 'font-size:12.5px;font-weight:800;text-align:right;color:#B45309;background:#FFFBEB"/>' +
         '</td>' +
       '</tr>';
   });
@@ -396,88 +419,9 @@ stmtGetData = function(crsId, month, year){
   return d;
 };
 
-// COLL prints Allotment and "Received from godown" side by side. The ported
-// builder maps both to the monthly receipt because it had no allotment to read;
-// now that there is one, the Allotment column shows it while Received keeps the
-// receipt. Everything else here matches the ported builder, which is frozen by
-// parity and so cannot drift away from this copy.
-var _allotOrigBuildColl = buildColl;
-buildColl = function(d){
-  if(!d || !d.allotHasData) return _allotOrigBuildColl.apply(this, arguments);
-
-  function nz(v){ if(v===''||v==null) return ''; return String(+(Number(v).toFixed(3))); }
-  function C(x){ return '<td>'+(x==null?'':x)+'</td>'; }
-  function L(x){ return '<td class="l">'+(x==null?'':x)+'</td>'; }
-
-  function vals(id){
-    var ob=d.getVal(id,'open'), rec=d.getVal(id,'receipt');
-    var tot=d.getVal(id,'total')||(ob+rec), sal=d.getVal(id,'sales');
-    var cb=d.hasVal(id,'close')?d.getVal(id,'close'):Math.max(0,tot-sal);
-    return {ob:ob, allot:d.allotQty(id), rec:rec, tot:tot, sal:sal, cb:cb};
-  }
-  function dataRow(label,id,bold){
-    var v=vals(id);
-    return '<tr'+(bold?' class="sub"':'')+'>'+L(label)+
-      C(nz(v.ob))+C(nz(v.allot))+C(nz(v.rec))+C(nz(v.tot))+C(nz(v.sal))+C(nz(v.cb))+'</tr>';
-  }
-  function subRow(label, ids){
-    var t={ob:0,allot:0,rec:0,tot:0,sal:0,cb:0};
-    ids.forEach(function(id){ var v=vals(id); t.ob+=v.ob;t.allot+=v.allot;t.rec+=v.rec;t.tot+=v.tot;t.sal+=v.sal;t.cb+=v.cb; });
-    return '<tr class="sub">'+L(label)+
-      C(nz(t.ob))+C(nz(t.allot))+C(nz(t.rec))+C(nz(t.tot))+C(nz(t.sal))+C(nz(t.cb))+'</tr>';
-  }
-  function sectionLabel(text){ return '<tr class="sec"><td class="l" colspan="7">'+text+'</td></tr>'; }
-
-  var MAIN_TOP=[['BRA','BRA'],['RRA','RRA']];
-  var MAIN_REST=[
-    ['AAY','AAY'],['O.A.P','OAP'],['A.P.S','APS'],['SUGAR','SUGAR'],['SUGAR AAY','AAY_SUGAR'],
-    ['WHEAT','WHEAT'],['T.DHALL','TOOR'],['P.OIL','PALM'],['PHH BRA','PHH_BRA'],['PHH FRK','PHH_FRK'],
-    ['AAY FRK','AAY_FRK'],['NPHH FRK','NPHH_FRK'],['NPHH FRK RRA','NPHH_RRA'],
-  ];
-  var POLICE=[['BRA','PB_BRA'],['SUGAR','PB_SUGAR'],['WHEAT','PB_WHEAT'],['T.DHALL','PB_TOOR'],['P.OIL','PB_PALM']];
-
-  var body='';
-  MAIN_TOP.forEach(function(r){ body+=dataRow(r[0],r[1]); });
-  body+=subRow('TOTAL', MAIN_TOP.map(function(r){return r[1];}));
-  MAIN_REST.forEach(function(r){ body+=dataRow(r[0],r[1]); });
-  body+=sectionLabel('POLICE');
-  POLICE.forEach(function(r){ body+=dataRow(r[0],r[1]); });
-
-  var nextMo=STMT_MONTHS[(d.month%12)+1] || '';
-  var nextYr=d.month===12 ? d.yr+1 : d.yr;
-  var ADV=['BRA','PHH FRK','SUGAR','AAY SUGAR','AAY FRK','WHEAT','T.DHALL','P.OIL'];
-  body+=sectionLabel("ADVANCE FOR THE MONTH OF "+nextMo.toUpperCase()+"'"+nextYr);
-  ADV.forEach(function(l){ body+='<tr>'+L(l)+C('')+C('')+C('')+C('')+C('')+C('')+'</tr>'; });
-
-  var crs=(typeof CRS_LIST!=='undefined')?CRS_LIST.find(function(c){return String(c.id)===String(d.crsId);}):null;
-  var crsCode=(crs&&crs.code)?crs.code:'';
-
-  var css=[
-    '.cl-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff;max-width:820px;margin:0 auto}',
-    '.cl-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
-    '.cl-info{display:flex;font-size:11px;font-weight:bold;margin:4px 2px}',
-    '.cl-info span{margin-right:28px}',
-    '.cl-tbl{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed;margin-top:4px}',
-    '.cl-tbl th,.cl-tbl td{border:1px solid #000;padding:3px 5px;text-align:center;white-space:nowrap;overflow:hidden}',
-    '.cl-tbl th{font-weight:bold;background:#fff;line-height:1.15}',
-    '.cl-tbl td.l{text-align:left}',
-    '.cl-tbl tr.sub td{font-weight:bold;background:#F5F5F5}',
-    '.cl-tbl tr.sec td{font-weight:bold;background:#EDEDED;text-align:left}',
-    '.cl-sig{display:flex;justify-content:space-between;margin-top:16px;font-size:10px;font-weight:bold}',
-  ].join('');
-  var cg='<colgroup><col style="width:22%"><col style="width:13%"><col style="width:11%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col style="width:14%"></colgroup>';
-  var head='<thead><tr>'+
-    '<th>COMMODITY</th><th>Opening<br>Balance</th><th>Allotment</th><th>Received from<br>godown</th>'+
-    '<th>Total</th><th>Sales</th><th>Closing<br>Balance</th></tr></thead>';
-
-  return '<style>'+css+'</style>'+
-    '<div class="cl-wrap">'+
-      '<div class="cl-title">MONTHLY SALES REPORT FOR THE MONTH OF '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="cl-info"><span>CRS '+d.crsId+'</span>'+(crsCode?'<span>'+crsCode+'</span>':'')+'</div>'+
-      '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="cl-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
-    '</div>';
-};
+// The COLL statement is built in 24-coll.js, which gives each of its columns
+// its own source (allotment here, the Daily Entry receipt net of any advance
+// load, then the inspection adjustments). It reads d.allotQty, set above.
 
 // ── PERSISTENCE ─────────────────────────────────────────────────────────────
 // Join the backup registry so a month's allotment travels with everything else.

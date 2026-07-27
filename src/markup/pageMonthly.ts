@@ -353,6 +353,7 @@ const html = `
                           <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:48px">S.NO</th>
                           <th style="padding:9px 14px;text-align:left;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4">ALLOTMENT</th>
                           <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:150px">QUANTITY</th>
+                          <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#B45309;border-bottom:2px solid #FDE68A;width:140px">ADVANCE LOAD</th>
                         </tr>
                       </thead>
                       <tbody id="me-allot-tbody"></tbody>
@@ -360,6 +361,7 @@ const html = `
                         <tr style="background:#0F766E">
                           <td colspan="2" style="padding:9px 14px;font-weight:800;color:#fff;font-size:12px;text-align:right;letter-spacing:.03em">COMMODITIES ENTERED</td>
                           <td id="me-allot-total" style="padding:9px 10px;font-weight:900;font-size:15px;color:#CCFBF1;text-align:center">0</td>
+                          <td style="padding:9px 10px"></td>
                         </tr>
                       </tfoot>
                     </table>
