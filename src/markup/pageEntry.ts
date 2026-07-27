@@ -191,54 +191,73 @@ const html = `
                   <div id="ef-sum-grand" style="font-weight:900;font-size:18px;color:#16A34A">&#8377;0.00</div>
                 </div>
               </div>
+              <!-- [+redesign-start] Remittance details + action bar, redesigned after the port:
+                   remittance is now mandatory and repeatable, and the two completion buttons
+                   carry their Tamil names. The port's own text for this block is held in
+                   REDESIGNED in tools/verify-parity.mjs and spliced back before the byte
+                   comparison, so every line OUTSIDE these markers is still held to parity. -->
               <!-- ── Remittance Details ─────────────────────────────── -->
               <div style="width:100%;border-top:1px solid var(--border);margin:14px 0 10px;padding-top:14px">
                 <div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">
-                  &#127981; Remittance Details
-                  <span style="font-weight:400;font-size:9px;color:var(--muted);margin-left:6px">(enter bank deposit amount &amp; date — may differ from sales total)</span>
+                  &#127981; Remittance Details <span style="color:#DC2626">*</span>
+                  <span style="font-weight:400;font-size:9px;color:var(--muted);margin-left:6px">(required — bank deposit amount &amp; date; add more than one for the same day if the deposit was split)</span>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:14px;align-items:start">
                   <div>
                     <label style="display:block;font-size:11px;font-weight:700;color:var(--text);margin-bottom:5px">
-                      Remittance Amount (&#8377;)
+                      Remittance Amount (&#8377;) <span style="color:#DC2626">*</span>
                     </label>
                     <div style="position:relative">
-                      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:700;color:#0369A1">&#8377;</span>
+                      <span style="position:absolute;left:10px;top:19px;transform:translateY(-50%);font-size:13px;font-weight:700;color:#0369A1">&#8377;</span>
                       <input type="number" id="entry-remit-amount" min="0" step="0.01" placeholder="0.00"
                         style="width:100%;border:2px solid #BAE6FD;border-radius:8px;padding:9px 12px 9px 26px;
                                font-size:14px;font-weight:700;color:#0369A1;background:#F0F9FF;outline:none"
                         onfocus="this.style.borderColor='#0EA5E9'"
                         onblur="this.style.borderColor='#BAE6FD'"
-                        oninput="if(this.value<0)this.value=''"/>
+                        oninput="if(this.value<0)this.value='';entryRemitClearError('amount')"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();entryRemitAdd();}"/>
+                      <div id="entry-remit-amount-err" style="display:none;font-size:10px;margin-top:3px;color:#DC2626;font-weight:600"></div>
                       <div id="entry-remit-diff" style="font-size:10px;margin-top:3px;color:var(--muted)"></div>
                     </div>
                   </div>
                   <div>
                     <label style="display:block;font-size:11px;font-weight:700;color:var(--text);margin-bottom:5px">
-                      Remittance Date &#128197;
+                      Remittance Date &#128197; <span style="color:#DC2626">*</span>
                     </label>
                     <input type="date" id="entry-remit-date"
                       style="width:100%;border:2px solid #BAE6FD;border-radius:8px;padding:9px 12px;
                              font-size:13px;font-weight:600;color:#0369A1;background:#F0F9FF;outline:none"
                       onfocus="this.style.borderColor='#0EA5E9'"
                       onblur="this.style.borderColor='#BAE6FD'"
-                      onchange="entryShowRemitNote()"/>
+                      onchange="entryShowRemitNote();entryRemitClearError('date')"/>
+                    <div id="entry-remit-date-err" style="display:none;font-size:10px;margin-top:3px;color:#DC2626;font-weight:600"></div>
                     <div id="entry-remit-note" style="font-size:10px;margin-top:3px;color:#7C3AED"></div>
                   </div>
+                  <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:transparent;margin-bottom:5px">.</label>
+                    <button type="button" onclick="entryRemitAdd()" title="Add this amount and date to the day's remittance list"
+                      style="background:linear-gradient(135deg,#047857,#10B981);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(16,185,129,.3)">
+                      &#10133; Add
+                    </button>
+                  </div>
                 </div>
+                <div id="entry-remit-list" style="margin-top:12px"></div>
               </div>
               <!-- ── Actions ───────────────────────────────────────────────── -->
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <!-- width:100% — this row is an item of a wrapping flex parent, so without it
+                   the row shrinks to its buttons and the far-right margin has no space to take. -->
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%">
                 <span id="ef-val-msg" style="display:none;font-size:12px;color:#DC2626">&#9888; Complete required fields</span>
                 <span id="entry-salesclose-badge" style="display:none;background:#FEF3C7;border:1px solid #FDE047;color:#92400E;font-size:11px;font-weight:700;padding:5px 10px;border-radius:7px"></span>
                 <button class="btn btn-outline btn-sm" onclick="clearEntryForm()">&#128465; Clear</button>
-                <button onclick="saveEntryForm()" style="background:linear-gradient(135deg,#0284C7,#0EA5E9);color:#fff;border:none;padding:10px 22px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(14,165,233,.3)">
-                  &#128190; Save Entry
+                <button id="entry-save-btn" onclick="saveEntryForm()" title="Save this day sheet. Requires at least one remittance." style="background:linear-gradient(135deg,#0284C7,#0EA5E9);color:#fff;border:none;padding:10px 22px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(14,165,233,.3)">
+                  &#128190; &#2980;&#3007;&#2985;&#2970;&#2992;&#3007; &#2997;&#3007;&#2993;&#3021;&#2986;&#2985;&#3016; &#2984;&#3007;&#2993;&#3016;&#2997;&#3009;
                 </button>
-                <button id="entry-salesclose-btn" onclick="markSalesClose()" title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style="background:linear-gradient(135deg,#B45309,#F59E0B);color:#fff;border:none;padding:10px 18px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(245,158,11,.3)">
-                  &#128274; Sales Close
+                <button id="entry-salesclose-btn" onclick="markSalesClose()" title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style="margin-left:auto;background:linear-gradient(135deg,#B45309,#F59E0B);color:#fff;border:none;padding:10px 18px;border-radius:9px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 2px 10px rgba(245,158,11,.3)">
+                  &#128274; &#2990;&#3006;&#2980; &#2997;&#3007;&#2993;&#3021;&#2986;&#2985;&#3016; &#2984;&#3007;&#2993;&#3016;&#2997;&#3009;
                 </button>
               </div>
+              <!-- [+redesign-end] -->
             </div>
           </div>
         </div>
