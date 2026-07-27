@@ -67,6 +67,10 @@ const NEW_ENGINE = new Set([
  * in without recording the text it replaced.
  */
 const REDESIGNED = {
+  login: {
+    ported: ['redesigned/login-quick-login.txt'],
+    why: 'the port\'s one-click demo sign-ins are gone from the login screen',
+  },
   pageEntry: {
     ported: ['redesigned/pageEntry-remittance-actions.txt'],
     why: 'Daily Entry: remittance is mandatory and repeatable; the two completion buttons carry their Tamil names',
