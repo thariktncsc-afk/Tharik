@@ -15,9 +15,10 @@ npm run dev
 
 Then open http://localhost:3000.
 
-Demo sign-ins (unchanged): `9344114086` / `pds123` for Admin, `crs9` / `pds123`
-or `crs1` / `pds123` for a shop user. The login screen's quick-login buttons
-fill these in.
+Demo sign-ins: `9344114086` / `pds123` for Admin, `crs9` / `pds123` or
+`crs1` / `pds123` for a shop user. Type them in — the port's one-click
+"Quick Login" buttons have been removed, since a sign-in screen should not
+carry working credentials.
 
 | Script | What it does |
 | --- | --- |

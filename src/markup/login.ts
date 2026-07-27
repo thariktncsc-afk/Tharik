@@ -40,14 +40,11 @@ const html = `
         </button>
       </div>
       <div class="login-forgot">Forgot your password?</div>
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1)">
-        <div style="font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.1em;text-align:center;margin-bottom:8px">Quick Login</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
-          <button onclick="quickLogin('9344114086','pds123')" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer">👑 Admin</button>
-          <button onclick="quickLogin('crs9','pds123')" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer">🏪 CRS 9</button>
-          <button onclick="quickLogin('crs1','pds123')" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer">🏪 CRS 1</button>
-        </div>
-      </div>
+      <!-- [+redesign-start] The port's "Quick Login" row of one-click demo sign-ins was
+           removed: it put working credentials on the sign-in screen. The port's own text
+           for this block is held in REDESIGNED in tools/verify-parity.mjs and spliced
+           back before the byte comparison. -->
+      <!-- [+redesign-end] -->
     </div>
   </div>
   <div class="login-footer">© 2026 Tamil Nadu Civil Supplies Corporation. All rights reserved.</div>
