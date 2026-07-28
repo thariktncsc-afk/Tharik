@@ -1,0 +1,2 @@
+      <div id="mu-val-summary" style="display:none;background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;color:#B91C1C;font-size:12px;margin-top:12px">
+        ⚠ Please fix the errors above before saving.
