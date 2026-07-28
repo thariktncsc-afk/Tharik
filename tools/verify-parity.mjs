@@ -64,6 +64,7 @@ const NEW_ENGINE = new Set([
   '30-nav-history.js',
   '31-stmt-heading.js',
   '32-forgot-password.js',
+  '33-receipt-type.js',
 ]);
 
 /**
