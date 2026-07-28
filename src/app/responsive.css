@@ -95,10 +95,30 @@
     line-height: 1;
     cursor: pointer;
   }
+  /* Open, the button is sitting ON the drawer rather than beside the top bar,
+     so leaving it at left:8px put it straight on top of the seal and the TNCSC
+     wordmark. It moves to the far end of the drawer's own logo row instead:
+     the rail is min(82vw, 264px) wide, so 52px in from that edge leaves the
+     40px button with a 12px margin. It cannot push the logo along by itself —
+     it is position:fixed, hence the reserved padding on .sb-logo below.
+
+     top:16px centres it against the 38px logo badge, which the ported
+     .sb-logo padding (18px top) starts at y=18. */
   body.nav-open .mnav-toggle {
-    background: var(--navy);
+    top: 16px;
+    left: calc(min(82vw, 264px) - 52px);
+    background: rgba(255, 255, 255, 0.14);
     color: #fff;
-    border-color: var(--navy);
+    border-color: rgba(255, 255, 255, 0.28);
+  }
+  body.nav-open .mnav-toggle:hover {
+    background: rgba(255, 255, 255, 0.24);
+  }
+
+  /* The slot the fixed button occupies, so the wordmark wraps before it
+     reaches the button rather than running underneath it. */
+  #sidebar .sb-logo {
+    padding-right: 62px;
   }
 
   #main {
