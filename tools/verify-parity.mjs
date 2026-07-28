@@ -66,6 +66,7 @@ const NEW_ENGINE = new Set([
   '32-forgot-password.js',
   '33-receipt-type.js',
   '34-frozen-commodity.js',
+  '35-receipt-commodities.js',
 ]);
 
 /**
