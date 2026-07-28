@@ -124,8 +124,24 @@ const html = `
       </div>
 
       <!-- Validation summary -->
+      <!-- [+redesign-start] The port left this modal unterminated: #mu-val-summary was
+           opened and never closed, taking .modal-body, .modal and .modal-bg down with it,
+           and there was no .modal-foot at all — so the Add/Edit User dialog had no Save or
+           Cancel button and muSaveUser() was unreachable from the UI. The tags are closed
+           here and the footer added, matching the Cancel/Save pair the CRS and Commodity
+           modals already carry. The port's own text for this block is held in REDESIGNED in
+           tools/verify-parity.mjs and spliced back before the byte comparison. -->
       <div id="mu-val-summary" style="display:none;background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;color:#B91C1C;font-size:12px;margin-top:12px">
         ⚠ Please fix the errors above before saving.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('modal-user')">Cancel</button>
+      <button class="btn btn-primary" onclick="muSaveUser()" id="mu-save-btn">Save User</button>
+    </div>
+  </div>
+</div>
+      <!-- [+redesign-end] -->
 
 <!-- ─── ROLE SELECT MODAL (shown when CRS has BC + Packer) ─── -->
 <div id="role-select-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">

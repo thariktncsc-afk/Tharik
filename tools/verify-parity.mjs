@@ -80,6 +80,10 @@ const NEW_ENGINE = new Set([
  * in without recording the text it replaced.
  */
 const REDESIGNED = {
+  modals: {
+    ported: ['redesigned/modals-user-footer.txt'],
+    why: 'the port left the Add/Edit User modal unterminated and with no footer, so it had no Save or Cancel button',
+  },
   login: {
     ported: [
       'redesigned/login-badge.txt',
