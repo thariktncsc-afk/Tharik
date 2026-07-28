@@ -1,0 +1,119 @@
+/* App shell chrome: the top bar, and the sidebar toggle that sits over it
+   (src/components/SidebarToggle.tsx).
+
+   New, not ported — kept out of globals.css so that stays exactly the ported
+   original, and out of responsive.css since that file is specifically the
+   <=900px mobile layer (its own docstring says so) while most of this applies
+   at every width.
+
+   THE CLEARANCE PROBLEM. .mnav-toggle is position:fixed, so it is outside the
+   top bar's flow and cannot push the title along — the ported #topbar padding
+   of 0 24px left the title starting at x=24 while the button occupied
+   x=14..48, which simply overlapped. Every state below therefore pairs a button
+   position with a matching #topbar padding-left, so the title always starts a
+   consistent 12px clear of the button's right edge:
+
+     mobile/tablet (<=900px)   button  8..48   ->  padding-left 60
+     desktop, collapsed        button 14..48   ->  padding-left 60
+     desktop, expanded         button sits over the sidebar, not the top bar,
+                                               ->  ported padding-left 24 stands
+*/
+
+/* ── Top bar ──────────────────────────────────────────────────────────────
+   The ported bar is flat #fff directly against the #F0F4F8 content area, which
+   reads as one undifferentiated slab. A barely-there tinted wash plus a soft
+   shadow separates the two without introducing a new colour: both the tint and
+   the shadow are --navy-dark at very low alpha. */
+#topbar {
+  background: linear-gradient(180deg, #ffffff 0%, #f7fafd 100%);
+  border-bottom: 1px solid #d5deeb;
+  box-shadow: 0 1px 3px rgba(13, 30, 63, 0.05);
+}
+.topbar-title strong {
+  letter-spacing: -0.15px;
+}
+
+@media (min-width: 901px) {
+  /* Clearance for the fixed button. The <=900px layer sets its own padding for
+     the drawer; this is the desktop-collapsed counterpart, matched to it. */
+  body.sidebar-collapsed #topbar {
+    padding-left: 60px;
+  }
+
+  #sidebar {
+    overflow: hidden;
+    transition: width 0.28s ease;
+  }
+  body.sidebar-collapsed #sidebar {
+    width: 0;
+  }
+
+  /* #sidebar's children have no explicit width of their own — in a column
+     flex container they just stretch to fill it, which means they would
+     shrink (and their text reflow/wrap) right along with the parent during
+     the collapse. Freezing them at the full sidebar width and fading them
+     out separately turns that squish into a clean slide-and-fade instead. */
+  #sidebar > * {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    transition: opacity 0.15s ease;
+  }
+  body.sidebar-collapsed #sidebar > * {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* .mnav-toggle's <=900px shape is defined in responsive.css; this is a
+     parallel, desktop-only definition, not an override, so nothing there needs
+     to change. Expanded, it sits beside the logo inside the navy rail, so it is
+     styled as part of that rail (translucent white on navy) and aligned to the
+     logo badge. Collapsed, it is over the pale top bar instead, so it takes the
+     navy fill below and centres itself in the bar's 52px height. */
+  .mnav-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 18px;
+    left: 178px;
+    z-index: 1250;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      top 0.28s ease,
+      left 0.28s ease,
+      background 0.2s ease,
+      color 0.2s ease;
+  }
+  .mnav-toggle:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  /* Navy fill rather than the white-on-white it replaced: against the pale top
+     bar a white button all but disappeared, and navy is the colour of the
+     sidebar it summons. (52 - 34) / 2 = 9px centres it in the bar. */
+  body.sidebar-collapsed .mnav-toggle {
+    top: 9px;
+    left: 14px;
+    background: var(--navy);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(13, 30, 63, 0.22);
+  }
+  body.sidebar-collapsed .mnav-toggle:hover {
+    background: var(--navy-light);
+  }
+
+  /* The mobile backdrop must stay off at desktop — collapsing the sidebar in
+     place is a layout change, not an overlay, so nothing should dim. */
+  .mnav-backdrop {
+    display: none !important;
+  }
+}

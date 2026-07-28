@@ -106,7 +106,10 @@
     min-width: 0;
   }
   #topbar {
-    padding: 0 12px 0 56px; /* clear of the toggle */
+    /* 60px = the toggle's right edge (8 + 40) plus the same 12px gap the
+       desktop-collapsed state uses, so the title starts consistently clear of
+       the button at every width. See app-chrome.css for the full table. */
+    padding: 0 12px 0 60px;
     gap: 10px;
   }
   .topbar-title {
