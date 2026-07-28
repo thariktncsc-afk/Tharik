@@ -6,7 +6,14 @@ const html = `
         <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px">
           <div>
             <div class="page-title">Statement Generation</div>
-            <div class="page-sub">Generate official TNCSC monthly statements — CRS 9 June 2026 format</div>
+            <!-- [+redesign-start] The port hard-coded one shop and month here ("CRS 9 June
+                 2026"), which was wrong for every other shop. The line now carries an id and
+                 a neutral default; stmtUpdateHeading() in 31-stmt-heading.js rewrites it from
+                 the selected CRS / month / year. The port's own text for this block is held in
+                 REDESIGNED in tools/verify-parity.mjs and spliced back before the byte
+                 comparison, so every line OUTSIDE these markers is still held to parity. -->
+            <div class="page-sub" id="stmt-page-sub">Generate official TNCSC monthly statements</div>
+            <!-- [+redesign-end] -->
           </div>
         </div>
 

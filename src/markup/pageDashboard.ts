@@ -8,9 +8,14 @@ const html = `
         <div style="position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.05)"></div>
         <div style="position:absolute;bottom:-60px;right:120px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.04)"></div>
         <div style="position:absolute;top:10px;left:50%;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.03)"></div>
+        <!-- [+redesign-start] Hero header, redesigned after the port: the Left/Right columns
+             now carry flex:1 so a genuine center column sits between them for the Chief
+             Minister's portrait and a scrolling TNCSC ticker. The port's own text for this
+             block is held in REDESIGNED in tools/verify-parity.mjs and spliced back before
+             the byte comparison, so every line OUTSIDE these markers is still held to parity. -->
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;position:relative;z-index:1">
           <!-- Left: Title + subtitle -->
-          <div>
+          <div style="flex:1 1 200px;min-width:200px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
               <div style="background:rgba(255,255,255,.18);border-radius:10px;padding:8px 11px;font-size:22px;line-height:1">📊</div>
               <div>
@@ -22,8 +27,19 @@ const html = `
               <div id="dash-day-type" onclick="openHolidayCalendar()" style="cursor:pointer;font-size:11px"></div>
             </div>
           </div>
+          <!-- Center: Chief Minister portrait + scrolling TNCSC ticker -->
+          <div style="flex:2 1 300px;min-width:260px;display:flex;flex-direction:column;align-items:center;gap:8px">
+            <img src="/img/cm-tamilnadu.jpg" alt="Hon'ble Chief Minister of Tamil Nadu"
+              style="width:104px;height:130px;border-radius:50%;object-fit:cover;border:4px solid rgba(255,255,255,.85);box-shadow:0 4px 14px rgba(0,0,0,.3);flex-shrink:0"/>
+            <div style="width:100%;max-width:700px;overflow:hidden;padding:5px 0">
+              <div class="dash-cm-marquee-track">
+                <span style="color:#fff;font-weight:800;font-size:12px;letter-spacing:.01em;padding:0 24px;white-space:nowrap">தமிழ்நாடு நுகர்பொருள் வாணிபக் கழகம் (Tamil Nadu Civil Supplies Corporation - TNCSC)</span>
+                <span aria-hidden="true" style="color:#fff;font-weight:800;font-size:12px;letter-spacing:.01em;padding:0 24px;white-space:nowrap">தமிழ்நாடு நுகர்பொருள் வாணிபக் கழகம் (Tamil Nadu Civil Supplies Corporation - TNCSC)</span>
+              </div>
+            </div>
+          </div>
           <!-- Right: Clock + Date picker -->
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          <div style="flex:1 1 200px;min-width:200px;display:flex;flex-direction:column;align-items:flex-end;gap:8px">
             <div style="background:rgba(255,255,255,.14);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:10px 16px;text-align:center;min-width:170px">
               <div style="font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px">CURRENT TIME</div>
               <div style="display:flex;align-items:baseline;justify-content:center;gap:4px">
@@ -42,6 +58,7 @@ const html = `
             </div>
           </div>
         </div>
+        <!-- [+redesign-end] -->
       </div>
 
       <!-- Holiday notice -->
