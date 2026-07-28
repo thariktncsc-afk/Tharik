@@ -159,6 +159,47 @@ function dashFillCrsMaster(){
     }
     flagEl.innerHTML = chips;
   }
+
+  dashMarkOwnRole();
+}
+
+/* The two staff blocks are the SHOP's roster — getUsersForCRS() returns
+   whoever holds the BC and Packer posts at this shop, not the person signed
+   in. So a shop with only a Bill Clerk shows a lone "BILL CLERK (BC)" block,
+   which reads as if the card were reporting your role and getting it wrong.
+
+   The roster is worth keeping — it is how you reach your counterpart at the
+   shop — so rather than replacing it, the block that IS the signed-in user is
+   marked. Matching is on the user id, falling back to the phone, because a
+   backup restored from an older file can carry a different id for the same
+   person. */
+function dashMarkOwnRole(){
+  var me = (typeof currentUser !== 'undefined') ? currentUser : null;
+  [['dash-bc-block', 'bc'], ['dash-packer-block', 'packer']].forEach(function(pair){
+    var block = document.getElementById(pair[0]);
+    if(!block) return;
+    var old = block.querySelector('.dash-you-chip');
+    if(old) old.remove();
+    block.style.outline = '';
+    if(!me || !me.crsId) return;
+
+    var staff = (typeof getUsersForCRS === 'function') ? getUsersForCRS(me.crsId) : null;
+    var holder = staff ? staff[pair[1]] : null;
+    var isMe = holder && (holder.id === me.id ||
+      (holder.phone && me.phone && String(holder.phone) === String(me.phone)));
+    if(!isMe) return;
+
+    block.style.outline = '2px solid rgba(255,255,255,.7)';
+    var label = block.querySelector('div');
+    if(label){
+      var chip = document.createElement('span');
+      chip.className = 'dash-you-chip';
+      chip.textContent = 'YOU';
+      chip.style.cssText = 'margin-left:7px;background:#fff;color:#0369A1;font-size:9px;' +
+        'font-weight:800;padding:2px 7px;border-radius:20px;letter-spacing:.04em';
+      label.appendChild(chip);
+    }
+  });
 }
 
 var _profileOrigBuildDashboard = buildDashboard;
