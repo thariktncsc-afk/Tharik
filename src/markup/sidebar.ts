@@ -4,7 +4,13 @@ const html = `
 <!-- ─── APP SHELL ──────────────────────────────────── -->
 <div id="sidebar">
   <div class="sb-logo flex items-center">
-    <div class="sb-logo-badge">TN</div>
+    <!-- [+redesign-start] The "TN" lettering is replaced by the Seal of Tamil Nadu. The
+         port's own text for this line is held in REDESIGNED in tools/verify-parity.mjs. -->
+    <div class="sb-logo-badge" style="background:#fff;padding:3px">
+      <img src="/img/seal-of-tamil-nadu.svg" alt="Seal of Tamil Nadu" width="32" height="32"
+           style="width:100%;height:100%;object-fit:contain;display:block"/>
+    </div>
+    <!-- [+redesign-end] -->
     <div class="sb-logo-text">
       <p>TNCSC</p>
       <p>CRS Management</p>

@@ -50,9 +50,18 @@ const stripHeader = (text) => text.slice(text.indexOf('*/') + 3);
  */
 const NEW_MARKUP = new Set([]);
 const NEW_ENGINE = new Set([
+  '02a-crs-names.js',
   '20-dashboard-stock.js',
   '21-remittance.js',
   '22-allotment.js',
+  '23-crs-master.js',
+  '24-coll.js',
+  '25-crs-profile.js',
+  '26-crs29.js',
+  '27-crs29-entry.js',
+  '28-crs29-dashboard.js',
+  '29-dss-total.js',
+  '30-nav-history.js',
 ]);
 
 /**
@@ -68,8 +77,20 @@ const NEW_ENGINE = new Set([
  */
 const REDESIGNED = {
   login: {
-    ported: ['redesigned/login-quick-login.txt'],
-    why: 'the port\'s one-click demo sign-ins are gone from the login screen',
+    ported: ['redesigned/login-badge.txt', 'redesigned/login-quick-login.txt'],
+    why: 'the badge carries the Seal of Tamil Nadu, and the port\'s one-click demo sign-ins are gone',
+  },
+  sidebar: {
+    ported: ['redesigned/sidebar-logo.txt'],
+    why: 'the sidebar badge carries the Seal of Tamil Nadu instead of the "TN" lettering',
+  },
+  pageDashboard: {
+    ported: ['redesigned/pageDashboard-crs-info.txt'],
+    why: 'the shop card carries the whole CRS Master record and is filled from it',
+  },
+  pageCrs: {
+    ported: ['redesigned/pageCrs-master.txt'],
+    why: 'CRS Shops became the CRS Master Configuration: shop code, BC and packer, COLL / police requirement and usage status',
   },
   pageEntry: {
     ported: ['redesigned/pageEntry-remittance-actions.txt'],
