@@ -63,6 +63,9 @@ const NEW_ENGINE = new Set([
   '29-dss-total.js',
   '30-nav-history.js',
   '31-stmt-heading.js',
+  '32-forgot-password.js',
+  '33-receipt-type.js',
+  '34-frozen-commodity.js',
 ]);
 
 /**
@@ -78,8 +81,14 @@ const NEW_ENGINE = new Set([
  */
 const REDESIGNED = {
   login: {
-    ported: ['redesigned/login-badge.txt', 'redesigned/login-quick-login.txt'],
-    why: 'the badge carries the Seal of Tamil Nadu, and the port\'s one-click demo sign-ins are gone',
+    ported: [
+      'redesigned/login-badge.txt',
+      'redesigned/login-subtitle.txt',
+      'redesigned/login-username.txt',
+      'redesigned/login-password.txt',
+      'redesigned/login-quick-login.txt',
+    ],
+    why: 'the badge carries the Seal of Tamil Nadu, the subtitle and the two field placeholders just say what to do rather than spelling the accepted formats out, and the port\'s one-click demo sign-ins are gone',
   },
   sidebar: {
     ported: ['redesigned/sidebar-logo.txt'],

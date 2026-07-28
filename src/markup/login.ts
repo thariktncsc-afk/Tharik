@@ -18,17 +18,32 @@ const html = `
       </div>
       <!-- [+redesign-end] -->
       <h2>CRS Statement Management System</h2>
-      <p>Enter phone number or shop code (crs1...crs30)</p>
+      <!-- [+redesign-start] The subtitle no longer spells the accepted username formats out
+           ("Enter phone number or shop code (crs1...crs30)") — it just says what to do. The
+           port's own text for this line is held in REDESIGNED in tools/verify-parity.mjs and
+           spliced back before the byte comparison. -->
+      <p>Enter username and password to login</p>
+      <!-- [+redesign-end] -->
     </div>
     <div class="login-body">
       <div id="login-form-section">
       <div class="login-input-wrap">
         <span class="login-icon">👤</span>
-        <input class="login-input" type="text" placeholder="Phone number or crs1, crs2..." id="login-user" value="" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('login-pass').focus();}"/>
+        <!-- [+redesign-start] The placeholder is just the field name now; the port spelled the
+             accepted formats out here ("Phone number or crs1, crs2..."), which the subtitle
+             above the form already says. The port's own text for this line is held in
+             REDESIGNED in tools/verify-parity.mjs and spliced back before the byte comparison. -->
+        <input class="login-input" type="text" placeholder="Username" id="login-user" value="" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('login-pass').focus();}"/>
+        <!-- [+redesign-end] -->
       </div>
       <div class="login-input-wrap">
         <span class="login-icon">🔒</span>
-        <input class="login-input" type="password" placeholder="Password (pds123)" id="login-pass" value="" onkeydown="if(event.key==='Enter'){event.preventDefault();doLogin();}"/>
+        <!-- [+redesign-start] The placeholder is just the field name now; the port carried the
+             demo password in it ("Password (pds123)"), which does not belong on a sign-in form.
+             The port's own text for this line is held in REDESIGNED in tools/verify-parity.mjs
+             and spliced back before the byte comparison. -->
+        <input class="login-input" type="password" placeholder="Password" id="login-pass" value="" onkeydown="if(event.key==='Enter'){event.preventDefault();doLogin();}"/>
+        <!-- [+redesign-end] -->
         <button type="button" onclick="toggleLoginPwd()" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:var(--muted)" id="login-eye-btn">👁</button>
       </div>
       <div id="login-err" style="display:none;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.3);border-radius:8px;padding:9px 12px;color:#FCA5A5;font-size:12px;margin-bottom:6px;text-align:center"></div>
