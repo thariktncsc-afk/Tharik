@@ -62,6 +62,7 @@ const NEW_ENGINE = new Set([
   '28-crs29-dashboard.js',
   '29-dss-total.js',
   '30-nav-history.js',
+  '31-stmt-heading.js',
 ]);
 
 /**
@@ -91,6 +92,10 @@ const REDESIGNED = {
   pageCrs: {
     ported: ['redesigned/pageCrs-master.txt'],
     why: 'CRS Shops became the CRS Master Configuration: shop code, BC and packer, COLL / police requirement and usage status',
+  },
+  pageStatement: {
+    ported: ['redesigned/pageStatement-heading.txt'],
+    why: 'the subtitle no longer hard-codes "CRS 9 June 2026" — it is rewritten from the selected shop and period',
   },
   pageEntry: {
     ported: ['redesigned/pageEntry-remittance-actions.txt'],
