@@ -326,8 +326,8 @@ const html = `
                 <div style="border:1px solid #CCFBF1;border-top:none;border-radius:0 0 10px 10px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
 
                   <!-- Left: card counts -->
-                  <div style="border:1px solid #CCFBF1;border-radius:9px;overflow:hidden">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                  <div style="border:1px solid #CCFBF1;border-radius:9px;overflow-x:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:260px">
                       <thead>
                         <tr style="background:#F0FDFA">
                           <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:48px">S.NO</th>
@@ -346,8 +346,8 @@ const html = `
                   </div>
 
                   <!-- Right: allotment -->
-                  <div style="border:1px solid #CCFBF1;border-radius:9px;overflow:hidden">
-                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                  <div style="border:1px solid #CCFBF1;border-radius:9px;overflow-x:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:380px">
                       <thead>
                         <tr style="background:#F0FDFA">
                           <th style="padding:9px 10px;text-align:center;font-size:10px;font-weight:700;color:#0F766E;border-bottom:2px solid #99F6E4;width:48px">S.NO</th>
