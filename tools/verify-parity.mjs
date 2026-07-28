@@ -65,6 +65,7 @@ const NEW_ENGINE = new Set([
   '31-stmt-heading.js',
   '32-forgot-password.js',
   '33-receipt-type.js',
+  '34-frozen-commodity.js',
 ]);
 
 /**

@@ -185,6 +185,39 @@
     flex-wrap: wrap;
   }
 
+  /* Frozen commodity column on the Daily/Monthly entry grids. The cells are
+     tagged .frz-comm by 34-frozen-commodity.js, which walks the real table
+     grid — nth-child cannot find them (colspan groups, rowspan headers, a
+     colspan'd footer, and Monthly's implicit tbody). Desktop never sees this:
+     the class is inert outside this media query.
+
+     An opaque background is required, not cosmetic — a sticky cell paints over
+     the scrolling row beneath it, and a transparent one would let the scrolled
+     figures show through the commodity name. The three tones match the ported
+     row backgrounds each strip sits on. */
+  #content .page .frz-table .frz-comm {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: #fff;
+    box-shadow: 2px 0 0 rgba(15, 23, 42, 0.08);
+  }
+  #content .page .frz-table thead .frz-comm,
+  #content .page .frz-table tfoot .frz-comm {
+    z-index: 4;
+  }
+  /* Section A/B header strips and the totals row carry their own fills. */
+  #content .page .frz-table thead tr .frz-comm {
+    background: #f8fafc;
+  }
+  #content .page .frz-table tfoot tr .frz-comm {
+    background: #eff6ff;
+  }
+  #content .page #me-tbody-b ~ tfoot tr .frz-comm,
+  #content .page .frz-table tfoot tr[style*="FFF7ED"] .frz-comm {
+    background: #fff7ed;
+  }
+
   /* Touch targets. Fingers, not cursors: action buttons and nav rows come up
      to ~44px effective height. Scoped away from table-row micro-buttons
      (.btn-sm) and the modal close ✕, whose rows would double in height. */
