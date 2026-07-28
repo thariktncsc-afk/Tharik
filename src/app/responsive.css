@@ -114,8 +114,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* overflow-x:hidden here is the backstop for the leak described below: even
+     with every wide table containing its own scroll, #content had no x-axis
+     clip of its own, so a drag that outran a table's scroll boundary mid-
+     gesture could still bleed a few pixels of pan into the content column
+     itself and shift the whole page sideways. */
   #content {
     padding: 14px;
+    overflow-x: hidden;
   }
 
   /* auto-fit lets each grid pick its own column count from the space it has,
@@ -148,14 +154,25 @@
   .card-body {
     padding: 14px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   /* Most wide tables ship inside an `overflow-x:auto` wrapper already. The
      stragglers (the receipt log sits straight in a .card) get one here, so the
      table scrolls on its own instead of dragging the whole content column
-     sideways and taking the page header with it. */
-  #content .page div:has(> table) {
+     sideways and taking the page header with it.
+
+     overscroll-behavior-x:contain is the other half of that: overflow-x:auto
+     only says this box CAN scroll, it does not stop a drag that reaches the
+     end of that scroll from being handed to the next scrollable ancestor
+     (#content). Without it, dragging across a wide table like Monthly Entry's
+     Section A visibly pans the whole page once the table's own scroll runs
+     out, and every section below stays shifted — the touch-scroll analogue of
+     the #content overflow-x fix above. */
+  #content .page div:has(> table),
+  #content .page [style*="overflow-x:auto"] {
     overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   /* Inline `display:flex` rows in the ported markup set no flex-wrap, so a
