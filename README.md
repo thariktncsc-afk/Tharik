@@ -332,6 +332,14 @@ being reflowed — a stock register that silently rearranges its columns is wors
 than one you swipe. Every screen was checked at 375px and 768px for content
 escaping the viewport; there is none.
 
+Below 900px, action buttons come up to a ~42px touch height and the nav rows
+gain padding to match — scoped inside the media query, so desktop keeps the
+ported sizes, and away from the table-row micro-buttons (`.btn-sm`) whose rows
+would double in height. Inputs are already 16px there, so iOS does not zoom on
+focus. Statement previews scroll inside their own panel, and the DSS viewer's
+sheet scrolls inside `#dss-scroll` — on a phone the 840px sheet is swiped, not
+shrunk into illegibility.
+
 `MobileNav` renders only the toggle and the backdrop and sets a `nav-open` class
 on `<body>`. It never touches the sidebar markup, which the engine owns. It
 watches the login screen's `hidden` class so the toggle stays out of the way
@@ -356,6 +364,29 @@ blank first paint.
 `#app-root` (the wrapper the markup goes into) is `display:contents`, so
 `#login-screen`, `#sidebar` and `#main` stay direct flex children of `<body>`
 and the layout is pixel-identical.
+
+### Browser back / forward
+
+The ported navigation only toggled which `.page` is visible, so the browser had
+one history entry for the whole session and Back left the app — which read as
+"Back goes to the login page" from any screen. `src/legacy/30-nav-history.js`
+wires the existing funnel into the History API without changing the URL: each
+navigation pushes a `{page}` state against the same path, so Next's router
+(which reacts to path changes) is never involved.
+
+Three wrappers cover the whole app, because every navigation already goes
+through them: `showPage` (all sidebar items, `navTo`, and the role-gate's
+internal fallback — the recursion calls the identifier `showPage`, which
+resolves to the wrapper), `enterApp` (the post-login landing paints the
+dashboard directly), and `doLogout`. Each pushes whichever page actually ended
+up active rather than trusting its argument, deduplicated against the top
+entry, so the role-gate's redirect produces one entry, not two.
+
+Back therefore walks Monthly Entry → Daily Entry → Dashboard, and one more Back
+past the first page ends the session the same way Sign Out does — by design,
+not as a stray redirect. Logging out (either way) pushes a fresh login entry,
+which truncates the ended session's forward stack; stepping Forward afterwards
+never restores a session without credentials.
 
 ### Why the engine is one bundled classic script
 

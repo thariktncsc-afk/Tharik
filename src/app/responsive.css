@@ -165,6 +165,22 @@
     flex-wrap: wrap;
   }
 
+  /* Touch targets. Fingers, not cursors: action buttons and nav rows come up
+     to ~44px effective height. Scoped away from table-row micro-buttons
+     (.btn-sm) and the modal close ✕, whose rows would double in height. */
+  #content .page button:not(.btn-sm),
+  .modal button:not(.btn-sm),
+  #login-screen button {
+    min-height: 42px;
+  }
+  /* .sb-nav qualifier: same rule at 0-0-1 ties the ported .nav-item{padding}
+     and then depends on stylesheet order, which Next's dev overlay does not
+     keep stable. One extra class makes it win by specificity instead. */
+  .sb-nav .nav-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
   .page-title {
     font-size: 18px;
   }
