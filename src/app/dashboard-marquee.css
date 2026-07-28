@@ -1,0 +1,28 @@
+/* Chief Minister ticker on the Dashboard hero header (src/markup/pageDashboard.ts).
+   New, not ported — kept out of globals.css/responsive.css so those files stay
+   exactly what their own docstrings promise (ported CSS, mobile-only layer).
+
+   The track holds two identical copies of the text back to back; animating
+   translateX from 0 to -50% moves exactly one copy's width, so the seam
+   between the end of copy 1 and the start of copy 2 is invisible and the
+   scroll loops without a visible jump or gap. */
+.dash-cm-marquee-track {
+  display: inline-flex;
+  width: max-content;
+  animation: dash-cm-marquee 14s linear infinite;
+}
+
+@keyframes dash-cm-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-cm-marquee-track {
+    animation: none;
+  }
+}

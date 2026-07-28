@@ -85,8 +85,8 @@ const REDESIGNED = {
     why: 'the sidebar badge carries the Seal of Tamil Nadu instead of the "TN" lettering',
   },
   pageDashboard: {
-    ported: ['redesigned/pageDashboard-crs-info.txt'],
-    why: 'the shop card carries the whole CRS Master record and is filled from it',
+    ported: ['redesigned/pageDashboard-hero-header.txt', 'redesigned/pageDashboard-crs-info.txt'],
+    why: 'the hero header carries the Chief Minister\'s portrait and a scrolling TNCSC ticker between the title and the clock/date cards, and the shop card carries the whole CRS Master record and is filled from it',
   },
   pageCrs: {
     ported: ['redesigned/pageCrs-master.txt'],
