@@ -61,6 +61,7 @@ const NEW_ENGINE = new Set([
   '27-crs29-entry.js',
   '28-crs29-dashboard.js',
   '29-dss-total.js',
+  '30-nav-history.js',
 ]);
 
 /**
