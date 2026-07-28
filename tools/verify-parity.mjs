@@ -62,6 +62,10 @@ const NEW_ENGINE = new Set([
   '28-crs29-dashboard.js',
   '29-dss-total.js',
   '30-nav-history.js',
+  '31-stmt-heading.js',
+  '32-forgot-password.js',
+  '33-receipt-type.js',
+  '34-frozen-commodity.js',
 ]);
 
 /**
@@ -77,20 +81,30 @@ const NEW_ENGINE = new Set([
  */
 const REDESIGNED = {
   login: {
-    ported: ['redesigned/login-badge.txt', 'redesigned/login-quick-login.txt'],
-    why: 'the badge carries the Seal of Tamil Nadu, and the port\'s one-click demo sign-ins are gone',
+    ported: [
+      'redesigned/login-badge.txt',
+      'redesigned/login-subtitle.txt',
+      'redesigned/login-username.txt',
+      'redesigned/login-password.txt',
+      'redesigned/login-quick-login.txt',
+    ],
+    why: 'the badge carries the Seal of Tamil Nadu, the subtitle and the two field placeholders just say what to do rather than spelling the accepted formats out, and the port\'s one-click demo sign-ins are gone',
   },
   sidebar: {
     ported: ['redesigned/sidebar-logo.txt'],
     why: 'the sidebar badge carries the Seal of Tamil Nadu instead of the "TN" lettering',
   },
   pageDashboard: {
-    ported: ['redesigned/pageDashboard-crs-info.txt'],
-    why: 'the shop card carries the whole CRS Master record and is filled from it',
+    ported: ['redesigned/pageDashboard-hero-header.txt', 'redesigned/pageDashboard-crs-info.txt'],
+    why: 'the hero header carries the Chief Minister\'s portrait and a scrolling TNCSC ticker between the title and the clock/date cards, and the shop card carries the whole CRS Master record and is filled from it',
   },
   pageCrs: {
     ported: ['redesigned/pageCrs-master.txt'],
     why: 'CRS Shops became the CRS Master Configuration: shop code, BC and packer, COLL / police requirement and usage status',
+  },
+  pageStatement: {
+    ported: ['redesigned/pageStatement-heading.txt'],
+    why: 'the subtitle no longer hard-codes "CRS 9 June 2026" — it is rewritten from the selected shop and period',
   },
   pageEntry: {
     ported: ['redesigned/pageEntry-remittance-actions.txt'],

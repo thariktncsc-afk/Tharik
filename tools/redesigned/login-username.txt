@@ -1,0 +1,1 @@
+        <input class="login-input" type="text" placeholder="Phone number or crs1, crs2..." id="login-user" value="" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('login-pass').focus();}"/>

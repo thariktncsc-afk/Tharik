@@ -40,7 +40,7 @@ function doLogin(){
     return;
   }
   if(p !== 'pds123'){
-    showLoginError('Incorrect password. Please try again.');
+    showLoginError('Incorrect Password');
     return;
   }
 
@@ -56,10 +56,12 @@ function doLogin(){
     return;
   }
 
-  // ── CRS USER: "crs1".."crs30" login ───────────────────────────────────
-  var crsMatch = u.match(/^crs(\d+)$/);
+  // ── CRS USER: "Crs1".."Crs30" / "crs1".."crs30" login ──────────────────
+  // Only the leading C is case-insensitive; "rs" must stay lowercase, so
+  // CRS1 / CRs1 / CrS1 / cRs1 / crS1 are all rejected as bad usernames.
+  var crsMatch = uRaw.match(/^[Cc]rs(\d+)$/);
   if(!crsMatch){
-    showLoginError('Invalid username. Use your phone number (Admin) or "crs1" to "crs30".');
+    showLoginError('Incorrect Username');
     return;
   }
   var crsId = parseInt(crsMatch[1]);

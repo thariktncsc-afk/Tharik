@@ -8,16 +8,27 @@
 
      Opening balance      unchanged — the ported monthly opening
      Allotment            Monthly Entry -> Allotment (meAllotStore)
-     Received from godown the Daily Entry receipt for the month, LESS any
-                          advance load taken against it
-     Total                Opening + Received
-     then                 - Shortage  + Excess     (Daily Entry inspection)
+     Received from godown REGULAR godown receipts for the month, LESS any
+                          advance load taken against them
+     Total                Opening + Allotment + Received - Shortage + Excess
+                          (shortage/excess from the Daily Entry inspection)
      Sales                unchanged
-     Closing balance      Total - shortage + excess - sales
+     Closing balance      Total - Sales
 
-   Worked example from the spec: opening 100, actually received 300 of which
-   100 was an advance load, so the statement shows 200 received and a total of
-   300; sales of 300 leave a closing of 0.
+   WHICH SHOPS. Only shops the master marks coll, and never CRS 29, which files
+   an Indent instead — see collEligible() at the foot of this file.
+
+   TWO KINDS OF ADVANCE, which are easy to confuse:
+
+     Advance RECEIPT  a whole godown receipt typed Advance on the Receipt Entry
+                      page (33-receipt-type.js). Never counted here at all.
+     Advance LOAD     a per-commodity quantity keyed beside the allotment on
+                      Monthly Entry. Subtracts from what this month claims to
+                      have received.
+
+   They are different entry points for the same idea, so a shop that uses both
+   could double-subtract; the load is therefore clamped to what survives after
+   the Advance receipts are already excluded.
 
    ADVANCE LOAD is stock drawn ahead of the month it belongs to. It is entered
    beside the allotment on Monthly Entry, per commodity, and only ever reduces
@@ -57,22 +68,46 @@ stmtGetData = function(crsId, month, year){
     d.advance    = meAdvanceStore[key] || {};
     d.advanceQty = function(id){ return meAdvanceQty(key, id); };
 
-    // The month's figures for one commodity, with the advance netted off the
-    // receipt and the inspection adjustments applied after the total.
+    // The month's figures for one commodity.
+    //
+    //   Total   = Opening + Allotment + Regular Receipt - Shortage + Excess
+    //   Closing = Total - Sales
+    //
+    // Receipt counts REGULAR godown receipts only; Advance receipts are typed
+    // on the Receipt Entry page (33-receipt-type.js) and never reach COLL.
+    // When the shop keyed no godown receipts at all we fall back to the Daily
+    // Entry receipt figure, so shops that only key day sheets still produce a
+    // statement -- but once ANY receipt row exists for the month the typed
+    // rows are authoritative, otherwise a month whose receipts were all
+    // Advance would silently fall back and re-admit them.
     d.collRow = function(id){
-      var ob       = d.getVal(id, 'open');
-      var received = d.getVal(id, 'receipt');          // Daily Entry receipts
-      var advance  = Math.min(meAdvanceQty(key, id), received);
-      var rec      = received - advance;               // what the statement claims
-      var tot      = ob + rec;
+      var ob    = d.getVal(id, 'open');
+      var allot = d.allotQty ? d.allotQty(id) : 0;
+
+      var received, regular;
+      if(typeof rcpHasRowsInMonth === 'function' && rcpHasRowsInMonth(crsId, month, year)){
+        received = (typeof d.receiptQty === 'function') ? d.receiptQty(id) : d.getVal(id, 'receipt');
+        regular  = rcpRegularQty(crsId, month, year, id);
+      } else {
+        received = d.getVal(id, 'receipt');
+        regular  = received;
+      }
+
+      // Advance LOAD (Monthly Entry -> Allotment) is a separate, older lever
+      // that also reduces what this month claims to have received; it is
+      // clamped to what is left after the Advance receipts are already out, so
+      // the two cannot subtract the same stock twice.
+      var advance = Math.min(meAdvanceQty(key, id), regular);
+      var rec     = regular - advance;
+
       var shortage = d.getVal(id, 'shortage');
       var excess   = d.getVal(id, 'excess');
-      var adjusted = tot - shortage + excess;
+      var tot      = ob + allot + rec - shortage + excess;
       var sal      = d.getVal(id, 'sales');
-      var cb       = d.hasVal(id, 'close') ? d.getVal(id, 'close') : adjusted - sal;
-      return {ob:ob, allot:d.allotQty ? d.allotQty(id) : 0, received:received,
+      var cb       = d.hasVal(id, 'close') ? d.getVal(id, 'close') : tot - sal;
+      return {ob:ob, allot:allot, received:received, regular:regular,
               advance:advance, rec:rec, tot:tot, shortage:shortage, excess:excess,
-              adjusted:adjusted, sal:sal, cb:cb};
+              adjusted:tot, sal:sal, cb:cb};
     };
   }catch(e){}
   return d;
@@ -83,6 +118,10 @@ stmtGetData = function(crsId, month, year){
 // each column now drawing on its own source; the ported original is frozen by
 // parity, so this cannot drift away from a moving target.
 buildColl = function(d){
+  if(!collEligible(d.crsId)){
+    return '<div style="padding:20px;font-size:12px;color:#B45309">' +
+      collIneligibleReason(d.crsId) + '</div>';
+  }
   function nz(v){ if(v===''||v==null) return ''; return String(+(Number(v).toFixed(3))); }
   function C(x){ return '<td>'+(x==null?'':x)+'</td>'; }
   function L(x){ return '<td class="l">'+(x==null?'':x)+'</td>'; }
@@ -177,6 +216,60 @@ buildColl = function(d){
       '<div class="cl-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 };
+
+// ── WHICH SHOPS FILE COLL ───────────────────────────────────────────────────
+// The master list is the authority (CRS_MASTER.coll): 5, 7, 8, 9, 10, 11, 12,
+// 19, 29, 30. CRS 29 is carved out on top of that — it is the Refugee Camp
+// shop and files an Indent instead, so it never produces a COLL statement even
+// though the master marks it. That leaves 5, 7, 8, 9, 10, 11, 12, 19 and 30.
+var COLL_EXCLUDED = [29];
+
+function collEligible(crsId){
+  var id = parseInt(crsId, 10);
+  if(!id) return false;
+  if(COLL_EXCLUDED.indexOf(id) !== -1) return false;
+  if(typeof CRS_MASTER === 'undefined') return false;
+  var m = CRS_MASTER.find(function(r){ return r.id === id; });
+  return !!(m && m.coll);
+}
+
+function collIneligibleReason(crsId){
+  var id = parseInt(crsId, 10);
+  if(COLL_EXCLUDED.indexOf(id) !== -1){
+    return 'CRS ' + id + ' is an Indent shop and does not file a COLL statement.';
+  }
+  return 'CRS ' + (id || '—') + ' is not marked for COLL in the CRS Master.';
+}
+
+/* The card grid filters on STMT_SECTIONS[].availableFor, so eligibility is
+   expressed by rewriting that field for the selected shop rather than by
+   reaching into the grid afterwards — stmtSelectAll() reads the same field and
+   therefore stays in step for free. 'none' matches neither branch of the
+   filter, which is what hides the card.
+
+   COLL is visible to the shop's own staff as well as to an admin: it is a
+   return the shop itself files, and the port's blanket admin-only rule pre-dated
+   the master list that now says which shops file it at all. */
+function collSyncAvailability(){
+  if(typeof STMT_SECTIONS === 'undefined') return;
+  var sec = STMT_SECTIONS.find(function(s){ return s.id === 'coll'; });
+  if(!sec) return;
+  var el = document.getElementById('stmt-crs');
+  var crsId = el && el.value ? el.value : (currentUser && currentUser.crsId);
+  var ok = collEligible(crsId);
+  sec.availableFor = ok ? 'all' : 'none';
+  // A card that has just become ineligible must not stay ticked from the shop
+  // that was selected a moment ago, or it would still ride along on an export.
+  if(!ok && typeof stmtSelectedSections !== 'undefined') delete stmtSelectedSections.coll;
+}
+
+var _collOrigRenderSections = (typeof stmtRenderSections === 'function') ? stmtRenderSections : null;
+if(_collOrigRenderSections){
+  stmtRenderSections = function(){
+    try{ collSyncAvailability(); }catch(e){}
+    return _collOrigRenderSections.apply(this, arguments);
+  };
+}
 
 // ── PERSISTENCE ─────────────────────────────────────────────────────────────
 if(typeof BACKUP_STORES !== 'undefined'){

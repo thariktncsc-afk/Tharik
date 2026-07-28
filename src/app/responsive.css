@@ -106,7 +106,10 @@
     min-width: 0;
   }
   #topbar {
-    padding: 0 12px 0 56px; /* clear of the toggle */
+    /* 60px = the toggle's right edge (8 + 40) plus the same 12px gap the
+       desktop-collapsed state uses, so the title starts consistently clear of
+       the button at every width. See app-chrome.css for the full table. */
+    padding: 0 12px 0 60px;
     gap: 10px;
   }
   .topbar-title {
@@ -180,6 +183,39 @@
      inline style does not declare flex-wrap, so this needs no !important. */
   #content .page [style*="display:flex"] {
     flex-wrap: wrap;
+  }
+
+  /* Frozen commodity column on the Daily/Monthly entry grids. The cells are
+     tagged .frz-comm by 34-frozen-commodity.js, which walks the real table
+     grid — nth-child cannot find them (colspan groups, rowspan headers, a
+     colspan'd footer, and Monthly's implicit tbody). Desktop never sees this:
+     the class is inert outside this media query.
+
+     An opaque background is required, not cosmetic — a sticky cell paints over
+     the scrolling row beneath it, and a transparent one would let the scrolled
+     figures show through the commodity name. The three tones match the ported
+     row backgrounds each strip sits on. */
+  #content .page .frz-table .frz-comm {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: #fff;
+    box-shadow: 2px 0 0 rgba(15, 23, 42, 0.08);
+  }
+  #content .page .frz-table thead .frz-comm,
+  #content .page .frz-table tfoot .frz-comm {
+    z-index: 4;
+  }
+  /* Section A/B header strips and the totals row carry their own fills. */
+  #content .page .frz-table thead tr .frz-comm {
+    background: #f8fafc;
+  }
+  #content .page .frz-table tfoot tr .frz-comm {
+    background: #eff6ff;
+  }
+  #content .page #me-tbody-b ~ tfoot tr .frz-comm,
+  #content .page .frz-table tfoot tr[style*="FFF7ED"] .frz-comm {
+    background: #fff7ed;
   }
 
   /* Touch targets. Fingers, not cursors: action buttons and nav rows come up

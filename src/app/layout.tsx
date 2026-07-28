@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import './responsive.css';
+import './dashboard-marquee.css';
+import './app-chrome.css';
 
 export const metadata: Metadata = {
   title: 'TNCSC CRS Statement Management System',
