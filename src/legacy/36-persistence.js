@@ -482,21 +482,31 @@ function crsPersistEnter(user){
   // account up locally and opened the app; now it asks the server for a session
   // bound to that specific account first, so the cookie names who is signed in.
   if(typeof selectRoleAndEnter === 'function'){
+    // The picker is rendered inline inside the login card (login-role-section),
+    // not in a modal overlay — showRoleSelect() swaps the two sections rather
+    // than opening one. Put them back the same way cancelRoleSelect() does, or
+    // the next sign-out lands on the picker instead of the form.
+    var restoreLoginForm = function(){
+      var formSec = document.getElementById('login-form-section');
+      var roleSec = document.getElementById('login-role-section');
+      if(roleSec) roleSec.style.display = 'none';
+      if(formSec) formSec.style.display = '';
+    };
+
     selectRoleAndEnter = function(userId){
       var creds = CRS_PERSIST.pendingLogin;
-      var overlay = document.getElementById('role-select-overlay');
       if(!creds){
-        if(overlay) overlay.style.display = 'none';
+        restoreLoginForm();
         if(typeof showLoginError === 'function') showLoginError('That sign-in expired — please try again.');
         return;
       }
       crsPersistSignIn(creds.username, creds.password, userId)
         .then(function(body){
-          if(overlay) overlay.style.display = 'none';
+          restoreLoginForm();
           return crsPersistEnter(body && body.user);
         })
         .catch(function(err){
-          if(overlay) overlay.style.display = 'none';
+          restoreLoginForm();
           CRS_PERSIST.enabled = false;
           if(typeof showLoginError === 'function') showLoginError(crsPersistSignInMessage(err));
         });
