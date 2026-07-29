@@ -67,6 +67,8 @@ const NEW_ENGINE = new Set([
   '33-receipt-type.js',
   '34-frozen-commodity.js',
   '35-receipt-commodities.js',
+  '36-persistence.js',
+  '37-no-sample-data.js',
 ]);
 
 /**

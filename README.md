@@ -415,3 +415,61 @@ at a time: move a page's markup into a component with local state, delete the
 matching section from `src/legacy/`, and leave the rest of the engine untouched.
 Adding a backend later means replacing the in-memory stores in `src/legacy`
 (`entryStore`, `monthlyStore`, `receiptStore`, `userStore`, …) with API calls.
+
+## Persistence (Supabase)
+
+The stores now survive a session. Nothing about the engine's data model changed:
+the same stores the Backup screen exports are written to Postgres as JSONB and
+read back on sign-in, so the statement, calculation and print code is untouched
+and `36-persistence.js` is excluded from the parity check like every other
+post-port addition.
+
+| Piece | What it does |
+| --- | --- |
+| `supabase/migrations/0001_init.sql` | `crs_state` (one JSONB row per store, versioned) + `crs_state_audit` |
+| `src/lib/supabaseAdmin.ts` | Server-only client using the secret key |
+| `src/lib/session.ts` | HMAC-signed HttpOnly session cookie |
+| `src/app/api/session/route.ts` | Re-checks the credentials server-side, issues the cookie |
+| `src/app/api/state/route.ts` | `GET` loads every store, `POST` saves only the changed ones |
+| `src/legacy/36-persistence.js` | Wraps `doLogin`/`doLogout`, autosaves on a dirty check |
+
+### Setting it up
+
+1. Create a Supabase project. **The region cannot be changed later** — prefer
+   `ap-south-1` (Mumbai) for users in Tamil Nadu.
+2. `cp .env.local.example .env.local` and fill in the URL, keys and a generated
+   `APP_SESSION_SECRET`.
+3. Run `supabase/migrations/0001_init.sql` against the database — via
+   `npx supabase db push`, or paste it into the SQL editor.
+4. In Vercel, set the same four variables under Project Settings → Environment
+   Variables, and set the function region to Mumbai (`bom1`) so requests do not
+   round-trip through us-east.
+
+**Migrations do not run on deploy.** Pushing to Vercel ships the frontend only;
+run the SQL against the live database as an explicit deploy step or the app will
+500 against an older schema.
+
+### Why the browser does not talk to Supabase directly
+
+Supabase's Row Level Security keys off `auth.uid()`, which only exists with
+Supabase Auth. This app keeps its own client-side login, so there is no database
+identity to write a policy against. RLS is therefore enabled with *no* policy —
+the publishable key can read nothing — and all access goes through the route
+handlers, which hold the secret key and authorise against the session cookie.
+Moving to Supabase Auth later would let the browser query Supabase directly.
+
+### Known limits
+
+- **All shops share one dataset.** `scope` is `'global'` for every row, matching
+  the current in-memory behaviour where one backup file holds every shop. A shop
+  user's browser therefore receives all shops' data — as it already did. Since
+  `entryStore` is keyed `'crsId_date'`, splitting it per shop is possible without
+  a schema change and is what closes this gap.
+- **Concurrent saves are version-checked, not merged.** Two shops editing the
+  same store get a 409; the loser reloads and re-sends. Per-shop scoping removes
+  most of the contention.
+- **Passwords are stored as-is** in `userStore`, and `doLogin()` compares against
+  a hardcoded `'pds123'` rather than the user's own password
+  (`src/legacy/07-auth.js`). The server checks the real per-user password, so the
+  two agree today but will diverge the moment an admin changes one. Fixing the
+  client-side check is the smallest useful hardening step.
