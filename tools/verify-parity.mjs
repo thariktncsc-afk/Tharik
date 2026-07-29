@@ -70,6 +70,7 @@ const NEW_ENGINE = new Set([
   '36-persistence.js',
   '37-no-sample-data.js',
   '38-user-management.js',
+  '39-staff-roles.js',
 ]);
 
 /**
