@@ -458,6 +458,37 @@ the publishable key can read nothing — and all access goes through the route
 handlers, which hold the secret key and authorise against the session cookie.
 Moving to Supabase Auth later would let the browser query Supabase directly.
 
+### User management
+
+Users have their own table, not a JSON blob. `supabase/migrations/0002_users.sql`
+creates it, seeds it from the previous `userStore` row, and hashes every password
+with bcrypt via pgcrypto. The old blob is renamed to `userStore__pre_0002` rather
+than dropped, so the pre-migration roster stays recoverable.
+
+| Route | Who | Does |
+| --- | --- | --- |
+| `POST /api/session` | anyone | Verifies credentials via `verify_login()`; issues the cookie |
+| `GET /api/users` | any signed-in user | Roster without password hashes |
+| `POST /api/users` | ADMIN | Create |
+| `PATCH /api/users/:id` | ADMIN | Update, activate/deactivate, set password |
+| `DELETE /api/users/:id` | ADMIN | Delete |
+
+**Sign-in is decided only by the database.** `doLogin()` compared every password
+against a hardcoded `'pds123'`, so an admin-set password was ignored by the login
+screen while the server checked the real one — when those disagreed the user just
+saw "invalid credentials" with nothing to act on. The sign-in path now calls
+`enterApp()` directly with the account the server returned, so that check is out
+of the loop entirely.
+
+`username` is deliberately **not** unique. A shop username maps to more than one
+person (a Bill Clerk and a Packer share `crs9`), and the sign-in screen relies on
+that to offer its role picker. The picker now takes two calls: the first
+authenticates and returns the candidates, the second binds the session to the
+account chosen. Credentials are held in memory only between those two calls.
+
+An administrator cannot delete or deactivate their own account, and the last
+active administrator cannot be deleted.
+
 ### Known limits
 
 - **All shops share one dataset.** `scope` is `'global'` for every row, matching
@@ -468,8 +499,10 @@ Moving to Supabase Auth later would let the browser query Supabase directly.
 - **Concurrent saves are version-checked, not merged.** Two shops editing the
   same store get a 409; the loser reloads and re-sends. Per-shop scoping removes
   most of the contention.
-- **Passwords are stored as-is** in `userStore`, and `doLogin()` compares against
-  a hardcoded `'pds123'` rather than the user's own password
-  (`src/legacy/07-auth.js`). The server checks the real per-user password, so the
-  two agree today but will diverge the moment an admin changes one. Fixing the
-  client-side check is the smallest useful hardening step.
+- **Every seeded account still shares the password `pds123`**, and new users are
+  created with it. The hashing is real now, but a shared default means the audit
+  trail's `updated_by` proves little until each person has their own password.
+  Forcing a change on first sign-in is the next step.
+- `doLogin()` still contains its hardcoded `'pds123'` comparison. Nothing reaches
+  it any more — the sign-in path bypasses it — but it is dead code in a ported
+  file and worth removing when parity is next revisited.

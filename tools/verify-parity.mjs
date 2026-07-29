@@ -69,6 +69,7 @@ const NEW_ENGINE = new Set([
   '35-receipt-commodities.js',
   '36-persistence.js',
   '37-no-sample-data.js',
+  '38-user-management.js',
 ]);
 
 /**

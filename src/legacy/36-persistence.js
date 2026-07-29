@@ -58,10 +58,18 @@ function crsPersistMaster(key){
   return null;
 }
 
+// userStore is no longer one of these. Users live in their own table with
+// hashed passwords (supabase/migrations/0002_users.sql) and are loaded through
+// /api/users — keeping a second copy in crs_state would give two sources of
+// truth for who may sign in.
+var CRS_PERSIST_SKIP = ['userStore'];
+
 function crsPersistKeys(){
   var keys = [];
   try{
-    BACKUP_STORES.forEach(function(st){ keys.push(st.key); });
+    BACKUP_STORES.forEach(function(st){
+      if(CRS_PERSIST_SKIP.indexOf(st.key) === -1) keys.push(st.key);
+    });
   }catch(e){ /* 18-backup-init.js not loaded */ }
   return keys.concat(CRS_PERSIST_EXTRA);
 }
@@ -175,11 +183,15 @@ function crsPersistStatus(msg, tone){
 // ── SESSION ─────────────────────────────────────────────────────────────────
 // doLogin() has already validated the credentials in the browser. The server
 // re-checks them because a browser-side check cannot protect an API.
-function crsPersistSignIn(username, password){
+// userId is supplied only on the second call, once the operator has picked
+// which of several people registered under this username is signing in.
+function crsPersistSignIn(username, password, userId){
+  var payload = {username:username, password:password};
+  if(userId !== undefined && userId !== null) payload.userId = userId;
   return fetch('/api/session', {
     method:  'POST',
     headers: {'Content-Type':'application/json'},
-    body:    JSON.stringify({username:username, password:password})
+    body:    JSON.stringify(payload)
   }).then(function(r){
     if(r.ok) return r.json();
     // Keep the status on the error. "Could not reach the server" for a 401 sends
@@ -256,6 +268,28 @@ function crsPersistLoad(opts){
       return false;
     })
     .then(function(res){ CRS_PERSIST.loading = false; return res; });
+}
+
+// Fill userStore from the users table. The Users screen, the role picker and
+// the statement signature blocks all read this global, so it is still populated
+// the same way — it just comes from /api/users now instead of a JSON blob, and
+// carries no passwords at all.
+function crsPersistLoadUsers(){
+  return fetch('/api/users', {headers:{'Accept':'application/json'}})
+    .then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(b){
+        if(!r.ok) throw new Error((b && b.error) || ('server returned ' + r.status));
+        return b;
+      });
+    })
+    .then(function(b){
+      var list = (b && b.users) || [];
+      if(typeof userStore !== 'undefined' && Array.isArray(userStore)){
+        userStore.length = 0;
+        for(var i=0; i<list.length; i++) userStore.push(list[i]);
+      }
+      return list.length;
+    });
 }
 
 // First run against an empty database: the masters exist only as literals in
@@ -353,6 +387,29 @@ function crsPersistStop(){
   if(CRS_PERSIST.timer){ clearInterval(CRS_PERSIST.timer); CRS_PERSIST.timer = null; }
 }
 
+// Complete a sign-in the server has already authorised: pull the data down,
+// then open the app on the account the database returned.
+//
+// enterApp() is called directly rather than through doLogin(), deliberately.
+// doLogin() re-checks the password against a hardcoded literal, so an account
+// whose password had been changed would be rejected here even though the
+// database had just accepted it. Authentication happens once, server-side.
+function crsPersistEnter(user){
+  if(!user) throw new Error('the server did not return an account');
+  CRS_PERSIST.pendingLogin = null;
+  CRS_PERSIST.enabled = true;
+
+  return crsPersistLoad({strict:true})
+    .then(function(){ return crsPersistLoadUsers(); })
+    .then(function(){
+      if(typeof enterApp !== 'function') throw new Error('enterApp is unavailable');
+      enterApp(user);
+      crsPersistSeedMasters();
+      crsPersistStart();
+      return true;
+    });
+}
+
 // ── HOOKS ───────────────────────────────────────────────────────────────────
 // This file is bundled last, so the ported functions already exist and can be
 // wrapped without editing them — 07-auth.js stays byte-for-byte identical.
@@ -393,24 +450,55 @@ function crsPersistStop(){
       };
 
       crsPersistSignIn(username, password)
-        .then(function(){
-          CRS_PERSIST.enabled = true;
-          return crsPersistLoad({strict:true});
+        .then(function(body){
+          // Several people registered under this username — ask which, then
+          // sign in properly on the second call. Credentials are held only for
+          // the moment between the two, and never stored.
+          if(body && body.needsRole){
+            CRS_PERSIST.pendingLogin = {username:username, password:password};
+            return crsPersistLoadUsers().then(function(){
+              if(btn){ btn.disabled = false; btn.textContent = 'Sign In'; }
+              var list = body.candidates || [];
+              if(typeof showRoleSelect === 'function' && list.length){
+                showRoleSelect(list[0].crsId, list);
+              }else{
+                fail('Several accounts use this username; none could be shown.');
+              }
+              return null;
+            });
+          }
+          return crsPersistEnter(body && body.user);
         })
         .then(function(){
-          if(btn){ btn.disabled = false; btn.textContent = 'Sign In'; }
-          // Stores now hold the database's data — hand over to the original.
-          origLogin.apply(self, args);
-          if(typeof currentUser !== 'undefined' && currentUser){
-            crsPersistSeedMasters();
-            crsPersistStart();
-          }else{
-            CRS_PERSIST.enabled = false;
-            crsPersistSignOut();
-          }
+          if(btn && btn.textContent === 'Connecting…'){ btn.disabled = false; btn.textContent = 'Sign In'; }
         })
         .catch(function(err){
           fail(crsPersistSignInMessage(err));
+        });
+    };
+  }
+
+  // The role picker's "enter as this person" button. The original looked the
+  // account up locally and opened the app; now it asks the server for a session
+  // bound to that specific account first, so the cookie names who is signed in.
+  if(typeof selectRoleAndEnter === 'function'){
+    selectRoleAndEnter = function(userId){
+      var creds = CRS_PERSIST.pendingLogin;
+      var overlay = document.getElementById('role-select-overlay');
+      if(!creds){
+        if(overlay) overlay.style.display = 'none';
+        if(typeof showLoginError === 'function') showLoginError('That sign-in expired — please try again.');
+        return;
+      }
+      crsPersistSignIn(creds.username, creds.password, userId)
+        .then(function(body){
+          if(overlay) overlay.style.display = 'none';
+          return crsPersistEnter(body && body.user);
+        })
+        .catch(function(err){
+          if(overlay) overlay.style.display = 'none';
+          CRS_PERSIST.enabled = false;
+          if(typeof showLoginError === 'function') showLoginError(crsPersistSignInMessage(err));
         });
     };
   }

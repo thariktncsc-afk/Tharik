@@ -1,13 +1,16 @@
 /**
- * Establishes / clears the app session cookie.
+ * Sign-in. The database decides, and nothing else does.
  *
- * The engine's existing doLogin() has already checked the credentials in the
- * browser by the time this is called. That check stays exactly as it was — it
- * drives the UI. This route re-checks the same credentials server-side, against
- * the same userStore, because a browser-side check protects nothing.
+ * The engine's doLogin() used to compare every password against a single
+ * hardcoded literal, which meant an admin-set password was ignored by the login
+ * screen while the server checked the real one — the two could disagree and the
+ * user just saw "invalid credentials". Authentication now happens here, once,
+ * against bcrypt hashes in the users table.
  *
- * Source of truth is the persisted `userStore` row, so there is no second users
- * table to keep in sync — userStore is already in BACKUP_STORES.
+ * A shop username can legitimately match two people (a Bill Clerk and a Packer
+ * share 'crs9'). When it does, this returns the candidates without issuing a
+ * cookie, and the client asks which of them is signing in — preserving the role
+ * picker the sign-in screen has always shown.
  */
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
@@ -16,100 +19,108 @@ import { SESSION_COOKIE, cookieOptions, encodeSession } from '@/lib/session';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type StoredUser = {
+type Candidate = {
   id: number;
   username: string;
-  password: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
   role: string;
-  crsId: number | null;
-  phone?: string;
-  active?: boolean;
+  crs_id: number | null;
 };
+
+/** Shaped like the engine's userStore records, which enterApp() consumes. */
+function toEngineUser(c: Candidate) {
+  return {
+    id: c.id,
+    fullName: c.full_name,
+    username: c.username,
+    phone: c.phone ?? '',
+    email: c.email ?? '',
+    role: c.role,
+    crsId: c.crs_id,
+    active: true,
+  };
+}
 
 export async function POST(req: Request) {
   if (!supabaseConfigured()) {
     return NextResponse.json({ error: 'Supabase is not configured on the server.' }, { status: 503 });
   }
 
-  let body: { username?: string; password?: string };
+  let body: { username?: string; password?: string; userId?: number };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Malformed request.' }, { status: 400 });
   }
 
-  const username = String(body.username ?? '').trim();
+  const identifier = String(body.username ?? '').trim();
   const password = String(body.password ?? '');
-  if (!username || !password) {
+  if (!identifier || !password) {
     return NextResponse.json({ error: 'Username and password are required.' }, { status: 400 });
   }
 
-  const { data, error } = await supabaseAdmin()
-    .from('crs_state')
-    .select('data')
-    .eq('scope', 'global')
-    .eq('store_key', 'userStore')
-    .maybeSingle();
+  const { data, error } = await supabaseAdmin().rpc('verify_login', {
+    p_identifier: identifier,
+    p_password: password,
+  });
 
   if (error) {
-    // PGRST205 = table missing, i.e. supabase/migrations/0001_init.sql has not
-    // been run against this database. Worth naming, because the generic 500 sent
-    // people looking at their keys instead.
-    console.error('[api/session] crs_state read failed:', error.code, error.message);
-    const missing = error.code === 'PGRST205';
+    console.error('[api/session] verify_login failed:', error.code, error.message);
+    // PGRST202 = function not found, i.e. 0002_users.sql has not been run.
+    const missing = error.code === 'PGRST202' || /verify_login/i.test(error.message);
     return NextResponse.json(
       {
         error: missing
-          ? 'The crs_state table does not exist — run supabase/migrations/0001_init.sql.'
-          : 'Could not read the user store.',
+          ? 'User management is not installed — run supabase/migrations/0002_users.sql.'
+          : 'Could not verify the sign-in.',
       },
       { status: missing ? 503 : 500 },
     );
   }
 
-  const users = (data?.data ?? []) as StoredUser[];
-
-  // Bootstrap: a brand-new database has no userStore row yet, so nobody could
-  // ever sign in to write the first one. Until the store exists, trust the
-  // engine's own check and let the first save seed it. This window closes the
-  // moment the first save lands.
-  if (!Array.isArray(users) || users.length === 0) {
-    return json_ok({ userId: 0, username, role: 'ADMIN', crsId: null }, true);
+  const candidates = (data ?? []) as Candidate[];
+  if (candidates.length === 0) {
+    return NextResponse.json({ error: 'Incorrect username or password.' }, { status: 401 });
   }
 
-  // Matched the way doLogin() does it (src/legacy/07-auth.js): the username is
-  // compared lowercased, the phone number as typed.
-  const lowered = username.toLowerCase();
-  const match = users.find(
-    (u) =>
-      u.active !== false &&
-      u.password === password &&
-      (String(u.username).toLowerCase() === lowered || String(u.phone ?? '') === username),
+  // More than one person registered under this username — let the caller pick,
+  // but only from accounts that just authenticated.
+  if (candidates.length > 1 && !body.userId) {
+    return NextResponse.json({
+      ok: false,
+      needsRole: true,
+      candidates: candidates.map(toEngineUser),
+    });
+  }
+
+  const chosen =
+    candidates.length === 1
+      ? candidates[0]
+      : candidates.find((c) => c.id === Number(body.userId));
+
+  if (!chosen) {
+    return NextResponse.json({ error: 'That account did not match the credentials.' }, { status: 401 });
+  }
+
+  const res = NextResponse.json({ ok: true, user: toEngineUser(chosen) });
+  res.cookies.set(
+    SESSION_COOKIE,
+    encodeSession({
+      userId: chosen.id,
+      username: chosen.username,
+      role: chosen.role,
+      crsId: chosen.crs_id,
+      iat: Math.floor(Date.now() / 1000),
+    }),
+    cookieOptions(),
   );
-
-  if (!match) {
-    return NextResponse.json({ error: 'Invalid credentials.' }, { status: 401 });
-  }
-
-  return json_ok({
-    userId: match.id,
-    username: String(match.username),
-    role: String(match.role),
-    crsId: match.crsId ?? null,
-  });
+  return res;
 }
 
 export async function DELETE() {
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, '', cookieOptions(0));
-  return res;
-}
-
-function json_ok(
-  s: { userId: number; username: string; role: string; crsId: number | null },
-  bootstrap = false,
-) {
-  const res = NextResponse.json({ ok: true, role: s.role, crsId: s.crsId, bootstrap });
-  res.cookies.set(SESSION_COOKIE, encodeSession({ ...s, iat: Math.floor(Date.now() / 1000) }), cookieOptions());
   return res;
 }
