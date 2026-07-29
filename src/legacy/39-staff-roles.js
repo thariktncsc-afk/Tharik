@@ -46,4 +46,41 @@
       packer: firstWithRole('Packer')
     };
   };
+
+  /* The dashboard's staff blocks are only ever shown, never hidden.
+     08-dashboard.js does:
+
+       if(staff.bc && bcB){ bcB.style.display='block'; ...fill name/phone... }
+
+     with no else — so a shop that has no Bill Clerk keeps whatever the last
+     shop put there. Switching from CRS 23 to CRS 8 left "Shankaran" sitting in
+     CRS 8's packer block, which reads as CRS 8 having staff it does not have.
+
+     Latent before, because the roster came from CRS_MASTER and nearly every
+     shop filled both posts. Once roles came from the users table many shops
+     legitimately have only one person, and the leftover became visible. */
+  function dashClearEmptyStaffBlocks(){
+    var me = (typeof currentUser !== 'undefined') ? currentUser : null;
+    if(!me || !me.crsId) return;
+    var staff = (typeof getUsersForCRS === 'function') ? (getUsersForCRS(me.crsId) || {}) : {};
+
+    [['dash-bc-block', 'bc', 'dash-bc-name', 'dash-bc-phone'],
+     ['dash-packer-block', 'packer', 'dash-packer-name', 'dash-packer-phone']].forEach(function(p){
+      var block = document.getElementById(p[0]);
+      if(!block || staff[p[1]]) return;
+      block.style.display = 'none';
+      // Blank the text too, so nothing stale can flash if it is shown again.
+      var n = document.getElementById(p[2]); if(n) n.textContent = '';
+      var t = document.getElementById(p[3]); if(t) t.textContent = '';
+    });
+  }
+
+  if(typeof buildDashboard === 'function'){
+    var origBuildDashboard = buildDashboard;
+    buildDashboard = function(){
+      var out = origBuildDashboard.apply(this, arguments);
+      try{ dashClearEmptyStaffBlocks(); }catch(e){}
+      return out;
+    };
+  }
 })();

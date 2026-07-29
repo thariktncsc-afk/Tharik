@@ -233,6 +233,7 @@ function backupStatus(msg, tone){
 // ── DATA-LOSS GUARD ──────────────────────────────────────────────────────────
 // Nothing is persisted, so warn before a reload throws the month away.
 window.addEventListener('beforeunload', function(e){
+  if(typeof CRS_PERSIST !== 'undefined' && CRS_PERSIST.enabled) return; // [+] persisted now — see 36-persistence.js
   var dirty = false;
   try{
     dirty = (typeof entryStore   !== 'undefined' && Object.keys(entryStore).length   > 0) ||
