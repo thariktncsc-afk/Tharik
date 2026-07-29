@@ -456,16 +456,18 @@ function crsPersistEnter(user){
           // the moment between the two, and never stored.
           if(body && body.needsRole){
             CRS_PERSIST.pendingLogin = {username:username, password:password};
-            return crsPersistLoadUsers().then(function(){
-              if(btn){ btn.disabled = false; btn.textContent = 'Sign In'; }
-              var list = body.candidates || [];
-              if(typeof showRoleSelect === 'function' && list.length){
-                showRoleSelect(list[0].crsId, list);
-              }else{
-                fail('Several accounts use this username; none could be shown.');
-              }
-              return null;
-            });
+            if(btn){ btn.disabled = false; btn.textContent = 'Sign In'; }
+            var list = body.candidates || [];
+            // Render straight from the response. Nothing else may be fetched
+            // here: no cookie is issued until the operator picks a person, so
+            // any authenticated call at this point comes back 401 and the whole
+            // sign-in fails with a misleading "could not reach the server".
+            if(typeof showRoleSelect === 'function' && list.length){
+              showRoleSelect(list[0].crsId, list);
+            }else{
+              fail('Several accounts use this username; none could be shown.');
+            }
+            return null;
           }
           return crsPersistEnter(body && body.user);
         })
