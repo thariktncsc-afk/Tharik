@@ -2,8 +2,18 @@
 
 import { useEffect } from 'react';
 
-/** Built from src/legacy/*.js by tools/bundle-engine.mjs (predev / prebuild). */
-const ENGINE_SRC = '/js/tncsc-engine.js';
+import engineVersion from '@/generated/engine-version.json';
+
+/**
+ * Built from src/legacy/*.js by tools/bundle-engine.mjs (predev / prebuild).
+ *
+ * The ?v= is a hash of the bundle's own contents, written by the bundler. The
+ * file is served from /public under a fixed name, so without it a browser keeps
+ * running whatever engine it cached — which after a deploy means a shop can stay
+ * on an old build indefinitely, with no error to notice. The URL now changes
+ * exactly when the code does.
+ */
+const ENGINE_SRC = `/js/tncsc-engine.js?v=${engineVersion.version}`;
 
 declare global {
   interface Window {

@@ -12,6 +12,7 @@
  * predev / prebuild npm hooks.
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,4 +38,18 @@ const body = files
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, banner + body, 'utf8');
-console.log(`bundled ${files.length} files -> public/js/tncsc-engine.js`);
+
+// Cache key for the <script> URL.
+//
+// The bundle is served from /public under a fixed name, so a browser that has
+// it cached will keep running the old engine after a rebuild — silently, and
+// for as long as its cache lives. That is confusing in development and much
+// worse after a deploy, where a shop can sit on a stale engine indefinitely.
+// LegacyEngine.tsx appends this hash as ?v=, so the URL changes whenever the
+// code does and never otherwise.
+const version = createHash('sha1').update(body).digest('hex').slice(0, 12);
+const VERSION_OUT = join(root, 'src', 'generated', 'engine-version.json');
+mkdirSync(dirname(VERSION_OUT), { recursive: true });
+writeFileSync(VERSION_OUT, JSON.stringify({ version }, null, 2) + '\n', 'utf8');
+
+console.log(`bundled ${files.length} files -> public/js/tncsc-engine.js (v${version})`);
