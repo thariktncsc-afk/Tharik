@@ -115,11 +115,42 @@ const GUNNY_ITEMS = {
 const MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
 
 const norm = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+// Header names compared with punctuation/spacing stripped: "C.S" ≡ "CS",
+// "NON - CEREAL ACCOUNT" ≡ "NONCEREALACCOUNT".
+const gkey = (v) => norm(v).replace(/[^A-Z0-9]/g, '');
 const num = (v) => {
   if (v == null || v === '') return 0;
   const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
   return Number.isFinite(n) ? n : 0;
 };
+
+// ── Header-driven column resolution ─────────────────────────────────────────
+// The 22 workbooks carry 13 different column layouts on the proforma alone —
+// offices insert SHORTAGE / EXCESS / TRANSFER / C.S columns in different spots,
+// and each insertion shifts everything after it. Columns are therefore located
+// by NAME from the two header rows (group row + BAGS/KGS sub-row), never by
+// position. Group cells span merged columns, so a group name carries forward
+// until the next named one: OPENING BALANCE + (BAGS, KGS) -> keys
+// 'OPENINGBALANCE|BAGS' and 'OPENINGBALANCE|KGS'.
+function headerMap(rows, headerIdx) {
+  const groups = rows[headerIdx] || [];
+  const subs = rows[headerIdx + 1] || [];
+  const map = {};
+  let g = '';
+  for (let i = 0; i < Math.max(groups.length, subs.length); i++) {
+    if (gkey(groups[i])) g = gkey(groups[i]);
+    let s = gkey(subs[i]);
+    if (s === 'BAG') s = 'BAGS'; // CRS 20 labels one TRANSFER sub-column "BAG"
+    const k = `${g}|${s}`;
+    if (!(k in map)) map[k] = i;
+  }
+  return map;
+}
+const pickCol = (map, ...keys) => { for (const k of keys) if (k in map) return map[k]; return -1; };
+// RATE/AMOUNT live only in the sub-row, under whatever group happens to
+// precede them — match on the sub-name alone.
+const pickSub = (map, sub) => { const k = Object.keys(map).find((x) => x.endsWith('|' + sub)); return k ? map[k] : -1; };
+const cell = (r, i) => (i >= 0 && r ? r[i] : null);
 /**
  * Sheet names are not consistent between workbooks — the same page appears as
  * "CRS PAGE2", "CRS PAGE2 " and "CRS PAGE2 - 2", gunny as "GUNNY-2", "GUNNY 2"
@@ -174,6 +205,18 @@ function parseWorkbook(path) {
     periodFrom(file);
   if (!period) return { file, crsId, error: 'could not determine month/year' };
 
+  // CRS 29 (refugee camp) differs from every other shop: KEROSENE is a real
+  // commodity there (id KERO, carried by its own entry screens), and its CYL
+  // row is gas cylinders — allotment only, never stock. Everywhere else CYL is
+  // the office's label for T.DHALL, so the override is per-shop.
+  const secAMap = { ...SECTION_A };
+  const secASkip = new Set(SECTION_A_SKIP);
+  if (crsId === 29) {
+    secAMap.KEROSENE = 'KERO';
+    delete secAMap.CYL;
+    secASkip.add('CYL');
+  }
+
   const key = `${crsId}_${period.month}_${period.year}`;
   const out = {
     file, crsId, key, period,
@@ -183,66 +226,117 @@ function parseWorkbook(path) {
   };
 
   // ── Section A: the monthly proforma ───────────────────────────────────────
-  // cols: 0 sl, 1 commodity, 2/3 open bags/kgs, 4/5 receipt, 6 transfer,
-  //       7/8 total, 9/10 sales, 11 rate, 12 amount, 13/14 closing
-  // Not every workbook starts this sheet in the same column — some omit the
-  // leading blank, which shifts every figure one to the left and made the
-  // commodity column read as the serial number ("1", "1A", "2"…). Locate the
-  // COMMODITY header and offset from there rather than assuming column 1.
+  // Columns are resolved from the header rows by name (see headerMap). The
+  // adjustment columns (SHORTAGE / EXCESS / TRANSFER) and the C.S column
+  // ("cumulative shortage" — carried by CRS 10, 26 and 29 only) exist in some
+  // workbooks and not others; where absent the field imports as 0.
   const headerRow = page2.findIndex((r) => (r || []).some((c) => norm(c) === 'COMMODITY'));
-  const cCol = headerRow >= 0 ? page2[headerRow].findIndex((c) => norm(c) === 'COMMODITY') : 1;
-  const off = cCol - 1;
-  const at = (r, i) => r[i + off];
+  let cols;
+  if (headerRow >= 0) {
+    const m = headerMap(page2, headerRow);
+    cols = {
+      label: pickCol(m, 'COMMODITY|'),
+      g_open: pickCol(m, 'OPENINGBALANCE|BAGS'), open: pickCol(m, 'OPENINGBALANCE|KGS'),
+      g_receipt: pickCol(m, 'RECEIPT|BAGS'), receipt: pickCol(m, 'RECEIPT|KGS'),
+      excess: pickCol(m, 'EXCESS|KGS', 'EXCESS|'),
+      shortage: pickCol(m, 'SHORTAGE|KGS', 'SHORTAGE|'),
+      transfer: pickCol(m, 'TRANSFER|KGS', 'TRANSFER|'),
+      g_total: pickCol(m, 'TOTAL|BAGS'), total: pickCol(m, 'TOTAL|KGS'),
+      g_sales: pickCol(m, 'SALES|BAGS'), sales: pickCol(m, 'SALES|KGS'),
+      rate: pickSub(m, 'RATE'), amount: pickSub(m, 'AMOUNT'),
+      g_cs: pickCol(m, 'CS|BAGS'), cs: pickCol(m, 'CS|KGS', 'CS|'),
+      g_close: pickCol(m, 'CLOSINGBALANCE|BAGS'), close: pickCol(m, 'CLOSINGBALANCE|KGS'),
+    };
+    if (cols.open < 0 || cols.sales < 0 || cols.close < 0) {
+      out.notes.push('proforma header found but key columns missing — check sheet');
+    }
+  } else {
+    // No recognisable header: fall back to the most common layout.
+    out.notes.push('no COMMODITY header — assumed default layout');
+    cols = {
+      label: 1, g_open: 2, open: 3, g_receipt: 4, receipt: 5,
+      excess: -1, shortage: -1, transfer: 6,
+      g_total: 7, total: 8, g_sales: 9, sales: 10, rate: 11, amount: 12,
+      g_cs: -1, cs: -1, g_close: 13, close: 14,
+    };
+  }
   const firstDataRow = headerRow >= 0 ? headerRow + 2 : 5;
-  if (headerRow < 0) out.notes.push('no COMMODITY header — assumed default layout');
 
   for (const r of page2.slice(firstDataRow)) {
-    const label = norm(at(r || [], 1));
-    if (!label || SECTION_A_SKIP.has(label)) continue;
-    const id = SECTION_A[label];
+    const label = norm(cell(r || [], cols.label));
+    if (!label || secASkip.has(label)) continue;
+    const id = secAMap[label];
     if (!id) {
-      const figures = [3, 5, 8, 10, 14].map((i) => num(at(r, i)));
+      const figures = [cols.open, cols.receipt, cols.total, cols.sales, cols.close].map((i) => num(cell(r, i)));
       if (TOLERATE_IF_ZERO.has(label) && figures.every((v) => v === 0)) continue;
       out.unmapped.push(`A:${label}${figures.some((v) => v !== 0) ? ' (HAS FIGURES)' : ''}`);
       continue;
     }
     const rec = {
-      open: num(at(r, 3)), receipt: num(at(r, 5)), total: num(at(r, 8)),
-      sales: num(at(r, 10)), close: num(at(r, 14)), amount: num(at(r, 12)),
-      excess: 0, shortage: 0, transfer: num(at(r, 6)),
-      g_open: num(at(r, 2)), g_receipt: num(at(r, 4)), g_total: num(at(r, 7)),
-      g_sales: num(at(r, 9)), g_close: num(at(r, 13)),
+      open: num(cell(r, cols.open)), receipt: num(cell(r, cols.receipt)), total: num(cell(r, cols.total)),
+      sales: num(cell(r, cols.sales)), close: num(cell(r, cols.close)), amount: num(cell(r, cols.amount)),
+      excess: num(cell(r, cols.excess)), shortage: num(cell(r, cols.shortage)), transfer: num(cell(r, cols.transfer)),
+      cs: num(cell(r, cols.cs)), g_cs: num(cell(r, cols.g_cs)),
+      g_open: num(cell(r, cols.g_open)), g_receipt: num(cell(r, cols.g_receipt)), g_total: num(cell(r, cols.g_total)),
+      g_sales: num(cell(r, cols.g_sales)), g_close: num(cell(r, cols.g_close)),
     };
     if (Object.values(rec).some((v) => v !== 0)) out.monthly.a[id] = rec;
   }
 
   // ── Section B: police ration ──────────────────────────────────────────────
-  // cols: 0 sl, 1 commodity, 2 O.B, 3 receipt, 4 total, 5 sales, 6 rate,
-  //       7 amount, 8 C.B — no bag columns on this sheet.
-  for (const r of rowsOf(wb, 'CRSPOLICE').slice(4)) {
-    const label = norm(r?.[1]);
+  // Single header row: SI NO | COMMODITY | O.B | RECEIPT | TOTAL | SALES |
+  // RATE | AMOUNT | C.B — matched by name; no bag columns on this sheet.
+  const bRows = rowsOf(wb, 'CRSPOLICE');
+  const bHdrIdx = bRows.findIndex((r) => (r || []).some((c) => norm(c) === 'COMMODITY'));
+  const bHdr = bHdrIdx >= 0 ? bRows[bHdrIdx].map(gkey) : [];
+  const bc = (name, fallback) => { const i = bHdr.indexOf(name); return i >= 0 ? i : fallback; };
+  const bCols = bHdrIdx >= 0
+    ? { label: bc('COMMODITY', 1), open: bc('OB', 2), receipt: bc('RECEIPT', 3), total: bc('TOTAL', 4),
+        sales: bc('SALES', 5), amount: bc('AMOUNT', 7), close: bc('CB', 8) }
+    : { label: 1, open: 2, receipt: 3, total: 4, sales: 5, amount: 7, close: 8 };
+  for (const r of bRows.slice(bHdrIdx >= 0 ? bHdrIdx + 1 : 4)) {
+    const label = norm(cell(r, bCols.label));
     if (!label || SECTION_A_SKIP.has(label)) continue;
     const id = SECTION_B[label];
     if (!id) { out.unmapped.push(`B:${label}`); continue; }
     const rec = {
-      open: num(r[2]), receipt: num(r[3]), total: num(r[4]),
-      sales: num(r[5]), close: num(r[8]), amount: num(r[7]),
-      excess: 0, shortage: 0, transfer: 0,
+      open: num(cell(r, bCols.open)), receipt: num(cell(r, bCols.receipt)), total: num(cell(r, bCols.total)),
+      sales: num(cell(r, bCols.sales)), close: num(cell(r, bCols.close)), amount: num(cell(r, bCols.amount)),
+      excess: 0, shortage: 0, transfer: 0, cs: 0, g_cs: 0,
       g_open: 0, g_receipt: 0, g_total: 0, g_sales: 0, g_close: 0,
     };
     if (Object.values(rec).some((v) => v !== 0)) out.monthly.b[id] = rec;
   }
 
   // ── Gunny stock ───────────────────────────────────────────────────────────
-  // Empty-gunny figures sit in the even columns (2,4,6,8,10); the odd ones are
-  // "gunny with grains", which this office leaves blank.
-  for (const r of rowsOf(wb, 'GUNNY').slice(5)) {
-    const id = GUNNY_ITEMS[norm(r?.[0])];
-    if (!id) { if (norm(r?.[0])) out.unmapped.push(`GUNNY:${norm(r[0])}`); continue; }
+  // Two-row header: VARIETY over group columns each split GUNNY WITH GRAINS /
+  // EMPTY GUNNY. The app tracks the EMPTY GUNNY figures (the office leaves
+  // "with grains" blank), so each field resolves to its group's EMPTY column.
+  const gRows = rowsOf(wb, 'GUNNY');
+  const gHdrIdx = gRows.findIndex((r) => (r || []).some((c) => norm(c) === 'VARIETY'));
+  const gCols = gHdrIdx >= 0
+    ? (() => {
+        const m = headerMap(gRows, gHdrIdx);
+        return {
+          label: pickCol(m, 'VARIETY|'),
+          opening: pickCol(m, 'OPENINGBALANCE|EMPTYGUNNY'), receipt: pickCol(m, 'RECEIPT|EMPTYGUNNY'),
+          total: pickCol(m, 'TOTAL|EMPTYGUNNY'), issues: pickCol(m, 'ISSUES|EMPTYGUNNY'),
+          closing: pickCol(m, 'CLOSINGBALANCE|EMPTYGUNNY'),
+        };
+      })()
+    : { label: 0, opening: 2, receipt: 4, total: 6, issues: 8, closing: 10 };
+  for (const r of gRows.slice(gHdrIdx >= 0 ? gHdrIdx + 2 : 5)) {
+    const id = GUNNY_ITEMS[norm(cell(r, gCols.label))];
+    if (!id) { if (norm(cell(r, gCols.label))) out.unmapped.push(`GUNNY:${norm(cell(r, gCols.label))}`); continue; }
     out.gunny[id] = {
-      itemName: norm(r[0]), crsId: String(crsId), month: period.month, year: period.year,
-      opening: num(r[2]), receipt: num(r[4]), total: num(r[6]),
-      issues: num(r[8]), closing: num(r[10]),
+      itemName: norm(cell(r, gCols.label)), crsId: String(crsId), month: period.month, year: period.year,
+      opening: num(cell(r, gCols.opening)), receipt: num(cell(r, gCols.receipt)), total: num(cell(r, gCols.total)),
+      issues: num(cell(r, gCols.issues)), closing: num(cell(r, gCols.closing)),
+      // The office's receipt figure. Monthly Entry's "Rule 2" normally
+      // recomputes Receipt from the grid's gunny-sales counts on every render;
+      // this field tells it the month was imported so the workbook figure is
+      // kept (see buildMeGunnyTable / meGunnyRefreshReceipts).
+      receiptImported: num(cell(r, gCols.receipt)),
     };
   }
 
@@ -252,28 +346,53 @@ function parseWorkbook(path) {
   // Anchor on the "CARD DETAILS" header cell instead of a fixed index.
   const cardRows = rowsOf(wb, 'CARDDETAIL');
   const cHdr = cardRows.findIndex(
-    (r) => (r || []).some((c) => norm(c) === 'CARD DETAILS') && (r || []).some((c) => norm(c) === 'S.NO'),
+    (r) => (r || []).some((c) => norm(c) === 'CARD DETAILS') && (r || []).some((c) => gkey(c) === 'SNO'),
   );
   const labelCol = cHdr >= 0 ? cardRows[cHdr].findIndex((c) => norm(c) === 'CARD DETAILS') : 1;
+  // The count sits under the "CARD" header (always next to CARD DETAILS so far,
+  // but matched by name in case a workbook slips a column in between).
+  const countCol = cHdr >= 0 ? cardRows[cHdr].findIndex((c) => gkey(c) === 'CARD') : -1;
   for (const r of cardRows.slice(cHdr >= 0 ? cHdr + 1 : 4)) {
     const id = CARD_TYPES[norm(r?.[labelCol])];
     if (!id) continue;
-    out.cards[id] = { count: num(r[labelCol + 1]) };
+    out.cards[id] = { count: num(r[countCol >= 0 ? countCol : labelCol + 1]) };
   }
 
   // ── Remittance ────────────────────────────────────────────────────────────
   // Keyed by day of the SALES date, matching meRemitStore's {day: {...}} shape.
-  for (const r of rowsOf(wb, 'REMITTANCE').slice(3)) {
-    const d = r?.[1];
+  // Header: SL NO | DATE OF SALES | DATE OF REMITTANCE | NON - CEREAL ACCOUNT
+  // | [CEREAL ACCOUNT] | TOTAL — the CEREAL column exists in ~half the
+  // workbooks and is imported where present (the app's remittance table and
+  // statements carry a Cereal A/C column).
+  const rRows = rowsOf(wb, 'REMITTANCE');
+  const rHdrIdx = rRows.findIndex((r) => (r || []).some((c) => gkey(c) === 'DATEOFSALES'));
+  const rHdr = rHdrIdx >= 0 ? rRows[rHdrIdx].map(gkey) : [];
+  const rc = (name, fallback) => { const i = rHdr.indexOf(name); return i >= 0 ? i : fallback; };
+  const rCols = rHdrIdx >= 0
+    ? { sale: rc('DATEOFSALES', 1), remitDate: rc('DATEOFREMITTANCE', 2),
+        nonCereal: rc('NONCEREALACCOUNT', 3), cereal: rHdr.indexOf('CEREALACCOUNT') }
+    : { sale: 1, remitDate: 2, nonCereal: 3, cereal: -1 };
+  for (const r of rRows.slice(rHdrIdx >= 0 ? rHdrIdx + 1 : 3)) {
+    const d = cell(r, rCols.sale);
     if (!(d instanceof Date)) continue;
     const day = new Date(d.getTime() + 6 * 3600 * 1000).getUTCDate(); // sheet dates carry an IST offset
-    const nonCereal = num(r[3]);
-    if (!nonCereal) continue;
-    out.remit[day] = { remitDate: String(r[2] ?? ''), nonCereal, cereal: 0 };
+    const nonCereal = num(cell(r, rCols.nonCereal));
+    const cereal = num(cell(r, rCols.cereal));
+    if (!nonCereal && !cereal) continue;
+    out.remit[day] = { remitDate: String(cell(r, rCols.remitDate) ?? ''), nonCereal, cereal };
   }
 
   const aN = Object.keys(out.monthly.a).length, bN = Object.keys(out.monthly.b).length;
   if (!aN && !bN) out.notes.push('no commodity rows found');
+  // Surface the adjustment figures in the dry-run report so a shifted layout
+  // that lands numbers in the wrong bucket is visible before anything writes.
+  const adj = [];
+  for (const [id, rec] of Object.entries(out.monthly.a)) {
+    for (const f of ['shortage', 'excess', 'transfer', 'cs']) {
+      if (rec[f]) adj.push(`${id} ${f}=${rec[f]}`);
+    }
+  }
+  if (adj.length) out.notes.push(`adjustments: ${adj.join(', ')}`);
   return out;
 }
 

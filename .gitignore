@@ -17,3 +17,6 @@ public/js/tncsc-engine.js
 
 # detached dev-server log
 .next-dev.log
+
+# local database backups — contain staff names and phone numbers
+backups/

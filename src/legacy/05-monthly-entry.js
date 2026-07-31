@@ -188,6 +188,8 @@ function onMonthlyChange(){
   renderMeSection('me-tbody-b',DSS_B,'b',key);
   applyAdjColVisibility(['me-tbody-a','me-tbody-b'], ['me-a-foot','me-b-foot'],
                         inspFlagsForMonth(crsId, parseInt(month,10), parseInt(year,10)));
+  // [+] re-apply with record-carried flags too (imported shortage/excess/transfer + C.S)
+  applyAdjColVisibility(['me-tbody-a','me-tbody-b'], ['me-a-foot','me-b-foot'], meAdjFlags(key, crsId, parseInt(month,10), parseInt(year,10))); // [+]
   recalcMe();
   var succ=document.getElementById('me-success');
   if(succ) succ.style.display='none';
@@ -257,6 +259,14 @@ function renderMeSection(tbodyId,comms,sec,key){
       }
       // Calculate gunny from saved kgs value
       var g = kgsToGunny(kgsVal, c.id);
+      // [+] The record may carry its own bag count (imported from the office
+      // [+] workbook, or hand-typed) that differs from the kgs-derived one —
+      // [+] office bags are not exactly 50 kg. The saved count wins, and the
+      // [+] cell is flagged manual so recalc does not floor it away again.
+      var gSaved = sv['g_'+field];                                                        // [+]
+      var gManual = gSaved !== undefined && gSaved !== '' && Number(gSaved) > 0 &&        // [+]
+                    Number(gSaved) !== Number(g || 0);                                    // [+]
+      if(gManual) g = Number(gSaved);                                                     // [+]
       var bg2  = isTot ? '#DBEAFE' : '#FFFBEB';
       var colr = isTot ? '#0369A1' : '#92400E';
       var bord = isTot ? '#BAE6FD' : '#FDE047';
@@ -265,6 +275,7 @@ function renderMeSection(tbodyId,comms,sec,key){
           ' id="me-gunny-'+field+'-'+c.id+'-'+sec+'"'+
           ' data-id="'+c.id+'" data-sec="'+sec+'" data-field="gunny_'+field+'"'+
           ' value="'+g+'"'+
+          (gManual ? ' data-manual-edit="1"' : '')+  // [+] keeps updateMeGunny from recomputing it
           ' placeholder=""'+
           ' oninput="meGunnyManualEdit(this)" onkeydown="meEntryNav(event,this)"'+
           ' style="width:42px;border:1px solid '+bord+';border-radius:4px;padding:3px 4px;'+
@@ -283,6 +294,15 @@ function renderMeSection(tbodyId,comms,sec,key){
     // Inspection adjustments for the whole month (key is crsId_month_year)
     var _kp = String(key).split('_');
     var mAdj = inspAdjForMonth(parseInt(_kp[0],10), parseInt(_kp[1],10), parseInt(_kp[2],10), sec, c.id);
+    // [+] A record imported from the office workbook carries its own
+    // [+] excess/shortage/transfer figures (keyed straight off the sheet
+    // [+] columns) with no matching inspection entries — fall back to those.
+    if(!mAdj.excess && !mAdj.shortage && !mAdj.transfer){        // [+]
+      mAdj = {excess:   parseFloat(sv.excess)   || 0,            // [+]
+              shortage: parseFloat(sv.shortage) || 0,            // [+]
+              transfer: parseFloat(sv.transfer) || 0};           // [+]
+    }                                                            // [+]
+    var csVal = parseFloat(sv.cs) || 0; // [+] C.S — cumulative shortage, deducted after Total
 
     var tr=document.createElement('tr');
     tr.style.background=bg;
@@ -291,6 +311,7 @@ function renderMeSection(tbodyId,comms,sec,key){
     tr.dataset.excess=String(mAdj.excess);
     tr.dataset.shortage=String(mAdj.shortage);
     tr.dataset.transfer=String(mAdj.transfer);
+    tr.dataset.cs=String(csVal); // [+]
     tr.dataset.derived=derived?'1':'0';
     tr.innerHTML=[
       '<td style="padding:7px 6px;text-align:center;font-size:11px;color:var(--muted);border-bottom:'+bdr+';border-right:1px solid #E2E8F0">'+(i+1)+'</td>',
@@ -319,6 +340,7 @@ function renderMeSection(tbodyId,comms,sec,key){
       // Sales
       gunnyCell('sales',   fv.sales,   false),
       '<td style="padding:3px 4px;border-bottom:'+bdr+';border-right:1px solid #CBD5E1">'+minp('sales',false,'font-weight:700;')+'</td>',
+      inspCell(csVal, 'cs', bdr), // [+] C.S — read-only, column hidden when the month has none
       // Closing
       gunnyCell('close',   fv.close,   false),
       '<td style="padding:3px 4px;border-bottom:'+bdr+';border-right:1px solid #CBD5E1">'+minp('close',true,'')+'</td>',
@@ -380,6 +402,8 @@ function onMeFieldChange(inp){
   mset('total',tot);
   var mClose=tot-sales;
   mset('close',mClose);
+  var _cs=parseFloat(tr.dataset.cs)||0;                     // [+]
+  if(_cs){ mClose=tot-sales-_cs; mset('close',mClose); }    // [+] C.S deducted after Total
   entryPaintClose(inp.closest('tr'), mClose);
   if(tr.dataset.free==='0'){
     var aEl=tr.querySelector('[data-field="amount"]');
@@ -404,6 +428,7 @@ function recalcMe(){
   // Column sums for the footer rows (kgs and gunny/bag counts)
   var SUM={a:{open:0,rec:0,ex:0,sh:0,tr:0,total:0,close:0,gopen:0,grec:0,gtotal:0,gsales:0,gclose:0},
            b:{open:0,rec:0,ex:0,sh:0,tr:0,total:0,close:0,gopen:0,grec:0,gtotal:0,gsales:0,gclose:0}};
+  SUM.a.cs=0; SUM.b.cs=0; // [+]
   function proc(comms,tbId,s){
     comms.forEach(function(c){
       var tr=document.querySelector('#'+tbId+' tr[data-id="'+c.id+'"]');
@@ -415,6 +440,8 @@ function recalcMe(){
       var tot=open+rec+inspNet(adj);
       var rcv=tot-sales;
       mset('total',tot); mset('close',rcv);
+      var csv=parseFloat(tr.dataset.cs)||0;                   // [+]
+      if(csv){ rcv=tot-sales-csv; mset('close',rcv); }        // [+] C.S deducted after Total
       entryPaintClose(tr, rcv);
       // keep the Gunny sub-columns in step with the recomputed Kgs
       ['total','close'].forEach(function(f){
@@ -425,6 +452,7 @@ function recalcMe(){
       var acc=SUM[s];
       acc.open+=open; acc.rec+=rec; acc.total+=tot; acc.close+=rcv;
       acc.ex+=adj.excess; acc.sh+=adj.shortage; acc.tr+=adj.transfer;
+      acc.cs+=csv; // [+]
       ['open','receipt','total','sales','close'].forEach(function(f){
         var ge=tr.querySelector('[data-field="gunny_'+f+'"]');
         var gv=ge?(parseFloat(ge.value)||0):0;
@@ -449,6 +477,7 @@ function recalcMe(){
     ['open','rec','ex','sh','tr','total','close'].forEach(function(f){
       var e=el('me-'+k+'-'+f); if(e) e.textContent=acc[f].toFixed(3);
     });
+    var eCs=el('me-'+k+'-cs'); if(eCs) eCs.textContent=(acc.cs||0).toFixed(3); // [+]
     ['gopen','grec','gtotal','gsales','gclose'].forEach(function(f){
       var e=el('me-'+k+'-'+f); if(e) e.textContent=String(Math.round(acc[f]));
     });
@@ -490,6 +519,8 @@ function saveMonthlyEntry(){
                g_open:mget('gunny_open'),g_receipt:mget('gunny_receipt'),g_total:mget('gunny_total'),
                g_sales:mget('gunny_sales'),g_close:mget('gunny_close')};
       var empty=!rec.open&&!rec.receipt&&!rec.sales&&!rec.close&&!rec.amount;
+      rec.cs=parseFloat(tr.dataset.cs)||0;   // [+] preserve imported C.S across saves
+      if(rec.cs) empty=false;                // [+]
       if(empty) delete manual[s][c.id]; else manual[s][c.id]=rec;
     });
   }

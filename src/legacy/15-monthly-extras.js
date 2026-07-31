@@ -437,6 +437,13 @@ function buildMeGunnyTable(){
     // record if one exists, else from the live Monthly Entry gunny-sales sums.
     var rc = meGunnyReceiptValue(crsId, month, year, item.id);
     sv.receipt = rc.val; sv.receiptAuto = true; sv.receiptSrc = rc.src;
+    // [+] A month imported from the office workbook carries the office's own
+    // [+] receipt figure — that statutory number wins over the auto count.
+    if(sv.receiptImported !== undefined && sv.receiptImported !== ''){        // [+]
+      rc = {val: parseFloat(sv.receiptImported)||0,                           // [+]
+            src: 'Imported from the office workbook'};                        // [+]
+      sv.receipt = rc.val; sv.receiptAuto = false; sv.receiptSrc = rc.src;    // [+]
+    }                                                                         // [+]
     var openingNum = parseFloat(sv.opening)||0;
     var receiptNum = parseFloat(sv.receipt)||0;
     var issuesNum  = parseFloat(sv.issues)||0;
@@ -611,6 +618,11 @@ function meGunnyRefreshReceipts(){
     var rec = meGunnyStore[key][item.id];
     var rc = meGunnyReceiptValue(crsId, month, year, item.id);
     rec.receipt = rc.val; rec.receiptAuto = true; rec.receiptSrc = rc.src;
+    if(rec.receiptImported !== undefined && rec.receiptImported !== ''){      // [+]
+      rc = {val: parseFloat(rec.receiptImported)||0,                          // [+]
+            src: 'Imported from the office workbook'};                        // [+]
+      rec.receipt = rc.val; rec.receiptAuto = false; rec.receiptSrc = rc.src; // [+]
+    }                                                                         // [+]
     var opening = parseFloat(rec.opening)||0;
     var issues  = parseFloat(rec.issues)||0;
     rec.total   = opening + rc.val;
