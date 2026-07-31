@@ -60,6 +60,22 @@ export const CRS29_STOCK: Commodity[] = [
 
 export const isCrs29 = (crsId: number | null | undefined) => Number(crsId) === 29;
 
+/** Bag divisors (kgs per bag) — BAG_DIV in 03-daily-entry.js. */
+const BAG_DIV: Record<string, number> = { PALM: 10, SALT_CIS: 25, SALT_RFFS: 25, OOTY: 50, TAN: 50, PB_PALM: 10 };
+export const bagDiv = (id: string) => BAG_DIV[id] ?? 50;
+export const bagsOf = (kgs: number, id: string) => (kgs > 0 ? Math.floor(kgs / bagDiv(id)) : 0);
+
+/** The camp's ENTRY list — its stocked lines plus the two paid packing lines. */
+export const CRS29_ENTRY_A: Commodity[] = [
+  ...CRS29_STOCK,
+  ...(['EMPTY_BAG', 'EMPTY_BOX'].map((id) => byId.get(id)!) as Commodity[]),
+];
+
+/** Entry-screen lists for a shop: the camp keys its own list and no police. */
+export function entryListsFor(crsId: number | null | undefined): { a: Commodity[]; b: Commodity[] } {
+  return isCrs29(crsId) ? { a: CRS29_ENTRY_A, b: [] } : { a: DSS_A, b: DSS_B };
+}
+
 /** Stock/dashboard lists for a shop: the camp gets its seven and no police. */
 export function stockListsFor(crsId: number | null | undefined): { a: Commodity[]; b: Commodity[] } {
   return isCrs29(crsId) ? { a: CRS29_STOCK, b: [] } : { a: DSS_A, b: DSS_B };
