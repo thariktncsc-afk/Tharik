@@ -128,6 +128,19 @@ class CrsDataStore {
     }
   }
 
+  /** Re-read just the users roster (after a CRUD call on /api/users). */
+  async reloadUsers(): Promise<void> {
+    try {
+      const r = await fetch('/api/users', { headers: { Accept: 'application/json' } });
+      if (!r.ok) return;
+      const b = await r.json().catch(() => ({}));
+      this.users = b?.users ?? this.users;
+      this.emit();
+    } catch {
+      /* the next full load refreshes it */
+    }
+  }
+
   // ── Save ──────────────────────────────────────────────────────────────────
   private collectChanged() {
     const stores: Record<string, unknown> = {};
