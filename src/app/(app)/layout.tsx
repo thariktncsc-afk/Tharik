@@ -14,6 +14,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import NavToggle from '@/components/NavToggle';
 import { useAuth } from '@/lib/authClient';
+import { crsData } from '@/lib/dataStore';
 
 const MENU = [
   { href: '/dashboard', icon: '📊', label: 'Dashboard' },
@@ -50,6 +51,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (status === 'signedOut') router.replace('/login');
   }, [status, router]);
+
+  // The data layer lives for as long as someone is signed in to the shell:
+  // load everything once, then autosave dirty stores; flush on the way out.
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    void crsData.load().then(() => crsData.start());
+    return () => {
+      void crsData.save({ keepalive: true });
+      crsData.stop();
+    };
+  }, [status]);
 
   if (status !== 'signedIn' || !user) {
     // Same look as the session-resume loader on the legacy page.
