@@ -302,7 +302,8 @@ function renderMeSection(tbodyId,comms,sec,key){
               shortage: parseFloat(sv.shortage) || 0,            // [+]
               transfer: parseFloat(sv.transfer) || 0};           // [+]
     }                                                            // [+]
-    var csVal = parseFloat(sv.cs) || 0; // [+] C.S — cumulative shortage, deducted after Total
+    var csVal = parseFloat(sv.cs) || 0;   // [+] C.S — cumulative shortage, deducted after Total
+    var gCsVal = parseFloat(sv.g_cs) || 0; // [+] C.S bag count from the workbook
 
     var tr=document.createElement('tr');
     tr.style.background=bg;
@@ -311,7 +312,8 @@ function renderMeSection(tbodyId,comms,sec,key){
     tr.dataset.excess=String(mAdj.excess);
     tr.dataset.shortage=String(mAdj.shortage);
     tr.dataset.transfer=String(mAdj.transfer);
-    tr.dataset.cs=String(csVal); // [+]
+    tr.dataset.cs=String(csVal);   // [+]
+    tr.dataset.gcs=String(gCsVal); // [+]
     tr.dataset.derived=derived?'1':'0';
     tr.innerHTML=[
       '<td style="padding:7px 6px;text-align:center;font-size:11px;color:var(--muted);border-bottom:'+bdr+';border-right:1px solid #E2E8F0">'+(i+1)+'</td>',
@@ -340,7 +342,11 @@ function renderMeSection(tbodyId,comms,sec,key){
       // Sales
       gunnyCell('sales',   fv.sales,   false),
       '<td style="padding:3px 4px;border-bottom:'+bdr+';border-right:1px solid #CBD5E1">'+minp('sales',false,'font-weight:700;')+'</td>',
-      inspCell(csVal, 'cs', bdr), // [+] C.S — read-only, column hidden when the month has none
+      // [+] C.S bags + kgs — read-only, both hidden when the month has none
+      '<td data-adjcol="cs" style="padding:4px 3px;text-align:center;border-bottom:'+bdr+';border-right:1px solid #E2E8F0;background:#F3E8FF">'+  // [+]
+        (gCsVal ? '<span style="color:#7C3AED;font-weight:800;font-size:11px">'+gCsVal+'</span>'                                                  // [+]
+                : '<span style="color:#CBD5E1;font-size:11px">—</span>')+'</td>',                                                            // [+]
+      inspCell(csVal, 'cs', bdr), // [+]
       // Closing
       gunnyCell('close',   fv.close,   false),
       '<td style="padding:3px 4px;border-bottom:'+bdr+';border-right:1px solid #CBD5E1">'+minp('close',true,'')+'</td>',
@@ -428,7 +434,7 @@ function recalcMe(){
   // Column sums for the footer rows (kgs and gunny/bag counts)
   var SUM={a:{open:0,rec:0,ex:0,sh:0,tr:0,total:0,close:0,gopen:0,grec:0,gtotal:0,gsales:0,gclose:0},
            b:{open:0,rec:0,ex:0,sh:0,tr:0,total:0,close:0,gopen:0,grec:0,gtotal:0,gsales:0,gclose:0}};
-  SUM.a.cs=0; SUM.b.cs=0; // [+]
+  SUM.a.cs=0; SUM.b.cs=0; SUM.a.gcs=0; SUM.b.gcs=0; // [+]
   function proc(comms,tbId,s){
     comms.forEach(function(c){
       var tr=document.querySelector('#'+tbId+' tr[data-id="'+c.id+'"]');
@@ -452,7 +458,7 @@ function recalcMe(){
       var acc=SUM[s];
       acc.open+=open; acc.rec+=rec; acc.total+=tot; acc.close+=rcv;
       acc.ex+=adj.excess; acc.sh+=adj.shortage; acc.tr+=adj.transfer;
-      acc.cs+=csv; // [+]
+      acc.cs+=csv; acc.gcs+=parseFloat(tr.dataset.gcs)||0; // [+]
       ['open','receipt','total','sales','close'].forEach(function(f){
         var ge=tr.querySelector('[data-field="gunny_'+f+'"]');
         var gv=ge?(parseFloat(ge.value)||0):0;
@@ -477,7 +483,8 @@ function recalcMe(){
     ['open','rec','ex','sh','tr','total','close'].forEach(function(f){
       var e=el('me-'+k+'-'+f); if(e) e.textContent=acc[f].toFixed(3);
     });
-    var eCs=el('me-'+k+'-cs'); if(eCs) eCs.textContent=(acc.cs||0).toFixed(3); // [+]
+    var eCs=el('me-'+k+'-cs'); if(eCs) eCs.textContent=(acc.cs||0).toFixed(3);                    // [+]
+    var eGcs=el('me-'+k+'-gcs'); if(eGcs) eGcs.textContent=String(Math.round(acc.gcs||0));       // [+]
     ['gopen','grec','gtotal','gsales','gclose'].forEach(function(f){
       var e=el('me-'+k+'-'+f); if(e) e.textContent=String(Math.round(acc[f]));
     });
@@ -519,8 +526,9 @@ function saveMonthlyEntry(){
                g_open:mget('gunny_open'),g_receipt:mget('gunny_receipt'),g_total:mget('gunny_total'),
                g_sales:mget('gunny_sales'),g_close:mget('gunny_close')};
       var empty=!rec.open&&!rec.receipt&&!rec.sales&&!rec.close&&!rec.amount;
-      rec.cs=parseFloat(tr.dataset.cs)||0;   // [+] preserve imported C.S across saves
-      if(rec.cs) empty=false;                // [+]
+      rec.cs=parseFloat(tr.dataset.cs)||0;     // [+] preserve imported C.S across saves
+      rec.g_cs=parseFloat(tr.dataset.gcs)||0;  // [+]
+      if(rec.cs) empty=false;                  // [+]
       if(empty) delete manual[s][c.id]; else manual[s][c.id]=rec;
     });
   }
