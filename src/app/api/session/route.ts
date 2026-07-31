@@ -13,8 +13,9 @@
  * picker the sign-in screen has always shown.
  */
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
-import { SESSION_COOKIE, cookieOptions, encodeSession } from '@/lib/session';
+import { SESSION_COOKIE, cookieOptions, decodeSession, encodeSession } from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,38 @@ function toEngineUser(c: Candidate) {
     crsId: c.crs_id,
     active: true,
   };
+}
+
+/**
+ * Who is signed in? Lets a page reload resume the session its cookie already
+ * carries instead of bouncing to the login screen. The user row is re-read so
+ * a deactivated account cannot resume, and the engine gets the same shape a
+ * fresh sign-in returns.
+ */
+export async function GET() {
+  if (!supabaseConfigured()) {
+    return NextResponse.json({ error: 'Supabase is not configured on the server.' }, { status: 503 });
+  }
+
+  const jar = await cookies();
+  const session = decodeSession(jar.get(SESSION_COOKIE)?.value);
+  if (!session) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+
+  const { data, error } = await supabaseAdmin()
+    .from('users')
+    .select('id, username, full_name, phone, email, role, crs_id, active')
+    .eq('id', session.userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[api/session] resume lookup failed:', error.code, error.message);
+    return NextResponse.json({ error: 'Could not verify the session.' }, { status: 500 });
+  }
+  if (!data || data.active === false) {
+    return NextResponse.json({ error: 'The account is no longer active.' }, { status: 401 });
+  }
+
+  return NextResponse.json({ ok: true, user: toEngineUser(data as Candidate) });
 }
 
 export async function POST(req: Request) {
