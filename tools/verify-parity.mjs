@@ -71,6 +71,7 @@ const NEW_ENGINE = new Set([
   '37-no-sample-data.js',
   '38-user-management.js',
   '39-staff-roles.js',
+  '40-cs-column.js',
 ]);
 
 /**
