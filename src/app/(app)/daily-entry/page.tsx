@@ -26,6 +26,7 @@ import { SHOPS } from '@/lib/engine/shops';
 import { entryListsFor, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import InspectionModal from './InspectionModal';
 
 type ShopRec = { name: string };
 type SavedSheet = DayEntry & {
@@ -93,6 +94,7 @@ export default function DailyEntryPage() {
   const [remitDate, setRemitDate] = useState(todayIso());
   const [remitErr, setRemitErr] = useState<{ amount?: string; date?: string }>({});
   const [savedMsg, setSavedMsg] = useState('');
+  const [inspOpen, setInspOpen] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const crsId = crsVal ? Number(crsVal) : null;
@@ -500,9 +502,18 @@ export default function DailyEntryPage() {
           <div className="page-sub">தினசரி இறுப்பு / வேறுவாறு அறிக்கை — TNCSC Madurai Region</div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-          <a href="/" title="The Inspection editor opens in the classic app until it is converted" style={{ background: 'linear-gradient(135deg,#7C3AED,#9333EA)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', textDecoration: 'none' }}>
+          <button
+            onClick={() => {
+              if (!crsVal || !date) {
+                alert('Please select a CRS shop and date first.');
+                return;
+              }
+              setInspOpen(true);
+            }}
+            style={{ background: 'linear-gradient(135deg,#7C3AED,#9333EA)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+          >
             🔍 Inspection
-          </a>
+          </button>
           <a href="/" title="The DSS preview opens in the classic app until it is converted" style={{ background: 'linear-gradient(135deg,#0369A1,#0EA5E9)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', textDecoration: 'none' }}>
             📄 DSS
           </a>
@@ -724,6 +735,7 @@ export default function DailyEntryPage() {
           </div>
         </div>
       )}
+      {inspOpen && crsId ? <InspectionModal crsId={crsId} date={date} onClose={() => setInspOpen(false)} /> : null}
     </div>
   );
 }
