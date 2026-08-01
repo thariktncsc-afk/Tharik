@@ -239,8 +239,8 @@ export default function MonthlyEntryPage() {
 
   const subtitle = ctx ? `CRS ${ctx.crsId} — ${shops[ctx.crsId - 1]?.name ?? ''} — ${ME_MONTH_NAMES[month]} ${year}` : '';
 
-  const th = (label: React.ReactNode, extra?: React.CSSProperties) => (
-    <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)', ...extra }}>{label}</th>
+  const th = (label: React.ReactNode, extra?: React.CSSProperties, cls?: string) => (
+    <th className={cls} style={{ padding: '8px 6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)', ...extra }}>{label}</th>
   );
 
   const gridSection = (sec: 'a' | 'b', list: Row[]) => {
@@ -313,11 +313,11 @@ export default function MonthlyEntryPage() {
           <span style={{ fontWeight: 700, fontSize: 12, color: col }}>{secA ? 'நியாய வகுப்பு / Main Ration — Monthly' : 'காவலர் அட்டை / Police Ration — Monthly'}</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 780 }}>
+          <table className="frz-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 780 }}>
             <thead>
               <tr style={{ background: secA ? '#F8FAFC' : '#FFFBF5' }}>
                 {th('#', { width: 30 })}
-                {th('பொருட்கள் / Commodity', { textAlign: 'left', minWidth: 130, padding: '8px 10px' })}
+                {th('பொருட்கள் / Commodity', { textAlign: 'left', minWidth: 130, padding: '8px 10px' }, 'frz-comm')}
                 {th('Unit', { width: 38 })}
                 {th('Opening', { colSpan: 2 } as never)}
                 {th('Receipt', { colSpan: 2 } as never)}
@@ -336,7 +336,7 @@ export default function MonthlyEntryPage() {
               {list.map((r, i) => (
                 <tr key={r.c.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFCFF' }}>
                   <td style={{ padding: '7px 6px', textAlign: 'center', fontSize: 11, color: 'var(--muted)', borderBottom: bdr }}>{i + 1}</td>
-                  <td style={{ padding: '7px 10px', borderBottom: bdr }}>
+                  <td className="frz-comm" style={{ padding: '7px 10px', borderBottom: bdr }}>
                     <div style={{ fontWeight: 600, fontSize: 12 }}>{r.c.ta}</div>
                     <div style={{ fontSize: 10, color: 'var(--muted)' }}>{r.c.en}</div>
                     {r.derived ? (
@@ -386,7 +386,7 @@ export default function MonthlyEntryPage() {
             </tbody>
             <tfoot>
               <tr style={{ background: secA ? '#EFF6FF' : '#FFF7ED', fontWeight: 800 }}>
-                <td colSpan={3} style={{ padding: '10px 12px', fontSize: 12, color: col, borderTop: footBd }}>Section {sec.toUpperCase()} Total</td>
+                <td colSpan={3} className="frz-comm" style={{ padding: '10px 12px', fontSize: 12, color: col, borderTop: footBd }}>Section {sec.toUpperCase()} Total</td>
                 <td style={{ padding: '9px 3px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: '#92400E', background: '#FFFBEB', borderTop: footBd }}>{Math.round(s.gopen)}</td>
                 <td style={{ padding: '9px 4px', textAlign: 'right', fontSize: 11, color: col, borderTop: footBd }}>{s.open.toFixed(3)}</td>
                 <td style={{ padding: '9px 3px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: '#92400E', background: '#FFFBEB', borderTop: footBd }}>{Math.round(s.grec)}</td>

@@ -379,8 +379,8 @@ export default function DailyEntryPage() {
     }
   }
 
-  const thA = (label: React.ReactNode, extra?: React.CSSProperties) => (
-    <th style={{ padding: '9px 8px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)', ...extra }}>{label}</th>
+  const thA = (label: React.ReactNode, extra?: React.CSSProperties, cls?: string) => (
+    <th className={cls} style={{ padding: '9px 8px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)', ...extra }}>{label}</th>
   );
 
   const adjCell = (val: number, kind: 'excess' | 'shortage' | 'transfer', bdr: string) => {
@@ -441,11 +441,11 @@ export default function DailyEntryPage() {
           <span style={{ marginLeft: 'auto', fontSize: 11, color: footCol }}>{comms.length} commodities</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+          <table className="frz-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
             <thead>
               <tr style={{ background: secA ? '#F8FAFC' : '#FFFBF5' }}>
                 {thA('#')}
-                {thA('பொருட்கள் / Commodity', { textAlign: 'left', padding: '9px 12px' })}
+                {thA('பொருட்கள் / Commodity', { textAlign: 'left', padding: '9px 12px' }, 'frz-comm')}
                 {thA('Unit')}
                 {thA(<>Rate<br />(₹)</>)}
                 {thA(<>ஆரம்ப இருப்பு<br />Opening</>)}
@@ -465,7 +465,7 @@ export default function DailyEntryPage() {
                 return (
                   <tr key={c.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFCFF' }}>
                     <td style={{ padding: 8, textAlign: 'center', fontSize: 11, color: 'var(--muted)', borderBottom: bdr }}>{i + 1}</td>
-                    <td style={{ padding: '8px 12px', borderBottom: bdr }}>
+                    <td className="frz-comm" style={{ padding: '8px 12px', borderBottom: bdr }}>
                       <div style={{ fontWeight: 600, fontSize: 12 }}>{c.ta}</div>
                       <div style={{ fontSize: 10, color: 'var(--muted)' }}>{c.en}</div>
                     </td>
@@ -496,7 +496,7 @@ export default function DailyEntryPage() {
             </tbody>
             <tfoot>
               <tr style={{ background: footBg, fontWeight: 800 }}>
-                <td colSpan={4} style={{ padding: '10px 12px', fontSize: 12, color: footCol, borderTop: footBd }}>Section {sec.toUpperCase()} Total</td>
+                <td colSpan={4} className="frz-comm" style={{ padding: '10px 12px', fontSize: 12, color: footCol, borderTop: footBd }}>Section {sec.toUpperCase()} Total</td>
                 {[t.open, t.rec].map((v, i) => (
                   <td key={i} style={{ padding: '10px 6px', textAlign: 'right', fontSize: 12, color: footCol, borderTop: footBd }}>{v.toFixed(3)}</td>
                 ))}
