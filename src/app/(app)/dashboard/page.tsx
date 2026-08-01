@@ -17,8 +17,8 @@ import { useRouter } from 'next/navigation';
 import HolidayCalendar from '@/components/HolidayCalendar';
 import { useAuth } from '@/lib/authClient';
 import { useStore, useUsers } from '@/lib/dataStore';
-import { SHOPS } from '@/lib/engine/shops';
-import { dashboardEntryView, stockListsFor, type DayEntry } from '@/lib/engine/commodities';
+import { dashboardEntryView, type DayEntry } from '@/lib/engine/commodities';
+import { useShops, useStockLists } from '@/lib/masters';
 import { govtHolidayName, isWeeklyHoliday, weeklyHolidayName, type GovtHolidayMap } from '@/lib/engine/holidays';
 
 type MasterRec = { id: number; code: string; coll: boolean; police: boolean; status: string };
@@ -49,7 +49,7 @@ export default function DashboardPage() {
   const entryStore = useStore<Record<string, DayEntry>>('entryStore') ?? {};
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
   const master = useStore<MasterRec[]>('__crsMaster') ?? [];
-  const shops: ShopRec[] = SHOPS;
+  const shops: ShopRec[] = useShops();
   const holidays = useStore<GovtHolidayMap>('__holidays');
 
   const [selected, setSelected] = useState<Date>(() => new Date());
@@ -74,7 +74,7 @@ export default function DashboardPage() {
   const crsId = user?.crsId ?? null;
   const isAdmin = user?.role === 'ADMIN';
   const scopeId = crsId || 1;
-  const lists = stockListsFor(crsId);
+  const lists = useStockLists(crsId);
   const allComms = [...lists.a, ...lists.b];
 
   const entryFor = (ds: string) => dashboardEntryView(crsId, entryStore[`${scopeId}_${ds}`]);

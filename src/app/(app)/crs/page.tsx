@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
-import { shopName } from '@/lib/engine/shops';
+import { useShops, type ShopRow } from '@/lib/masters';
 
 type MasterRec = {
   id: number;
@@ -31,8 +31,25 @@ const Dash = () => <span style={{ color: '#CBD5E1' }}>—</span>;
 export default function CrsShopsPage() {
   const { status } = useDataStatus();
   const master = useStore<MasterRec[]>('__crsMaster') ?? [];
+  const shops = useShops();
   const [filter, setFilter] = useState<'all' | 'active' | 'no_usage'>('all');
   const [query, setQuery] = useState('');
+  const [renaming, setRenaming] = useState<{ id: number; name: string } | null>(null);
+
+  const shopName = (id: number) => shops[id - 1]?.name ?? '';
+
+  /** Rename a shop — writes the `__shops` master, which every screen reads. */
+  const saveRename = () => {
+    if (!renaming) return;
+    const name = renaming.name.trim();
+    if (!name) return;
+    crsData.update<ShopRow[]>('__shops', (draft) => {
+      while (draft.length < 30) draft.push({ name: '' });
+      draft[renaming.id - 1] = { ...draft[renaming.id - 1], name };
+    });
+    void crsData.save();
+    setRenaming(null);
+  };
 
   const toggle = (id: number) => {
     const m = master.find((r) => r.id === id);
@@ -145,8 +162,35 @@ export default function CrsShopsPage() {
                       </strong>
                     </td>
                     <td>
-                      <strong>CRS {m.id}</strong>{' '}
-                      <span style={{ color: 'var(--muted)' }}>— {shopName(m.id)}</span>
+                      {renaming?.id === m.id ? (
+                        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                          <strong>CRS {m.id}</strong>
+                          <input
+                            autoFocus
+                            value={renaming.name}
+                            onChange={(e) => setRenaming({ id: m.id, name: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveRename();
+                              if (e.key === 'Escape') setRenaming(null);
+                            }}
+                            style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12, width: 180 }}
+                          />
+                          <button className="btn btn-primary btn-sm" onClick={saveRename}>✓</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => setRenaming(null)}>✕</button>
+                        </span>
+                      ) : (
+                        <>
+                          <strong>CRS {m.id}</strong>{' '}
+                          <span style={{ color: 'var(--muted)' }}>— {shopName(m.id)}</span>
+                          <button
+                            onClick={() => setRenaming({ id: m.id, name: shopName(m.id) })}
+                            title="Rename this shop (stored in the database)"
+                            style={{ marginLeft: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--muted)' }}
+                          >
+                            ✏️
+                          </button>
+                        </>
+                      )}
                     </td>
                     <td>{m.bc || <Dash />}</td>
                     <td style={{ fontFamily: 'monospace' }}>{m.bcMobile || <Dash />}</td>

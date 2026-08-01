@@ -63,6 +63,7 @@ export const NO_GUNNY = new Set(['EMPTY_BOX', 'EMPTY_BAG', 'PB_SUGAR', 'PB_WHEAT
 /** Not allotted: packet lines, packing materials, police ration (22-allotment). */
 const ME_ALLOT_EXCLUDE = new Set(['SALT_CIS', 'SALT_RFFS', 'OOTY', 'TAN', 'EMPTY_BOX', 'EMPTY_BAG']);
 
+/** Compiled fallback only — screens pass the database list via useAllotItems. */
 export function meAllotItems(crsId: number | null): Commodity[] {
   if (isCrs29(crsId)) return CRS29_STOCK; // the camp's seven, incl. kerosene
   return DSS_A.filter((c) => !ME_ALLOT_EXCLUDE.has(c.id));
@@ -87,9 +88,9 @@ export function monthlyHasCounts(cards: Record<string, CardRec> | undefined): bo
   return Object.values(cards).some((d) => d?.count !== undefined && d.count !== '' && Number(d.count) > 0);
 }
 
-export function allotHasValues(allot: Record<string, number> | undefined, crsId: number | null): boolean {
+export function allotHasValues(allot: Record<string, number> | undefined, items: Commodity[]): boolean {
   if (!allot) return false;
-  const ids = new Set(meAllotItems(crsId).map((c) => c.id));
+  const ids = new Set(items.map((c) => c.id));
   return Object.entries(allot).some(([id, v]) => ids.has(id) && (Number(v) || 0) > 0);
 }
 

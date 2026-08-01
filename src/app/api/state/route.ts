@@ -47,6 +47,10 @@ const ALLOWED_KEYS = new Set([
   '__commodities',
   '__crsMaster',
   '__holidays',
+  // Full commodity records (id/names/unit/rate/section) for the converted
+  // screens — the legacy '__commodities' row is a bare id list and cannot
+  // carry rates, so it stays untouched for the classic app.
+  '__commodityMaster',
 ]);
 
 async function requireSession() {

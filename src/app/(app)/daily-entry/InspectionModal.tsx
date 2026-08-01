@@ -13,9 +13,9 @@
  */
 import { useMemo, useState } from 'react';
 import { crsData } from '@/lib/dataStore';
-import { entryListsFor, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
-import { shopName } from '@/lib/engine/shops';
 
 type InspRec = { excess?: number; shortage?: number; transfer?: number };
 type InspDay = { a?: Record<string, InspRec>; b?: Record<string, InspRec> };
@@ -38,10 +38,11 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
   const key = `${crsId}_${date}`;
   const sheet = (crsData.get<Record<string, DayEntry>>('entryStore') ?? {})[key];
   const insp = (crsData.get<Record<string, InspDay>>('inspectionStore') ?? {})[key] ?? {};
-  const lists = entryListsFor(crsId);
+  const lists = useCommodityLists(crsId);
+  const shops = useShops();
 
   const dLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const sub = `CRS ${crsId} — ${shopName(crsId)} • ${dLabel}`;
+  const sub = `CRS ${crsId} — ${shops[crsId - 1]?.name ?? ''} • ${dLabel}`;
 
   const comms: { c: Commodity; sec: 'a' | 'b' }[] = useMemo(() => {
     const a = lists.a.map((c) => ({ c, sec: 'a' as const }));
@@ -82,7 +83,7 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
     const entryStore = crsData.get<Record<string, DayEntry>>('entryStore') ?? {};
     const inspectionStore = crsData.get<Record<string, InspDay>>('inspectionStore') ?? {};
     const manual = (crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {})[`${crsId}_${m}_${y}`];
-    const next = rebuildMonthlyFromDaily(crsId, m, y, entryStore, inspectionStore as never, manual);
+    const next = rebuildMonthlyFromDaily(crsId, m, y, entryStore, inspectionStore as never, manual, lists);
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[`${crsId}_${m}_${y}`] = next.merged;
     });

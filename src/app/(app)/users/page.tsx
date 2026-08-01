@@ -12,7 +12,7 @@
  */
 import { useMemo, useState } from 'react';
 import { crsData, useUsers } from '@/lib/dataStore';
-import { SHOPS } from '@/lib/engine/shops';
+import { useShops } from '@/lib/masters';
 import type { EngineUser } from '@/lib/authClient';
 
 type ShopRec = { name: string };
@@ -30,7 +30,7 @@ async function api(url: string, method: string, body?: unknown) {
 
 export default function UsersPage() {
   const users = useUsers();
-  const shops: ShopRec[] = SHOPS;
+  const shops: ShopRec[] = useShops();
   const [search, setSearch] = useState('');
   const [filterCrs, setFilterCrs] = useState('');
   const [filterRole, setFilterRole] = useState('');

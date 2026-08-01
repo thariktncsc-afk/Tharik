@@ -19,7 +19,7 @@
  */
 import { useMemo, useState } from 'react';
 import { crsData, useStore } from '@/lib/dataStore';
-import { SHOPS } from '@/lib/engine/shops';
+import { useCommodityLists, useShops } from '@/lib/masters';
 import { useAuth } from '@/lib/authClient';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity } from '@/lib/engine/commodities';
 
@@ -75,16 +75,14 @@ const PACK_COLORS: Record<PackType, { bg: string; border: string; text: string; 
 type RowState = { qty: string; type: PackType; count: string; countManual: boolean; packQty: string; packQtyManual: boolean };
 const emptyRow = (id: string): RowState => ({ qty: '', type: PACK_RULES[id]?.type ?? 'GUNNY', count: '', countManual: false, packQty: '', packQtyManual: false });
 
-function receiptCommodities(crsId: number | null): Commodity[] {
-  const list = isCrs29(crsId) ? CRS29_STOCK : [...DSS_A, ...DSS_B];
-  return list.filter((c) => !EXCLUDED.has(c.id));
-}
+// Receipt rows come from the database commodity master (via useCommodityLists),
+// minus the two empties the shop returns rather than receives.
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 
 export default function ReceiptPage() {
   const { user } = useAuth();
-  const shops: ShopRec[] = SHOPS;
+  const shops: ShopRec[] = useShops();
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
   const counters = useStore<Record<string, number>>('__counters') ?? {};
 
@@ -103,7 +101,8 @@ export default function ReceiptPage() {
   const [filterMonth, setFilterMonth] = useState(() => todayIso().slice(0, 7));
 
   const formCrsId = crsVal ? Number(crsVal) : null;
-  const comms = useMemo(() => receiptCommodities(formCrsId), [formCrsId]);
+  const formLists = useCommodityLists(formCrsId);
+  const comms = useMemo(() => [...formLists.a, ...formLists.b].filter((c) => !EXCLUDED.has(c.id)), [formLists]);
 
   const setRow = (id: string, patch: Partial<RowState>) =>
     setRows((prev) => ({ ...prev, [id]: { ...(prev[id] ?? emptyRow(id)), ...patch } }));
@@ -195,6 +194,57 @@ export default function ReceiptPage() {
     setTimeout(() => setBanner(''), 4000);
   };
 
+  /** Clear one commodity's row in the form (qty, packing and manual flags). */
+  const clearRow = (id: string) =>
+    setRows((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+
+  /** Remove ONE commodity from a saved receipt (deletes the receipt when it was the last one). */
+  const deleteItem = async (rec: ReceiptRec, commId: string) => {
+    const qty = rec.items[commId]?.qty ?? 0;
+    const last = Object.keys(rec.items).length === 1;
+    const ok = confirm(
+      `Remove ${commName(commId)} (${Number(qty).toFixed(3)}) from receipt ${rec.receiptNo}?` +
+        (last ? '\n\nIt is the only commodity on this receipt — the whole receipt will be deleted.' : '') +
+        '\n\nThis cannot be undone.',
+    );
+    if (!ok) return;
+    const store = crsData.get<ReceiptRec[]>('receiptStore') ?? [];
+    if (last) {
+      crsData.set('receiptStore', store.filter((x) => x.id !== rec.id));
+      setBanner(`✓ Receipt ${rec.receiptNo} deleted (last commodity removed).`);
+    } else {
+      crsData.set(
+        'receiptStore',
+        store.map((x) => {
+          if (x.id !== rec.id) return x;
+          const items = { ...x.items };
+          delete items[commId];
+          return { ...x, items };
+        }),
+      );
+      setBanner(`✓ ${commName(commId)} removed from receipt ${rec.receiptNo}.`);
+    }
+    await crsData.save();
+    setTimeout(() => setBanner(''), 4000);
+  };
+
+  /** Delete a saved receipt from the register. */
+  const deleteReceipt = async (rec: ReceiptRec) => {
+    const ok = confirm(
+      `Delete receipt ${rec.receiptNo} of ${rec.date.split('-').reverse().join('/')} (CRS ${rec.crsId})?\n\n` +
+        'Its quantities stop counting in the statements and the COLL report. This cannot be undone.',
+    );
+    if (!ok) return;
+    crsData.set('receiptStore', (crsData.get<ReceiptRec[]>('receiptStore') ?? []).filter((x) => x.id !== rec.id));
+    await crsData.save();
+    setBanner(`✓ Receipt ${rec.receiptNo} deleted.`);
+    setTimeout(() => setBanner(''), 4000);
+  };
+
   const logs = receiptStore
     .filter((r) => {
       if (isCrsUser && r.crsId !== user!.crsId) return false;
@@ -204,8 +254,8 @@ export default function ReceiptPage() {
     })
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const allComms = [...DSS_A, ...DSS_B, ...CRS29_STOCK];
-  const commName = (id: string) => allComms.find((c) => c.id === id)?.en ?? id;
+  const commName = (id: string) =>
+    comms.find((c) => c.id === id)?.en ?? [...DSS_A, ...DSS_B, ...CRS29_STOCK].find((c) => c.id === id)?.en ?? id;
 
   const input = { border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13 } as const;
   const th = { padding: '8px 10px', textAlign: 'center' as const, fontSize: 10, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)' };
@@ -213,6 +263,8 @@ export default function ReceiptPage() {
 
   return (
     <div className="page active" id="page-receipt">
+      {/* Chip delete appears on hover only, so the register stays readable. */}
+      <style>{'.rcp-chip .rcp-chip-x{display:none}.rcp-chip:hover .rcp-chip-x{display:inline-flex}'}</style>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div className="page-title">Receipt Register</div>
@@ -302,6 +354,7 @@ export default function ReceiptPage() {
                           <span style={{ background: '#16A34A', color: '#fff', fontSize: 8, padding: '1px 4px', borderRadius: 3 }}>POLY ÷50/25</span>
                         </span>
                       </th>
+                      <th style={{ ...th, width: 44 }}>Clear</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -369,6 +422,18 @@ export default function ReceiptPage() {
                           ) : (
                             <td style={{ padding: '5px 8px', borderBottom: '1px solid #F0F9FF', textAlign: 'center', color: '#CBD5E1', fontSize: 11 }}>—</td>
                           )}
+                          <td style={{ padding: '5px 6px', borderBottom: '1px solid #F0F9FF', textAlign: 'center' }}>
+                            {r.qty || r.count || r.packQty ? (
+                              <button
+                                type="button"
+                                onClick={() => clearRow(c.id)}
+                                title={`Clear ${c.en} from this receipt`}
+                                style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                ✕
+                              </button>
+                            ) : null}
+                          </td>
                         </tr>
                       );
                     })}
@@ -376,6 +441,13 @@ export default function ReceiptPage() {
                 </table>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
+                <button
+                  onClick={() => setRows({})}
+                  title="Clear every commodity entered on this receipt"
+                  style={{ marginRight: 'auto', background: '#fff', border: '1px solid #FCA5A5', color: '#B91C1C', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  🗑 Clear All
+                </button>
                 <button onClick={() => setFormOpen(false)} style={{ background: '#fff', border: '1px solid var(--border)', padding: '8px 18px', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>
                   Cancel
                 </button>
@@ -423,6 +495,7 @@ export default function ReceiptPage() {
                 <th style={logTh}>Receipt No.</th>
                 <th style={logTh}>Commodities Received</th>
                 <th style={{ ...logTh, textAlign: 'center' }}>Saved At</th>
+                <th style={{ ...logTh, textAlign: 'center', width: 70 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -442,12 +515,33 @@ export default function ReceiptPage() {
                   <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', fontSize: 12, fontFamily: 'monospace', color: '#0369A1' }}>{r.receiptNo}</td>
                   <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF' }}>
                     {Object.entries(r.items).map(([id, it]) => (
-                      <span key={id} style={{ display: 'inline-flex', gap: 3, background: '#E0F2FE', color: '#0369A1', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, margin: 2 }}>
+                      <span
+                        key={id}
+                        className="rcp-chip"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: '#E0F2FE', color: '#0369A1', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, margin: 2 }}
+                      >
                         {commName(id)}: {Number(it.qty).toFixed(3)}
+                        <button
+                          className="rcp-chip-x"
+                          onClick={() => void deleteItem(r, id)}
+                          title={`Remove ${commName(id)} from this receipt`}
+                          style={{ border: 'none', background: '#DC2626', color: '#fff', width: 14, height: 14, borderRadius: '50%', fontSize: 9, fontWeight: 800, lineHeight: 1, cursor: 'pointer', alignItems: 'center', justifyContent: 'center', padding: 0, marginLeft: 3 }}
+                        >
+                          ✕
+                        </button>
                       </span>
                     ))}
                   </td>
                   <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', textAlign: 'center', fontSize: 11, color: 'var(--muted)' }}>{r.savedAt}</td>
+                  <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', textAlign: 'center' }}>
+                    <button
+                      onClick={() => void deleteReceipt(r)}
+                      title="Delete this receipt"
+                      style={{ background: '#fff', border: '1px solid #FCA5A5', color: '#DC2626', padding: '5px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      🗑 Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

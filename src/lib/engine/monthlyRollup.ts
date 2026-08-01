@@ -9,7 +9,7 @@
  * imported workbook months with their C.S / bag-count fields) pass through
  * untouched, and meSourceStore marks each commodity 'daily' or 'manual'.
  */
-import { bagsOf, entryListsFor, type DayEntry } from '@/lib/engine/commodities';
+import { bagsOf, entryListsFor, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 
 export type MonthlyRec = {
   open: number;
@@ -143,9 +143,12 @@ export function rebuildMonthlyFromDaily(
   entryStore: Record<string, DayEntry>,
   inspectionStore: Record<string, InspDay>,
   manual: Partial<MonthlyBlock> | undefined,
+  commodityLists?: { a: Commodity[]; b: Commodity[] },
 ): { merged: MonthlyBlock; source: SourceBlock } {
   const roll = dailyRollupForMonth(crsId, month, year, entryStore, inspectionStore);
-  const lists = entryListsFor(crsId);
+  // The database commodity master when the caller has it loaded; the
+  // compiled lists otherwise (and always for the byte-parity statement path).
+  const lists = commodityLists ?? entryListsFor(crsId);
   const merged: MonthlyBlock = { a: {}, b: {} };
   const source: SourceBlock = { a: {}, b: {} };
 

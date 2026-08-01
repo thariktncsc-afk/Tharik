@@ -11,11 +11,11 @@
  */
 import { useMemo, useState } from 'react';
 import { crsData } from '@/lib/dataStore';
+import { useAllotItems } from '@/lib/masters';
 import {
   ME_CARD_TYPES,
   ME_MONTH_NAMES,
   allotHasValues,
-  meAllotItems,
   mePrevKey,
   monthlyHasCounts,
   type CardRec,
@@ -53,7 +53,7 @@ export default function CardAllot({
 
   const monthAllot = allot[ctx.key] ?? {};
   const monthAdv = advance[ctx.key] ?? {};
-  const items = meAllotItems(ctx.crsId);
+  const items = useAllotItems(ctx.crsId);
   const moName = ME_MONTH_NAMES[ctx.month] ?? '';
   const prevName = ME_MONTH_NAMES[ctx.month === 1 ? 12 : ctx.month - 1] ?? 'last month';
 
@@ -142,7 +142,7 @@ export default function CardAllot({
     });
     void crsData.save();
     const total = Object.values(cur!).reduce((t, d) => t + (parseInt(String(d.count)) || 0), 0);
-    const allotN = allotHasValues(crsData.get<Record<string, Record<string, number>>>('meAllotStore')?.[ctx.key], ctx.crsId)
+    const allotN = allotHasValues(crsData.get<Record<string, Record<string, number>>>('meAllotStore')?.[ctx.key], items)
       ? Object.values(crsData.get<Record<string, Record<string, number>>>('meAllotStore')![ctx.key]).filter((v) => (Number(v) || 0) > 0).length
       : 0;
     setStatus({

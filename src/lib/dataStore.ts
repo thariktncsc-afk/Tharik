@@ -43,7 +43,8 @@ export type StoreKey =
   | '__shops'
   | '__commodities'
   | '__crsMaster'
-  | '__holidays';
+  | '__holidays'
+  | '__commodityMaster';
 
 export type DataStatus = 'idle' | 'loading' | 'ready' | 'error';
 

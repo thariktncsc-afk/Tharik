@@ -22,8 +22,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
-import { SHOPS } from '@/lib/engine/shops';
-import { entryListsFor, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { useCommodityLists, useShops } from '@/lib/masters';
 import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import InspectionModal from './InspectionModal';
@@ -77,7 +77,7 @@ function getAutoOpening(entryStore: Record<string, SavedSheet>, crsId: string, d
 
 export default function DailyEntryPage() {
   const { user } = useAuth();
-  const shops: ShopRec[] = SHOPS;
+  const shops: ShopRec[] = useShops();
   const entryStore = useStore<Record<string, SavedSheet>>('entryStore') ?? {};
   const inspectionStore = useStore<Record<string, InspDay>>('inspectionStore') ?? {};
   const meManualStore = useStore<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};
@@ -101,7 +101,7 @@ export default function DailyEntryPage() {
   const key = crsVal && date ? `${crsVal}_${date}` : '';
   const saved = key ? entryStore[key] : undefined;
   const insp = key ? inspectionStore[key] : undefined;
-  const lists = entryListsFor(crsId);
+  const lists = useCommodityLists(crsId);
 
   // Re-open the sheet whenever the shop or date changes.
   useEffect(() => {
@@ -274,7 +274,7 @@ export default function DailyEntryPage() {
     // Republish the month so Monthly Entry and statements see this day.
     const [y, m] = date.split('-').map(Number);
     const nextEntryStore = { ...entryStore, [key]: snap };
-    const { merged, source } = rebuildMonthlyFromDaily(Number(crsVal), m, y, nextEntryStore, inspectionStore, meManualStore[`${crsVal}_${m}_${y}`]);
+    const { merged, source } = rebuildMonthlyFromDaily(Number(crsVal), m, y, nextEntryStore, inspectionStore, meManualStore[`${crsVal}_${m}_${y}`], lists);
     const moKey = `${crsVal}_${m}_${y}`;
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[moKey] = merged;
@@ -351,7 +351,7 @@ export default function DailyEntryPage() {
         entryStore: crsData.get('entryStore') ?? {},
         inspectionStore: crsData.get('inspectionStore') ?? {},
       },
-      CRS_LIST: SHOPS,
+      CRS_LIST: shops,
       APP_CONFIG: crsData.get('__config') ?? {},
       CRS_ACCOUNTS: crsData.get('__accounts') ?? {},
     });

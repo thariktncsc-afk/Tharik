@@ -18,8 +18,8 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { useStore } from '@/lib/dataStore';
-import { SHOPS } from '@/lib/engine/shops';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
+import { useCommodityMaster, useShops } from '@/lib/masters';
 import { buildPVTable, pvAggregatePeriod } from '@/lib/engine/pvStatement';
 
 type ShopRec = { name: string };
@@ -42,7 +42,8 @@ function scopedEntry(crsId: number | '', entry: DayEntry | undefined): DayEntry 
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const shops: ShopRec[] = SHOPS;
+  const shops: ShopRec[] = useShops();
+  const commodityMaster = useCommodityMaster();
   const entryStore = useStore<Record<string, DayEntry>>('entryStore') ?? {};
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
   const monthlyStore = useStore<Record<string, never>>('monthlyStore') ?? {};
@@ -95,7 +96,7 @@ export default function ReportsPage() {
     let totalReceipts = 0;
     const daysSet = new Set<string>();
     const daysInMo = moYear ? new Date(moYear, moNum, 0).getDate() : 0;
-    const lookup = [...DSS_A, ...DSS_B, ...CRS29_STOCK];
+    const lookup = commodityMaster ?? [...DSS_A, ...DSS_B, ...CRS29_STOCK];
     for (const cid of crsIds) {
       for (let d = 1; d <= daysInMo; d++) {
         const dk = `${cid}_${moYear}-${pad2(moNum)}-${pad2(d)}`;
@@ -125,7 +126,7 @@ export default function ReportsPage() {
     }
     return { commMap, totalSales, totalReceipts, days: daysSet.size, moYear, moNum };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryStore, receiptStore, monthVal, crsVal, generated]);
+  }, [entryStore, receiptStore, monthVal, crsVal, generated, commodityMaster]);
 
   // ── PV statement HTML ─────────────────────────────────────────────────────
   const pvHtml = useMemo(() => {

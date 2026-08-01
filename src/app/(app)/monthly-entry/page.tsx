@@ -18,8 +18,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
-import { SHOPS } from '@/lib/engine/shops';
-import { bagsOf, entryListsFor, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { bagsOf, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import CardAllot from './CardAllot';
 import GunnyTable from './GunnyTable';
@@ -37,7 +37,7 @@ type GridEdit = { open?: string; receipt?: string; sales?: string; close?: strin
 export default function MonthlyEntryPage() {
   const { user } = useAuth();
   const now = new Date();
-  const shops: ShopRec[] = SHOPS;
+  const shops: ShopRec[] = useShops();
   const entryStore = useStore<Record<string, DayEntry>>('entryStore') ?? {};
   const inspectionStore = useStore<Record<string, InspDay>>('inspectionStore') ?? {};
   const meManualStore = useStore<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};
@@ -62,7 +62,7 @@ export default function MonthlyEntryPage() {
   const crsId = crsVal ? Number(crsVal) : null;
   const key = crsVal ? `${crsVal}_${month}_${year}` : '';
   const ctx = crsId ? { crsId, month, year, key } : null;
-  const lists = entryListsFor(crsId);
+  const lists = useCommodityLists(crsId);
 
   useEffect(() => {
     setEdits({});
@@ -73,7 +73,7 @@ export default function MonthlyEntryPage() {
   // Merge the daily roll-up with the saved manual values (rule: daily wins).
   const { merged, source } = useMemo(() => {
     if (!crsId) return { merged: { a: {}, b: {} } as MonthlyBlock, source: { a: {}, b: {} } as SourceBlock };
-    return rebuildMonthlyFromDaily(crsId, month, year, entryStore, inspectionStore, meManualStore[key]);
+    return rebuildMonthlyFromDaily(crsId, month, year, entryStore, inspectionStore, meManualStore[key], lists);
   }, [crsId, month, year, entryStore, inspectionStore, meManualStore, key]);
 
   // Inspection adjustments summed over the month, per section+commodity.
@@ -225,7 +225,7 @@ export default function MonthlyEntryPage() {
     crsData.update<Record<string, Partial<MonthlyBlock>>>('meManualStore', (d) => {
       d[ctx.key] = manual;
     });
-    const next = rebuildMonthlyFromDaily(ctx.crsId, ctx.month, ctx.year, entryStore, inspectionStore, manual);
+    const next = rebuildMonthlyFromDaily(ctx.crsId, ctx.month, ctx.year, entryStore, inspectionStore, manual, lists);
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[ctx.key] = next.merged;
     });
