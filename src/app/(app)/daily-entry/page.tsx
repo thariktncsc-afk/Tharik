@@ -337,6 +337,27 @@ export default function DailyEntryPage() {
     setRemitErr({});
   };
 
+  // DSS preview/export — the verbatim legacy builder behind a real-DOM shim
+  // (src/generated/dss-legacy.js). Loaded on demand; the viewer overlay,
+  // print flow and styled .xlsx work exactly as in the classic app.
+  const openDss = async () => {
+    if (!crsVal) {
+      alert('Please select a CRS shop first.');
+      return;
+    }
+    const { createDssEngine } = await import('@/generated/dss-legacy');
+    const engine = createDssEngine({
+      stores: {
+        entryStore: crsData.get('entryStore') ?? {},
+        inspectionStore: crsData.get('inspectionStore') ?? {},
+      },
+      CRS_LIST: SHOPS,
+      APP_CONFIG: crsData.get('__config') ?? {},
+      CRS_ACCOUNTS: crsData.get('__accounts') ?? {},
+    });
+    engine.openPreview(crsVal, date);
+  };
+
   const scRec = crsVal && date ? salesCloseStore[`${crsVal}_${Number(date.split('-')[1])}_${Number(date.split('-')[0])}`] : undefined;
   const holName = date ? weeklyHolidayName(new Date(date + 'T00:00:00')) : null;
   const d = date ? new Date(date + 'T00:00:00') : null;
@@ -514,9 +535,13 @@ export default function DailyEntryPage() {
           >
             🔍 Inspection
           </button>
-          <a href="/" title="The DSS preview opens in the classic app until it is converted" style={{ background: 'linear-gradient(135deg,#0369A1,#0EA5E9)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', textDecoration: 'none' }}>
+          <button
+            onClick={() => void openDss()}
+            title="Preview the daily statement (DSS) for this month — print or export the styled Excel from the viewer"
+            style={{ background: 'linear-gradient(135deg,#0369A1,#0EA5E9)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+          >
             📄 DSS
-          </a>
+          </button>
         </div>
       </div>
 
