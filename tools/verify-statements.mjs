@@ -20,9 +20,15 @@ const { createStatementEngine } = await import('file://' + join(root, 'src', 'ge
 const dump = JSON.parse(readFileSync(join(root, 'public', 'golden-stores.json'), 'utf8'));
 const stores = dump.stores;
 
-// Same masters the golden harness fed the engine (via crsPersistWrite).
-const shopsMaster = stores.__shops ?? [];
-const CRS_LIST = shopsMaster.map((s, i) => ({ id: i + 1, name: s.name, code: s.code, taluk: s.taluk, district: s.district, cards: s.cards, active: s.active }));
+// CRS_LIST exactly as the React /statements page constructs it: the full
+// 30-shop list (names from src/lib/engine/shops.ts) with the `__shops`
+// master's extra fields merged in where they exist.
+const shopsTs = readFileSync(join(root, 'src', 'lib', 'engine', 'shops.ts'), 'utf8');
+const CRS_NAMES = {};
+for (const m of shopsTs.matchAll(/^\s*(\d+):\s*'([^']+)',\s*$/gm)) CRS_NAMES[Number(m[1])] = m[2];
+if (Object.keys(CRS_NAMES).length !== 30) throw new Error(`expected 30 shop names from shops.ts, got ${Object.keys(CRS_NAMES).length}`);
+const shopExtras = stores.__shops ?? [];
+const CRS_LIST = Array.from({ length: 30 }, (_, i) => ({ ...(shopExtras[i] ?? {}), id: i + 1, name: CRS_NAMES[i + 1] }));
 
 const engine = createStatementEngine({
   stores: {

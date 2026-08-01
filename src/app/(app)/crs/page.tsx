@@ -11,6 +11,7 @@
  */
 import { useState } from 'react';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
+import { shopName } from '@/lib/engine/shops';
 
 type MasterRec = {
   id: number;
@@ -30,11 +31,8 @@ const Dash = () => <span style={{ color: '#CBD5E1' }}>—</span>;
 export default function CrsShopsPage() {
   const { status } = useDataStatus();
   const master = useStore<MasterRec[]>('__crsMaster') ?? [];
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
   const [filter, setFilter] = useState<'all' | 'active' | 'no_usage'>('all');
   const [query, setQuery] = useState('');
-
-  const shopName = (id: number) => shops[id - 1]?.name ?? '';
 
   const toggle = (id: number) => {
     const m = master.find((r) => r.id === id);

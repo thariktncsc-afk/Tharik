@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
+import { SHOPS } from '@/lib/engine/shops';
 import { bagsOf, entryListsFor, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import CardAllot from './CardAllot';
@@ -36,7 +37,7 @@ type GridEdit = { open?: string; receipt?: string; sales?: string; close?: strin
 export default function MonthlyEntryPage() {
   const { user } = useAuth();
   const now = new Date();
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
+  const shops: ShopRec[] = SHOPS;
   const entryStore = useStore<Record<string, DayEntry>>('entryStore') ?? {};
   const inspectionStore = useStore<Record<string, InspDay>>('inspectionStore') ?? {};
   const meManualStore = useStore<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};

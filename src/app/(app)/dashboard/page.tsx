@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import HolidayCalendar from '@/components/HolidayCalendar';
 import { useAuth } from '@/lib/authClient';
 import { useStore, useUsers } from '@/lib/dataStore';
+import { SHOPS } from '@/lib/engine/shops';
 import { dashboardEntryView, stockListsFor, type DayEntry } from '@/lib/engine/commodities';
 import { govtHolidayName, isWeeklyHoliday, weeklyHolidayName, type GovtHolidayMap } from '@/lib/engine/holidays';
 
@@ -48,7 +49,7 @@ export default function DashboardPage() {
   const entryStore = useStore<Record<string, DayEntry>>('entryStore') ?? {};
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
   const master = useStore<MasterRec[]>('__crsMaster') ?? [];
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
+  const shops: ShopRec[] = SHOPS;
   const holidays = useStore<GovtHolidayMap>('__holidays');
 
   const [selected, setSelected] = useState<Date>(() => new Date());

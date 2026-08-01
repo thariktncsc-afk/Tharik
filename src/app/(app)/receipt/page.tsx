@@ -19,6 +19,7 @@
  */
 import { useMemo, useState } from 'react';
 import { crsData, useStore } from '@/lib/dataStore';
+import { SHOPS } from '@/lib/engine/shops';
 import { useAuth } from '@/lib/authClient';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity } from '@/lib/engine/commodities';
 
@@ -83,7 +84,7 @@ const todayIso = () => new Date().toISOString().split('T')[0];
 
 export default function ReceiptPage() {
   const { user } = useAuth();
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
+  const shops: ShopRec[] = SHOPS;
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
   const counters = useStore<Record<string, number>>('__counters') ?? {};
 

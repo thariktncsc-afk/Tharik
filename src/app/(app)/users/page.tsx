@@ -11,7 +11,8 @@
  * roster re-reads after every change so the screen always shows what stored.
  */
 import { useMemo, useState } from 'react';
-import { crsData, useStore, useUsers } from '@/lib/dataStore';
+import { crsData, useUsers } from '@/lib/dataStore';
+import { SHOPS } from '@/lib/engine/shops';
 import type { EngineUser } from '@/lib/authClient';
 
 type ShopRec = { name: string };
@@ -29,7 +30,7 @@ async function api(url: string, method: string, body?: unknown) {
 
 export default function UsersPage() {
   const users = useUsers();
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
+  const shops: ShopRec[] = SHOPS;
   const [search, setSearch] = useState('');
   const [filterCrs, setFilterCrs] = useState('');
   const [filterRole, setFilterRole] = useState('');

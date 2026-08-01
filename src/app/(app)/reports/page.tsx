@@ -18,6 +18,7 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { useStore } from '@/lib/dataStore';
+import { SHOPS } from '@/lib/engine/shops';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
 import { buildPVTable, pvAggregatePeriod } from '@/lib/engine/pvStatement';
 
@@ -41,7 +42,7 @@ function scopedEntry(crsId: number | '', entry: DayEntry | undefined): DayEntry 
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
+  const shops: ShopRec[] = SHOPS;
   const entryStore = useStore<Record<string, DayEntry>>('entryStore') ?? {};
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
   const monthlyStore = useStore<Record<string, never>>('monthlyStore') ?? {};

@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
+import { SHOPS } from '@/lib/engine/shops';
 import { entryListsFor, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
@@ -75,7 +76,7 @@ function getAutoOpening(entryStore: Record<string, SavedSheet>, crsId: string, d
 
 export default function DailyEntryPage() {
   const { user } = useAuth();
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
+  const shops: ShopRec[] = SHOPS;
   const entryStore = useStore<Record<string, SavedSheet>>('entryStore') ?? {};
   const inspectionStore = useStore<Record<string, InspDay>>('inspectionStore') ?? {};
   const meManualStore = useStore<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};

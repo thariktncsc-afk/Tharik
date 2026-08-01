@@ -15,6 +15,7 @@ import { useMemo, useState } from 'react';
 import { createStatementEngine } from '@/generated/statements-legacy';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useDataStatus, useStore, useUsers } from '@/lib/dataStore';
+import { SHOPS } from '@/lib/engine/shops';
 import { rebuildMonthlyFromDaily } from '@/lib/engine/monthlyRollup';
 
 type ShopRec = { name: string; code: string; taluk: string; district: string; cards: number; active: boolean };
@@ -38,7 +39,11 @@ export default function StatementsPage() {
   const { user } = useAuth();
   const { status } = useDataStatus();
   const users = useUsers();
-  const shops = useStore<ShopRec[]>('__shops') ?? [];
+  // Dropdowns and headings use the full 30-shop list; the `__shops` master
+  // (nine demo rows from the original port) only lends its extra fields to
+  // the engine's CRS_LIST, matching the environment the goldens verify.
+  const shopExtras = useStore<ShopRec[]>('__shops') ?? [];
+  const shops: { name: string }[] = SHOPS;
   const now = new Date();
 
   const isCrsUser = !!user?.crsId && user.role !== 'ADMIN';
@@ -73,7 +78,7 @@ export default function StatementsPage() {
       meCardConfirmed: crsData.get('meCardConfirmed') ?? {},
       meAdvanceStore: crsData.get('meAdvanceStore') ?? {},
     } as Record<string, Record<string, unknown> | unknown[]>;
-    const CRS_LIST = shops.map((s, i) => ({ id: i + 1, name: s.name, code: s.code, taluk: s.taluk, district: s.district, cards: s.cards, active: s.active }));
+    const CRS_LIST = SHOPS.map((s) => ({ ...(shopExtras[s.id - 1] ?? {}), id: s.id, name: s.name }));
     return createStatementEngine({
       stores,
       users,
@@ -93,7 +98,7 @@ export default function StatementsPage() {
       },
     }) as Engine;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, shops, users, user, crsId, month, year]);
+  }, [status, shopExtras, users, user, crsId, month, year]);
 
   const sections = engine && crsId ? engine.sectionsFor(crsId) : [];
   const visibleSections = sections.filter((s) => s.availableFor === 'all' || (s.availableFor === 'admin' && isAdmin));
