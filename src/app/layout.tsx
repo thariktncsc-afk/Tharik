@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/lib/authClient';
+import DialogHost from '@/components/dialog';
 import './globals.css';
 import './responsive.css';
 import './dashboard-marquee.css';
@@ -48,6 +49,7 @@ export default function RootLayout({
     <html lang="en">
       <body suppressHydrationWarning>
         <AuthProvider>{children}</AuthProvider>
+        <DialogHost />
       </body>
     </html>
   );

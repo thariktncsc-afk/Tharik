@@ -17,7 +17,7 @@ export function createDssEngine(ctx) {
     get body(){ return __realDoc.body; }
   };
   var window = ctx.window || (typeof globalThis !== 'undefined' ? globalThis : {});
-  var alert = window.alert ? window.alert.bind(window) : function(){};
+  var alert = ctx.alert || (window.alert ? window.alert.bind(window) : function(){});
   var CRS_LIST = ctx.CRS_LIST || [];
   var APP_CONFIG = ctx.APP_CONFIG || {};
   var CRS_ACCOUNTS = ctx.CRS_ACCOUNTS || {};

@@ -12,6 +12,7 @@
  * read the amounts the entry screens store.
  */
 import React, { useState } from 'react';
+import { appConfirm } from '@/components/dialog';
 import { crsData, useDataStatus } from '@/lib/dataStore';
 import { useCommodityMaster, type CommodityRow } from '@/lib/masters';
 
@@ -104,12 +105,16 @@ export default function CommoditiesPage() {
     );
   };
 
-  const remove = (c: CommodityRow) => {
-    const ok = confirm(
-      `Delete ${c.en} (${c.id}) from the commodity master?\n\n` +
+  const remove = async (c: CommodityRow) => {
+    const ok = await appConfirm({
+      title: 'Delete commodity',
+      tone: 'danger',
+      confirmLabel: 'Delete',
+      message:
+        `Delete ${c.en} (${c.id}) from the commodity master?\n\n` +
         'Existing entries that used it keep their figures, but it disappears from every screen. ' +
         'Prefer Deactivate unless it was added by mistake.\n\nThis cannot be undone.',
-    );
+    });
     if (!ok) return;
     write((list) => {
       const i = list.findIndex((x) => x.id === c.id);
@@ -266,7 +271,7 @@ export default function CommoditiesPage() {
                         <button className="btn btn-outline btn-sm" style={{ color: c.active === false ? 'var(--green)' : '#B45309' }} onClick={() => toggleActive(c)}>
                           {c.active === false ? 'Activate' : 'Deactivate'}
                         </button>{' '}
-                        <button className="btn btn-outline btn-sm" style={{ color: 'var(--red)' }} onClick={() => remove(c)}>Delete</button>
+                        <button className="btn btn-outline btn-sm" style={{ color: 'var(--red)' }} onClick={() => void remove(c)}>Delete</button>
                       </td>
                     </tr>
                   ),

@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
+import { appAlert, appConfirm } from '@/components/dialog';
 import { isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
@@ -245,10 +246,14 @@ export default function DailyEntryPage() {
 
     if (saved) {
       const when = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-      const ok = confirm(
-        `A day sheet is already saved for CRS ${crsVal} — ${shops[Number(crsVal) - 1]?.name ?? ''} on ${when}.\n\n` +
+      const ok = await appConfirm({
+        title: 'Replace saved day sheet',
+        tone: 'warning',
+        confirmLabel: 'Replace',
+        message:
+          `A day sheet is already saved for CRS ${crsVal} — ${shops[Number(crsVal) - 1]?.name ?? ''} on ${when}.\n\n` +
           'Saving now replaces it with what is currently on screen. This cannot be undone.\n\nReplace the saved sheet?',
-      );
+      });
       if (!ok) return false;
     }
 
@@ -272,9 +277,14 @@ export default function DailyEntryPage() {
     });
 
     // Republish the month so Monthly Entry and statements see this day.
+    // Stores are re-read AFTER the confirm dialog: an autosave conflict can
+    // reload them while it sits open, and the rollup must not drop a day
+    // someone else saved in the meantime.
     const [y, m] = date.split('-').map(Number);
-    const nextEntryStore = { ...entryStore, [key]: snap };
-    const { merged, source } = rebuildMonthlyFromDaily(Number(crsVal), m, y, nextEntryStore, inspectionStore, meManualStore[`${crsVal}_${m}_${y}`], lists);
+    const freshEntry = crsData.get<Record<string, SavedSheet>>('entryStore') ?? {};
+    const freshInsp = crsData.get<Record<string, InspDay>>('inspectionStore') ?? {};
+    const freshManual = crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};
+    const { merged, source } = rebuildMonthlyFromDaily(Number(crsVal), m, y, freshEntry, freshInsp as never, freshManual[`${crsVal}_${m}_${y}`], lists);
     const moKey = `${crsVal}_${m}_${y}`;
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[moKey] = merged;
@@ -296,7 +306,7 @@ export default function DailyEntryPage() {
 
   const markSalesClose = async () => {
     if (!crsVal || !date) {
-      alert('Select a CRS shop and date first.');
+      void appAlert('Select a CRS shop and date first.');
       return;
     }
     const ok = await save();
@@ -323,11 +333,15 @@ export default function DailyEntryPage() {
       d[scKey] = { date, ...agg, updatedAt: new Date().toISOString() };
     });
     void crsData.save();
-    alert(
-      `Sales Close marked for ${date.split('-').reverse().join('/')}` +
+    void appAlert({
+      title: 'Sales Close marked',
+      tone: 'primary',
+      icon: '🔒',
+      message:
+        `Sales Close marked for ${date.split('-').reverse().join('/')}` +
         (prev && prev.date !== date ? `\n(previous mark on ${prev.date.split('-').reverse().join('/')} was replaced)` : '') +
         `\n\nMonth totals up to this date:\n  Sales Gunny = ${agg.gunny}  → 50 KG SS Receipt\n  Sales Poly  = ${agg.poly}  → POLY Receipt\n  Sales C.Box = ${agg.cbox}  → C.BOX Receipt`,
-    );
+    });
   };
 
   const clearForm = () => {
@@ -342,7 +356,7 @@ export default function DailyEntryPage() {
   // print flow and styled .xlsx work exactly as in the classic app.
   const openDss = async () => {
     if (!crsVal) {
-      alert('Please select a CRS shop first.');
+      void appAlert('Please select a CRS shop first.');
       return;
     }
     const { createDssEngine } = await import('@/generated/dss-legacy');
@@ -354,6 +368,7 @@ export default function DailyEntryPage() {
       CRS_LIST: shops,
       APP_CONFIG: crsData.get('__config') ?? {},
       CRS_ACCOUNTS: crsData.get('__accounts') ?? {},
+      alert: (m: string) => void appAlert(m),
     });
     engine.openPreview(crsVal, date);
   };
@@ -526,7 +541,7 @@ export default function DailyEntryPage() {
           <button
             onClick={() => {
               if (!crsVal || !date) {
-                alert('Please select a CRS shop and date first.');
+                void appAlert('Please select a CRS shop and date first.');
                 return;
               }
               setInspOpen(true);

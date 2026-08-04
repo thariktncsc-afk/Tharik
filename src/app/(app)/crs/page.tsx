@@ -10,6 +10,7 @@
  * persists — the legacy app sees the same change on its next load.
  */
 import { useState } from 'react';
+import { appConfirm } from '@/components/dialog';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { useShops, type ShopRow } from '@/lib/masters';
 
@@ -51,18 +52,19 @@ export default function CrsShopsPage() {
     setRenaming(null);
   };
 
-  const toggle = (id: number) => {
+  const toggle = async (id: number) => {
     const m = master.find((r) => r.id === id);
     if (!m) return;
     const goingOff = m.status === 'active';
     const label = `CRS ${m.id}${shopName(m.id) ? ' — ' + shopName(m.id) : ''}`;
-    if (
-      goingOff &&
-      !confirm(
-        `Mark ${label} as No Usage?\n\nIt stops being offered for new entry. Its saved data and master details are kept, so it can be set back to Active later.`,
-      )
-    ) {
-      return;
+    if (goingOff) {
+      const ok = await appConfirm({
+        title: 'Set shop to No Usage',
+        tone: 'warning',
+        confirmLabel: 'Set No Usage',
+        message: `Mark ${label} as No Usage?\n\nIt stops being offered for new entry. Its saved data and master details are kept, so it can be set back to Active later.`,
+      });
+      if (!ok) return;
     }
     crsData.update<MasterRec[]>('__crsMaster', (draft) => {
       const rec = draft.find((r) => r.id === id);
@@ -216,7 +218,7 @@ export default function CrsShopsPage() {
                     <td style={{ textAlign: 'center' }}>
                       <button
                         className="btn btn-outline btn-sm"
-                        onClick={() => toggle(m.id)}
+                        onClick={() => void toggle(m.id)}
                         title={off ? 'Bring this shop back into use' : 'Mark this shop as not in use'}
                         style={{ color: off ? 'var(--green)' : 'var(--red)' }}
                       >

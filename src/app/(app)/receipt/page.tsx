@@ -19,6 +19,7 @@
  */
 import { useMemo, useState } from 'react';
 import { crsData, useStore } from '@/lib/dataStore';
+import { appAlert, appConfirm } from '@/components/dialog';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { useAuth } from '@/lib/authClient';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity } from '@/lib/engine/commodities';
@@ -153,11 +154,11 @@ export default function ReceiptPage() {
   const save = async () => {
     const crsId = Number(crsVal);
     if (!crsId) {
-      alert('Please select a CRS shop.');
+      void appAlert('Please select a CRS shop.');
       return;
     }
     if (!date) {
-      alert('Please select a date.');
+      void appAlert('Please select a date.');
       return;
     }
     const items: Record<string, { qty: number }> = {};
@@ -170,7 +171,7 @@ export default function ReceiptPage() {
       if (qty > 0) items[c.id] = { qty };
     }
     if (!Object.keys(items).length) {
-      alert('Enter at least one commodity quantity.');
+      void appAlert('Enter at least one commodity quantity.');
       return;
     }
 
@@ -206,14 +207,27 @@ export default function ReceiptPage() {
   const deleteItem = async (rec: ReceiptRec, commId: string) => {
     const qty = rec.items[commId]?.qty ?? 0;
     const last = Object.keys(rec.items).length === 1;
-    const ok = confirm(
-      `Remove ${commName(commId)} (${Number(qty).toFixed(3)}) from receipt ${rec.receiptNo}?` +
+    const ok = await appConfirm({
+      title: 'Remove commodity from receipt',
+      tone: 'danger',
+      confirmLabel: 'Remove',
+      message:
+        `Remove ${commName(commId)} (${Number(qty).toFixed(3)}) from receipt ${rec.receiptNo}?` +
         (last ? '\n\nIt is the only commodity on this receipt — the whole receipt will be deleted.' : '') +
         '\n\nThis cannot be undone.',
-    );
+    });
     if (!ok) return;
+    // Re-read after the dialog: the receipt may have changed (or gone) while
+    // the confirm sat open, and the last-commodity rule must use the truth.
     const store = crsData.get<ReceiptRec[]>('receiptStore') ?? [];
-    if (last) {
+    const fresh = store.find((x) => x.id === rec.id);
+    if (!fresh || fresh.items[commId] === undefined) {
+      setBanner(`⚠ Receipt ${rec.receiptNo} changed while confirming — nothing removed. Check the list and retry.`);
+      setTimeout(() => setBanner(''), 4000);
+      return;
+    }
+    const lastNow = Object.keys(fresh.items).length === 1;
+    if (lastNow) {
       crsData.set('receiptStore', store.filter((x) => x.id !== rec.id));
       setBanner(`✓ Receipt ${rec.receiptNo} deleted (last commodity removed).`);
     } else {
@@ -234,10 +248,14 @@ export default function ReceiptPage() {
 
   /** Delete a saved receipt from the register. */
   const deleteReceipt = async (rec: ReceiptRec) => {
-    const ok = confirm(
-      `Delete receipt ${rec.receiptNo} of ${rec.date.split('-').reverse().join('/')} (CRS ${rec.crsId})?\n\n` +
+    const ok = await appConfirm({
+      title: 'Delete receipt',
+      tone: 'danger',
+      confirmLabel: 'Delete',
+      message:
+        `Delete receipt ${rec.receiptNo} of ${rec.date.split('-').reverse().join('/')} (CRS ${rec.crsId})?\n\n` +
         'Its quantities stop counting in the statements and the COLL report. This cannot be undone.',
-    );
+    });
     if (!ok) return;
     crsData.set('receiptStore', (crsData.get<ReceiptRec[]>('receiptStore') ?? []).filter((x) => x.id !== rec.id));
     await crsData.save();

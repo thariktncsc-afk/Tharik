@@ -10,6 +10,7 @@
  * only ever reduces what the COLL statement reports as received.
  */
 import { useMemo, useState } from 'react';
+import { appConfirm } from '@/components/dialog';
 import { crsData } from '@/lib/dataStore';
 import { useAllotItems } from '@/lib/masters';
 import {
@@ -107,20 +108,29 @@ export default function CardAllot({
     });
   };
 
-  const noChange = () => {
+  const noChange = async () => {
     if (!prev || !Object.keys(prev).length) {
       setStatus({ msg: `Nothing to carry forward — ${prevName} has no card details. Enter the counts and press Save.`, tone: 'warn' });
       return;
     }
     if (monthlyHasCounts(own)) {
-      if (!confirm(`Replace the card details already entered for ${moName} ${ctx.year} with ${prevName}’s?\n\nThis cannot be undone.`)) {
+      const ok = await appConfirm({
+        title: 'Replace card details',
+        tone: 'warning',
+        confirmLabel: 'Replace',
+        message: `Replace the card details already entered for ${moName} ${ctx.year} with ${prevName}’s?\n\nThis cannot be undone.`,
+      });
+      if (!ok) {
         setStatus({ msg: `No Change cancelled — ${moName} ${ctx.year}’s own counts are unchanged.`, tone: 'info' });
         return;
       }
     }
+    // Re-read the source month AFTER the dialog — it may have been corrected
+    // (or reloaded on a save conflict) while the confirm sat open.
+    const freshPrev = crsData.get<Record<string, Record<string, CardRec>>>('meCardStore')?.[mePrevKey(ctx.crsId, ctx.month, ctx.year)] ?? prev;
     crsData.update<Record<string, Record<string, CardRec>>>('meCardStore', (d) => {
       const m: Record<string, CardRec> = {};
-      for (const [id, rec] of Object.entries(prev)) m[id] = { count: parseInt(String(rec.count)) || 0 };
+      for (const [id, rec] of Object.entries(freshPrev)) m[id] = { count: parseInt(String(rec.count)) || 0 };
       d[ctx.key] = m;
     });
     crsData.update<Record<string, boolean>>('meCardConfirmed', (d) => {
@@ -269,7 +279,7 @@ export default function CardAllot({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
         {shownStatus ? <span style={{ fontSize: 11, fontWeight: 600, color: toneColor[shownStatus.tone] }}>{shownStatus.msg}</span> : null}
-        <button type="button" onClick={noChange} title="Copy last month's card counts into this month" style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #99F6E4', color: '#0F766E', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+        <button type="button" onClick={() => void noChange()} title="Copy last month's card counts into this month" style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #99F6E4', color: '#0F766E', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
           ↶ No Change
         </button>
         <button type="button" onClick={save} title="Store these card counts and allotment for this month" style={{ background: 'linear-gradient(135deg,#0F766E,#14B8A6)', color: '#fff', border: 'none', padding: '9px 22px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(20,184,166,.3)' }}>

@@ -18,6 +18,7 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { useStore } from '@/lib/dataStore';
+import { appAlert } from '@/components/dialog';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityMaster, useShops } from '@/lib/masters';
 import { buildPVTable, pvAggregatePeriod } from '@/lib/engine/pvStatement';
@@ -268,7 +269,7 @@ export default function ReportsPage() {
               <button
                 onClick={() => {
                   if (!pvHtml) {
-                    alert('Generate a PV Statement first.');
+                    void appAlert('Generate a PV Statement first.');
                     return;
                   }
                   window.print();

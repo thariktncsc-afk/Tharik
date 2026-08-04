@@ -12,6 +12,7 @@
  * section tiles, preview, select/export bar, print and Excel flows.
  */
 import { useMemo, useState } from 'react';
+import { appAlert } from '@/components/dialog';
 import { createStatementEngine } from '@/generated/statements-legacy';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useDataStatus, useStore, useUsers } from '@/lib/dataStore';
@@ -117,7 +118,7 @@ export default function StatementsPage() {
 
   const doPreview = (section: Section) => {
     if (!engine || !crsId) {
-      alert('Please select a CRS shop first.');
+      void appAlert('Please select a CRS shop first.');
       return;
     }
     const d = engine.getData(crsId, month, year);
@@ -141,12 +142,12 @@ export default function StatementsPage() {
 
   const printSelected = () => {
     if (!engine || !crsId) {
-      alert('Please select a CRS shop.');
+      void appAlert('Please select a CRS shop.');
       return;
     }
     const ids = Object.keys(selected).filter((id) => selected[id]);
     if (!ids.length) {
-      alert('Please select at least one section.');
+      void appAlert('Please select at least one section.');
       return;
     }
     const d = engine.getData(crsId, month, year);
@@ -161,12 +162,12 @@ export default function StatementsPage() {
 
   const excelSelected = () => {
     if (!engine || !crsId) {
-      alert('Please select a CRS shop.');
+      void appAlert('Please select a CRS shop.');
       return;
     }
     const ids = Object.keys(selected).filter((id) => selected[id]);
     if (!ids.length) {
-      alert('Please select at least one section.');
+      void appAlert('Please select at least one section.');
       return;
     }
     const d = engine.getData(crsId, month, year);
