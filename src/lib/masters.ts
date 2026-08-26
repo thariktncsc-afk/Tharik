@@ -50,14 +50,22 @@ const pickIds = (rows: CommodityRow[], ids: string[]): Commodity[] =>
     .filter((c): c is CommodityRow => !!c)
     .map(({ id, ta, en, unit, rate, free }) => ({ id, ta, en, unit, rate: Number(rate) || 0, free: !!free }));
 
+/**
+ * Entry-screen lists (Daily/Monthly) for one shop — the camp keys its own
+ * list and has no police section. Takes the master rather than reading it, so
+ * callers outside a hook (a save handler republishing several shops' months)
+ * can build the list for a shop that is not the one on screen.
+ */
+export function commodityListsFor(master: CommodityRow[] | null, crsId: number | null | undefined): { a: Commodity[]; b: Commodity[] } {
+  if (!master) return isCrs29(crsId) ? { a: CRS29_ENTRY_A, b: [] } : { a: DSS_A, b: DSS_B };
+  if (isCrs29(crsId)) return { a: pickIds(master, CRS29_ENTRY_A.map((c) => c.id)), b: [] };
+  return { a: bySection(master, 'a'), b: bySection(master, 'b') };
+}
+
 /** Entry-screen lists (Daily/Monthly): the camp keys its own list, no police. */
 export function useCommodityLists(crsId: number | null | undefined): { a: Commodity[]; b: Commodity[] } {
   const master = useCommodityMaster();
-  return useMemo(() => {
-    if (!master) return isCrs29(crsId) ? { a: CRS29_ENTRY_A, b: [] } : { a: DSS_A, b: DSS_B };
-    if (isCrs29(crsId)) return { a: pickIds(master, CRS29_ENTRY_A.map((c) => c.id)), b: [] };
-    return { a: bySection(master, 'a'), b: bySection(master, 'b') };
-  }, [master, crsId]);
+  return useMemo(() => commodityListsFor(master, crsId), [master, crsId]);
 }
 
 /** Dashboard/stock lists: the camp shows only its seven stocked lines. */

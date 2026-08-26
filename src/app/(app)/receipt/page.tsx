@@ -20,9 +20,11 @@
 import { useMemo, useState } from 'react';
 import { crsData, useStore } from '@/lib/dataStore';
 import { appAlert, appConfirm } from '@/components/dialog';
-import { useCommodityLists, useShops } from '@/lib/masters';
+import { commodityListsFor, useCommodityLists, useCommodityMaster, useShops } from '@/lib/masters';
 import { useAuth } from '@/lib/authClient';
-import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity } from '@/lib/engine/commodities';
+import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 
 type ShopRec = { name: string };
 type ReceiptRec = {
@@ -104,6 +106,41 @@ export default function ReceiptPage() {
   const formCrsId = crsVal ? Number(crsVal) : null;
   const formLists = useCommodityLists(formCrsId);
   const comms = useMemo(() => [...formLists.a, ...formLists.b].filter((c) => !EXCLUDED.has(c.id)), [formLists]);
+  const commodityMaster = useCommodityMaster();
+
+  /**
+   * Republish one shop-month after the register changed.
+   *
+   * Receipts now fill the Receipt column of Daily Entry and roll into the
+   * month (src/lib/engine/receiptRollup.ts), so monthlyStore is stale the
+   * moment a receipt is saved or deleted. Rebuilding here means Monthly Entry
+   * and the statements are correct straight away instead of waiting for
+   * someone to open that date in Daily Entry and press Save.
+   *
+   * Stores are re-read rather than closed over: this runs after a confirm
+   * dialog and after crsData.set, so the snapshot in render is already old.
+   */
+  const republishMonth = (rCrsId: number, dateIso: string) => {
+    const [y, m] = dateIso.split('-').map(Number);
+    if (!rCrsId || !y || !m) return;
+    const moKey = `${rCrsId}_${m}_${y}`;
+    const next = rebuildMonthlyFromDaily(
+      rCrsId,
+      m,
+      y,
+      crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
+      crsData.get('inspectionStore') ?? {},
+      (crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {})[moKey],
+      commodityListsFor(commodityMaster, rCrsId),
+      crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+    );
+    crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
+      d[moKey] = next.merged;
+    });
+    crsData.update<Record<string, SourceBlock>>('meSourceStore', (d) => {
+      d[moKey] = next.source;
+    });
+  };
 
   const setRow = (id: string, patch: Partial<RowState>) =>
     setRows((prev) => ({ ...prev, [id]: { ...(prev[id] ?? emptyRow(id)), ...patch } }));
@@ -189,9 +226,10 @@ export default function ReceiptPage() {
     crsData.update<Record<string, number>>('__counters', (d) => {
       d.rpNextId = nextId + 1;
     });
+    republishMonth(crsId, date);
     await crsData.save();
     setFormOpen(false);
-    setBanner('✓ Receipt saved successfully!');
+    setBanner('✓ Receipt saved — Daily and Monthly Entry updated.');
     setTimeout(() => setBanner(''), 4000);
   };
 
@@ -242,6 +280,7 @@ export default function ReceiptPage() {
       );
       setBanner(`✓ ${commName(commId)} removed from receipt ${rec.receiptNo}.`);
     }
+    republishMonth(Number(rec.crsId), rec.date);
     await crsData.save();
     setTimeout(() => setBanner(''), 4000);
   };
@@ -254,10 +293,11 @@ export default function ReceiptPage() {
       confirmLabel: 'Delete',
       message:
         `Delete receipt ${rec.receiptNo} of ${rec.date.split('-').reverse().join('/')} (CRS ${rec.crsId})?\n\n` +
-        'Its quantities stop counting in the statements and the COLL report. This cannot be undone.',
+        'Its quantities stop counting in Daily Entry, Monthly Entry, the statements and the COLL report. This cannot be undone.',
     });
     if (!ok) return;
     crsData.set('receiptStore', (crsData.get<ReceiptRec[]>('receiptStore') ?? []).filter((x) => x.id !== rec.id));
+    republishMonth(Number(rec.crsId), rec.date);
     await crsData.save();
     setBanner(`✓ Receipt ${rec.receiptNo} deleted.`);
     setTimeout(() => setBanner(''), 4000);

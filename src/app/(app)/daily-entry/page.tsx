@@ -27,13 +27,30 @@ import { isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import { receiptQtyForDay, receiptRefsForDay, type ReceiptRow } from '@/lib/engine/receiptRollup';
+import PaymentDialog from '@/components/PaymentDialog';
+import { createOrder, fetchAccess, type Order, type Upi } from '@/lib/payments/client';
 import InspectionModal from './InspectionModal';
 
 type ShopRec = { name: string };
+
+/**
+ * Which SRCB account a deposit belongs to — the two columns of the Monthly
+ * Remittance table (15-monthly-extras.js). Priced commodities are collected
+ * into the Non-Cereal account; the free ration commodities (rice, wheat) are
+ * collected into the Cereal account, so one day can carry deposits of both.
+ * Rows saved before the split have no `account` and read as Non-Cereal —
+ * that is what the single amount box always meant.
+ */
+type RemitAcct = 'nc' | 'ce';
+type Remit = { amount: number; date: string; account: RemitAcct };
+
 type SavedSheet = DayEntry & {
-  remits?: { amount: number; date: string }[];
+  remits?: { amount: number; date: string; account?: RemitAcct }[];
   remitAmount?: number;
   remitDate?: string;
+  remitNonCereal?: number;
+  remitCereal?: number;
 };
 type InspDay = { a?: Record<string, { excess?: number; shortage?: number; transfer?: number }>; b?: Record<string, { excess?: number; shortage?: number; transfer?: number }> };
 type SalesClose = { date: string; gunny: number; poly: number; cbox: number; updatedAt: string };
@@ -41,6 +58,12 @@ type SalesClose = { date: string; gunny: number; poly: number; cbox: number; upd
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const todayIso = () => new Date().toISOString().split('T')[0];
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Labels and field colours per remittance account, keyed as the rows store it. */
+const ACCT: Record<RemitAcct, { label: string; hint: string; fg: string; bg: string; bd: string }> = {
+  nc: { label: 'Non-Cereal A/C', hint: 'Sugar, Toor, Palm Oil, Salt, Ooty/Tan, empty box & bag — the priced commodities', fg: '#0369A1', bg: '#F0F9FF', bd: '#BAE6FD' },
+  ce: { label: 'Cereal A/C', hint: 'Rice and Wheat — the free (விலையில்லா) commodities', fg: '#15803D', bg: '#F0FDF4', bd: '#86EFAC' },
+};
 
 // Pack-type divisors for the Sales Close aggregates (03-daily-entry.js).
 const SC_PACK: Record<'GUNNY' | 'POLY' | 'CBOX', Record<string, number>> = {
@@ -51,30 +74,54 @@ const SC_PACK: Record<'GUNNY' | 'POLY' | 'CBOX', Record<string, number>> = {
 
 type RowInput = { open?: string; receipt?: string; sales?: string };
 
-function prevDayStr(dateStr: string) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/** A carry crossing more than this many blank days is flagged for a check. */
+const GAP_WARN_DAYS = 7;
+
+/** This shop's entry dates, newest first. ISO dates sort as text. */
+function entryDatesDesc(entryStore: Record<string, SavedSheet>, crsId: string): string[] {
+  const prefix = `${crsId}_`;
+  const dates: string[] = [];
+  for (const k of Object.keys(entryStore)) {
+    if (!k.startsWith(prefix)) continue; // CRS 2 must not match CRS 23
+    const ds = k.slice(prefix.length);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) dates.push(ds);
+  }
+  return dates.sort().reverse();
 }
 
-/** Previous day's closing (or the last sheet of the previous month). */
-function getAutoOpening(entryStore: Record<string, SavedSheet>, crsId: string, dateStr: string, commId: string, sec: 'a' | 'b'): number | null {
-  const prev = entryStore[`${crsId}_${prevDayStr(dateStr)}`];
-  if (prev?.[sec]?.[commId] !== undefined) return Number(prev[sec]![commId].close) || 0;
-  if (dateStr.endsWith('-01') || new Date(dateStr + 'T00:00:00').getDate() === 1) {
-    const d = new Date(dateStr + 'T00:00:00');
-    d.setDate(0); // last day of previous month
-    const month = d.getMonth();
-    for (let i = 0; i < 31; i++) {
-      const k = `${crsId}_${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-      const e = entryStore[k];
-      if (e?.[sec]?.[commId] !== undefined) return Number(e[sec]![commId].close) || 0;
-      d.setDate(d.getDate() - 1);
-      if (d.getMonth() !== month) break;
-    }
+/**
+ * The most recent sheet BEFORE dateStr holding a figure for this commodity.
+ *
+ * Stock does not move on a day the shop did not trade, so the opening after a
+ * gap is the closing of the last day that was actually keyed — however far
+ * back that is. The engine used to look only at the immediately preceding day
+ * (see 42-opening-carry.js), so one skipped day silently dropped the carry.
+ */
+function carrySource(
+  dates: string[],
+  entryStore: Record<string, SavedSheet>,
+  crsId: string,
+  dateStr: string,
+  commId: string,
+  sec: 'a' | 'b',
+): { date: string; close: number } | null {
+  for (const ds of dates) {
+    if (ds >= dateStr) continue; // strictly earlier days only
+    const rec = entryStore[`${crsId}_${ds}`];
+    if (rec?.[sec]?.[commId] !== undefined) return { date: ds, close: Number(rec[sec]![commId].close) || 0 };
   }
   return null;
 }
+
+/** Whole days between two ISO dates with no sheet; consecutive days give 0. */
+function gapDays(fromDs: string, toDs: string): number {
+  const a = new Date(fromDs + 'T00:00:00').getTime();
+  const b = new Date(toDs + 'T00:00:00').getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.max(0, Math.round((b - a) / 86400000) - 1);
+}
+
+const fmtDay = (ds: string) => new Date(ds + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 export default function DailyEntryPage() {
   const { user } = useAuth();
@@ -83,6 +130,7 @@ export default function DailyEntryPage() {
   const inspectionStore = useStore<Record<string, InspDay>>('inspectionStore') ?? {};
   const meManualStore = useStore<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};
   const salesCloseStore = useStore<Record<string, SalesClose>>('salesCloseStore') ?? {};
+  const receiptStore = useStore<ReceiptRow[]>('receiptStore') ?? [];
 
   const isCrsUser = !!user?.crsId && user.role !== 'ADMIN';
   const shopIds = isCrsUser ? [user!.crsId as number] : shops.map((_, i) => i + 1);
@@ -90,12 +138,15 @@ export default function DailyEntryPage() {
   const [crsVal, setCrsVal] = useState(isCrsUser ? String(user!.crsId) : '');
   const [date, setDate] = useState(todayIso());
   const [rows, setRows] = useState<Record<string, RowInput>>({});
-  const [remits, setRemits] = useState<{ amount: number; date: string }[]>([]);
+  const [remits, setRemits] = useState<Remit[]>([]);
   const [remitAmt, setRemitAmt] = useState('');
+  const [remitAcct, setRemitAcct] = useState<RemitAcct>('nc');
   const [remitDate, setRemitDate] = useState(todayIso());
   const [remitErr, setRemitErr] = useState<{ amount?: string; date?: string }>({});
   const [savedMsg, setSavedMsg] = useState('');
   const [inspOpen, setInspOpen] = useState(false);
+  /** Set when the DSS download needs paying for before it can be built. */
+  const [dssPay, setDssPay] = useState<null | { order: Order; upi: Upi | null }>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const crsId = crsVal ? Number(crsVal) : null;
@@ -120,9 +171,9 @@ export default function DailyEntryPage() {
         }
       }
       if (sheet.remits?.length) {
-        setRemits(sheet.remits.map((r) => ({ amount: Number(r.amount) || 0, date: r.date || '' })));
+        setRemits(sheet.remits.map((r) => ({ amount: Number(r.amount) || 0, date: r.date || '', account: r.account === 'ce' ? 'ce' : 'nc' })));
       } else if (Number(sheet.remitAmount)) {
-        setRemits([{ amount: Number(sheet.remitAmount), date: sheet.remitDate || date }]);
+        setRemits([{ amount: Number(sheet.remitAmount), date: sheet.remitDate || date, account: 'nc' }]);
       } else {
         setRemits([]);
       }
@@ -131,6 +182,7 @@ export default function DailyEntryPage() {
     }
     setRows(next);
     setRemitAmt('');
+    setRemitAcct('nc');
     setRemitDate(date);
     setRemitErr({});
     setSavedMsg('');
@@ -142,20 +194,44 @@ export default function DailyEntryPage() {
     return { excess: Number(r?.excess) || 0, shortage: Number(r?.shortage) || 0, transfer: Number(r?.transfer) || 0 };
   };
 
-  type Derived = { open: number; openAuto: boolean; receipt: number; sales: number; total: number; close: number; amount: number; adj: ReturnType<typeof adjFor> };
+  // Sorted once per shop rather than per commodity — derive() runs it 30+ times.
+  const priorDates = useMemo(() => (crsVal ? entryDatesDesc(entryStore, crsVal) : []), [entryStore, crsVal]);
+
+  /** Where this sheet's openings carry from, for the banner. */
+  const carryFrom = useMemo(() => {
+    if (!crsVal || !date) return null;
+    const from = priorDates.find((ds) => ds < date);
+    return from ? { date: from, gap: gapDays(from, date) } : null;
+  }, [priorDates, crsVal, date]);
+
+  /**
+   * Godown receipts keyed on the Receipt Register for this shop-day.
+   * They fill the Receipt column instead of it being keyed a second time —
+   * see src/lib/engine/receiptRollup.ts for why the register wins.
+   */
+  const dayReceipts = useMemo(
+    () => (crsId && date ? receiptQtyForDay(receiptStore, crsId, date) : {}),
+    [receiptStore, crsId, date],
+  );
+  const hasGodown = Object.keys(dayReceipts).length > 0;
+
+  type Derived = { open: number; openAuto: boolean; receipt: number; receiptAuto: boolean; sales: number; total: number; close: number; amount: number; adj: ReturnType<typeof adjFor> };
   const derive = (sec: 'a' | 'b', c: Commodity): Derived => {
     const r = rows[`${sec}:${c.id}`] ?? {};
-    const auto = crsVal ? getAutoOpening(entryStore, crsVal, date, c.id, sec) : null;
+    const auto = crsVal ? (carrySource(priorDates, entryStore, crsVal, date, c.id, sec)?.close ?? null) : null;
     const savedOpen = saved?.[sec]?.[c.id]?.open;
     const openAuto = auto !== null && !savedOpen && r.open === undefined;
     const open = openAuto ? auto! : Number(r.open) || 0;
-    const receipt = Number(r.receipt) || 0;
+    // A register quantity is never stored as 0, so its presence alone decides.
+    const godown = dayReceipts[c.id] || 0;
+    const receiptAuto = godown > 0;
+    const receipt = receiptAuto ? godown : Number(r.receipt) || 0;
     const sales = Number(r.sales) || 0;
     const adj = adjFor(sec, c.id);
     const total = open + receipt + adj.excess - adj.shortage - adj.transfer;
     const close = total - sales;
     const amount = c.free ? 0 : sales * c.rate;
-    return { open, openAuto, receipt, sales, total, close, amount, adj };
+    return { open, openAuto, receipt, receiptAuto, sales, total, close, amount, adj };
   };
 
   const totals = useMemo(() => {
@@ -177,9 +253,11 @@ export default function DailyEntryPage() {
     }
     return sum;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, insp, entryStore, crsVal, date, lists]);
+  }, [rows, insp, entryStore, crsVal, date, lists, dayReceipts]);
   const grand = totals.a.amt + totals.b.amt;
-  const remitTotal = remits.reduce((t, r) => t + r.amount, 0);
+  const remitNC = remits.reduce((t, r) => (r.account === 'ce' ? t : t + r.amount), 0);
+  const remitCE = remits.reduce((t, r) => (r.account === 'ce' ? t + r.amount : t), 0);
+  const remitTotal = remitNC + remitCE;
 
   const anyAdj = (['excess', 'shortage', 'transfer'] as const).filter((f) =>
     [...lists.a.map((c) => adjFor('a', c.id)), ...lists.b.map((c) => adjFor('b', c.id))].some((a) => a[f] !== 0),
@@ -205,7 +283,7 @@ export default function DailyEntryPage() {
     }
   };
 
-  const remitCollect = (): { amount: number; date: string }[] | null => {
+  const remitCollect = (): Remit[] | null => {
     setRemitErr({});
     const raw = remitAmt.trim();
     const amt = parseFloat(raw);
@@ -216,7 +294,7 @@ export default function DailyEntryPage() {
         setRemitErr({ date: 'Please select the Remittance Date.' });
         return null;
       }
-      list.push({ amount: amt, date: remitDate });
+      list.push({ amount: amt, date: remitDate, account: remitAcct });
     } else if (!list.length) {
       setRemitErr({ amount: 'Please enter the Remittance Amount.', date: remitDate ? undefined : 'Please select the Remittance Date.' });
       return null;
@@ -234,7 +312,7 @@ export default function DailyEntryPage() {
       setRemitErr(errs);
       return;
     }
-    setRemits((r) => [...r, { amount: amt, date: remitDate }]);
+    setRemits((r) => [...r, { amount: amt, date: remitDate, account: remitAcct }]);
     setRemitAmt('');
   };
 
@@ -267,9 +345,14 @@ export default function DailyEntryPage() {
         } as never;
       }
     }
+    // `remitAmount` stays the day's whole deposit and `remitDate` the earliest
+    // of them, so the statement builders and the DSS export keep reading the
+    // fields they always have; the account split is carried alongside.
     const total = list.reduce((t, r) => t + r.amount, 0);
     snap.remits = list;
     snap.remitAmount = total;
+    snap.remitNonCereal = list.reduce((t, r) => (r.account === 'ce' ? t : t + r.amount), 0);
+    snap.remitCereal = list.reduce((t, r) => (r.account === 'ce' ? t + r.amount : t), 0);
     snap.remitDate = list.map((r) => r.date).filter(Boolean).sort()[0] ?? '';
 
     crsData.update<Record<string, SavedSheet>>('entryStore', (d) => {
@@ -284,7 +367,8 @@ export default function DailyEntryPage() {
     const freshEntry = crsData.get<Record<string, SavedSheet>>('entryStore') ?? {};
     const freshInsp = crsData.get<Record<string, InspDay>>('inspectionStore') ?? {};
     const freshManual = crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};
-    const { merged, source } = rebuildMonthlyFromDaily(Number(crsVal), m, y, freshEntry, freshInsp as never, freshManual[`${crsVal}_${m}_${y}`], lists);
+    const freshRcp = crsData.get<ReceiptRow[]>('receiptStore') ?? [];
+    const { merged, source } = rebuildMonthlyFromDaily(Number(crsVal), m, y, freshEntry, freshInsp as never, freshManual[`${crsVal}_${m}_${y}`], lists, freshRcp);
     const moKey = `${crsVal}_${m}_${y}`;
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[moKey] = merged;
@@ -348,6 +432,7 @@ export default function DailyEntryPage() {
     setRows({});
     setRemits([]);
     setRemitAmt('');
+    setRemitAcct('nc');
     setRemitErr({});
   };
 
@@ -359,6 +444,30 @@ export default function DailyEntryPage() {
       void appAlert('Please select a CRS shop first.');
       return;
     }
+
+    // The DSS bulk download is charged per day of the month. Unlike the
+    // statements, this file is still assembled in the browser: the styled
+    // .xlsx needs xlsx-js-style's cell borders and fonts, which the copy of
+    // SheetJS in this project cannot write, and shipping a DSS with its
+    // formatting stripped would be a worse regression than a weaker gate.
+    // So the check here is server-verified but client-enforced — see the note
+    // in CLAUDE.md.
+    const ref = date ? new Date(date + 'T00:00:00') : new Date();
+    const dssMonth = ref.getMonth() + 1;
+    const dssYear = ref.getFullYear();
+
+    try {
+      const access = await fetchAccess(Number(crsVal), dssMonth, dssYear);
+      if (!access.free && !access.dssPaid) {
+        const { order, upi } = await createOrder({ kind: 'dss', month: dssMonth, year: dssYear });
+        setDssPay({ order, upi });
+        return;
+      }
+    } catch (e) {
+      void appAlert(e instanceof Error ? e.message : 'Could not check the download entitlement.');
+      return;
+    }
+
     const { createDssEngine } = await import('@/generated/dss-legacy');
     const engine = createDssEngine({
       stores: {
@@ -394,6 +503,18 @@ export default function DailyEntryPage() {
     }
   }
 
+  // One line per commodity the Receipt Register filled in for this date.
+  // Ids outside this shop's list are skipped rather than shown raw — the grid
+  // has no row for them, so naming them would only puzzle the clerk.
+  const godownParts: string[] = [];
+  if (hasGodown) {
+    const names = new Map([...lists.a, ...lists.b].map((c) => [c.id, c.en] as [string, string]));
+    for (const [id, qty] of Object.entries(dayReceipts)) {
+      const nm = names.get(id);
+      if (nm) godownParts.push(`${nm} ${+qty.toFixed(3)}`);
+    }
+  }
+
   const thA = (label: React.ReactNode, extra?: React.CSSProperties, cls?: string) => (
     <th className={cls} style={{ padding: '9px 8px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)', ...extra }}>{label}</th>
   );
@@ -417,8 +538,19 @@ export default function DailyEntryPage() {
 
   const numInput = (sec: 'a' | 'b', c: Commodity, field: 'open' | 'receipt' | 'sales', d2: Derived, extra?: React.CSSProperties) => {
     const r = rows[`${sec}:${c.id}`] ?? {};
-    const isAuto = field === 'open' && d2.openAuto;
-    const val = isAuto ? d2.open.toFixed(3) : (r[field] ?? (saved?.[sec]?.[c.id]?.[field] !== undefined && r[field] === undefined ? '' : r[field]) ?? '');
+    const isCarry = field === 'open' && d2.openAuto;
+    // Receipts filled from the Receipt Register read blue rather than amber:
+    // both are auto, but one is yesterday's closing and the other is a keyed
+    // godown delivery the clerk can trace back to a receipt number.
+    const isGodown = field === 'receipt' && d2.receiptAuto;
+    const isAuto = isCarry || isGodown;
+    const val = isCarry ? d2.open.toFixed(3) : isGodown ? d2.receipt.toFixed(3) : '';
+    const refs = isGodown && crsId ? receiptRefsForDay(receiptStore, crsId, date, c.id) : [];
+    const tone = isGodown
+      ? { background: '#DBEAFE', color: '#1E40AF', fontWeight: 700 }
+      : isCarry
+        ? { background: '#FEF3C7', color: '#92400E', fontWeight: 700 }
+        : {};
     return (
       <input
         type="number"
@@ -430,8 +562,14 @@ export default function DailyEntryPage() {
         value={isAuto ? val : (r[field] ?? '')}
         onChange={(e) => setField(sec, c.id, field, e.target.value)}
         onKeyDown={gridKey}
-        title={isAuto ? "Auto-carried from the previous day's closing" : undefined}
-        style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', ...(isAuto ? { background: '#FEF3C7', color: '#92400E', fontWeight: 700 } : {}), ...extra }}
+        title={
+          isGodown
+            ? `From the Receipt Register — ${refs.join(', ')}. Edit it on the Receipt page.`
+            : isCarry
+              ? "Auto-carried from the previous day's closing"
+              : undefined
+        }
+        style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', ...tone, ...extra }}
       />
     );
   };
@@ -611,6 +749,20 @@ export default function DailyEntryPage() {
             </div>
           ) : null}
 
+          {carryFrom === null ? (
+            <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#15803D', fontSize: 12 }}>
+              No earlier sheet for this shop — enter the opening stock by hand.
+            </div>
+          ) : carryFrom.gap === 0 ? (
+            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#0369A1', fontSize: 12 }}>
+              Opening carried from the closing of <strong>{fmtDay(carryFrom.date)}</strong>.
+            </div>
+          ) : (
+            <div style={{ background: carryFrom.gap >= GAP_WARN_DAYS ? '#FEF3C7' : '#EFF6FF', border: `1px solid ${carryFrom.gap >= GAP_WARN_DAYS ? '#F59E0B' : '#BFDBFE'}`, borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: carryFrom.gap >= GAP_WARN_DAYS ? '#92400E' : '#0369A1', fontSize: 12 }}>
+              Opening carried from the closing of <strong>{fmtDay(carryFrom.date)}</strong> — {carryFrom.gap} {carryFrom.gap === 1 ? 'day' : 'days'} with no sheet in between.
+            </div>
+          )}
+
           <div style={{ background: 'linear-gradient(135deg,#0369A1,#0EA5E9)', borderRadius: '12px 12px 0 0', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>CRS {crsVal} — {shops[Number(crsVal) - 1]?.name ?? ''}</div>
@@ -630,6 +782,21 @@ export default function DailyEntryPage() {
                 <div style={{ fontSize: 11, color: '#A16207', marginTop: 3 }} dangerouslySetInnerHTML={{ __html: inspParts.join('') }} />
               </div>
               <div style={{ fontSize: 11, color: '#A16207', fontWeight: 600 }}>Total = Opening + Receipt + Excess − Shortage − Transfer</div>
+            </div>
+          ) : null}
+
+          {hasGodown ? (
+            <div style={{ display: 'flex', margin: '0 0 2px', padding: '11px 16px', border: '1px solid #BFDBFE', background: '#EFF6FF', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 18 }}>📦</span>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: '#1E40AF' }}>Godown receipts applied to this date</div>
+                <div style={{ fontSize: 11, color: '#1D4ED8', marginTop: 3 }}>
+                  {godownParts.map((p) => (
+                    <span key={p} style={{ display: 'inline-block', marginRight: 10 }}>{p}</span>
+                  ))}
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: '#1D4ED8', fontWeight: 600 }}>Change these on the Receipt page</div>
             </div>
           ) : null}
 
@@ -654,15 +821,34 @@ export default function DailyEntryPage() {
               <div style={{ width: '100%', borderTop: '1px solid var(--border)', margin: '14px 0 10px', paddingTop: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
                   🏭 Remittance Details <span style={{ color: '#DC2626' }}>*</span>
-                  <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--muted)', marginLeft: 6 }}>(required — bank deposit amount &amp; date; add more than one for the same day if the deposit was split)</span>
+                  <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--muted)', marginLeft: 6 }}>(required — bank account, deposit amount &amp; date; add more than one for the same day if the deposit was split or went to both accounts)</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 14, alignItems: 'start' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(210px,auto) 1fr 1fr auto', gap: 14, alignItems: 'start' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+                      Deposited To <span style={{ color: '#DC2626' }}>*</span>
+                    </label>
+                    <div style={{ display: 'flex', border: '2px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+                      {(['nc', 'ce'] as const).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setRemitAcct(k)}
+                          title={ACCT[k].hint}
+                          style={{ flex: 1, border: 'none', borderLeft: k === 'ce' ? '1px solid #E2E8F0' : undefined, padding: '9px 10px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', background: remitAcct === k ? ACCT[k].fg : '#fff', color: remitAcct === k ? '#fff' : 'var(--muted)' }}
+                        >
+                          {ACCT[k].label}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.35 }}>{ACCT[remitAcct].hint}</div>
+                  </div>
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                       Remittance Amount (₹) <span style={{ color: '#DC2626' }}>*</span>
                     </label>
                     <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 10, top: 19, transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: '#0369A1' }}>₹</span>
+                      <span style={{ position: 'absolute', left: 10, top: 19, transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: ACCT[remitAcct].fg }}>₹</span>
                       <input
                         type="number"
                         min={0}
@@ -679,18 +865,36 @@ export default function DailyEntryPage() {
                             addRemit();
                           }
                         }}
-                        style={{ width: '100%', border: `2px solid ${remitErr.amount ? '#DC2626' : '#BAE6FD'}`, borderRadius: 8, padding: '9px 12px 9px 26px', fontSize: 14, fontWeight: 700, color: '#0369A1', background: '#F0F9FF', outline: 'none' }}
+                        style={{ width: '100%', border: `2px solid ${remitErr.amount ? '#DC2626' : ACCT[remitAcct].bd}`, borderRadius: 8, padding: '9px 12px 9px 26px', fontSize: 14, fontWeight: 700, color: ACCT[remitAcct].fg, background: ACCT[remitAcct].bg, outline: 'none' }}
                       />
                       {remitErr.amount ? <div style={{ fontSize: 10, marginTop: 3, color: '#DC2626', fontWeight: 600 }}>{remitErr.amount}</div> : null}
                       {(() => {
+                        // Only the Non-Cereal side is weighed against the sales
+                        // total — the free commodities carry no rate, so the
+                        // sheet has nothing for a Cereal deposit to match.
                         const pend = parseFloat(remitAmt.trim());
-                        const remit = remitTotal + (remitAmt.trim() !== '' && !isNaN(pend) && pend > 0 ? pend : 0);
-                        if (!remit) return null;
-                        const diff = remit - grand;
-                        const many = remits.length > 1 ? ` (${remits.length} deposits)` : '';
-                        if (Math.abs(diff) < 0.001) return <div style={{ fontSize: 10, marginTop: 3, color: '#16A34A' }}>✓ Matches sales total{many}</div>;
-                        if (diff > 0) return <div style={{ fontSize: 10, marginTop: 3, color: '#D97706' }}>▲ +₹{diff.toFixed(2)} above sales total{many}</div>;
-                        return <div style={{ fontSize: 10, marginTop: 3, color: '#DC2626' }}>▼ ₹{Math.abs(diff).toFixed(2)} below sales total{many}</div>;
+                        const pending = remitAmt.trim() !== '' && !isNaN(pend) && pend > 0 ? pend : 0;
+                        const nc = remitNC + (remitAcct === 'nc' ? pending : 0);
+                        const ce = remitCE + (remitAcct === 'ce' ? pending : 0);
+                        if (!nc && !ce) return null;
+                        const ncRows = remits.filter((r) => r.account !== 'ce').length + (remitAcct === 'nc' && pending ? 1 : 0);
+                        const many = ncRows > 1 ? ` (${ncRows} deposits)` : '';
+                        const diff = nc - grand;
+                        const st: React.CSSProperties = { fontSize: 10, marginTop: 3 };
+                        return (
+                          <>
+                            {nc ? (
+                              Math.abs(diff) < 0.001 ? (
+                                <div style={{ ...st, color: '#16A34A' }}>✓ Non-Cereal matches sales total{many}</div>
+                              ) : diff > 0 ? (
+                                <div style={{ ...st, color: '#D97706' }}>▲ Non-Cereal +₹{diff.toFixed(2)} above sales total{many}</div>
+                              ) : (
+                                <div style={{ ...st, color: '#DC2626' }}>▼ Non-Cereal ₹{Math.abs(diff).toFixed(2)} below sales total{many}</div>
+                              )
+                            ) : null}
+                            {ce ? <div style={{ ...st, color: ACCT.ce.fg }}>🌾 Cereal A/C ₹{ce.toFixed(2)} — free commodities, not weighed against the sales total</div> : null}
+                          </>
+                        );
                       })()}
                     </div>
                   </div>
@@ -711,7 +915,7 @@ export default function DailyEntryPage() {
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'transparent', marginBottom: 5 }}>.</label>
-                    <button type="button" onClick={addRemit} title="Add this amount and date to the day's remittance list" style={{ background: 'linear-gradient(135deg,#047857,#10B981)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(16,185,129,.3)' }}>
+                    <button type="button" onClick={addRemit} title="Add this account, amount and date to the day's remittance list" style={{ background: 'linear-gradient(135deg,#047857,#10B981)', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(16,185,129,.3)' }}>
                       ➕ Add
                     </button>
                   </div>
@@ -719,15 +923,15 @@ export default function DailyEntryPage() {
                 <div style={{ marginTop: 12 }}>
                   {!remits.length ? (
                     <div style={{ fontSize: 11, color: '#B45309', background: '#FFFBEB', border: '1px dashed #FDE047', borderRadius: 8, padding: '8px 12px' }}>
-                      ⚠ No remittance added yet — enter the amount and date, then press <strong>Add</strong>. At least one is required to complete the day.
+                      ⚠ No remittance added yet — pick the account, enter the amount and date, then press <strong>Add</strong>. At least one deposit — Non-Cereal or Cereal — is required to complete the day.
                     </div>
                   ) : (
                     <div style={{ border: '1px solid #E2E8F0', borderRadius: 9, overflow: 'hidden' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ background: '#F8FAFC' }}>
-                            {['#', 'Amount', 'Deposit Date', ''].map((h, i) => (
-                              <th key={i} style={{ padding: '6px 10px', fontSize: 9.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '1px solid #E2E8F0', textAlign: i === 1 ? 'right' : i === 3 ? 'right' : 'center', width: i === 0 ? 34 : i === 3 ? 56 : undefined }}>{h}</th>
+                            {['#', 'Account', 'Amount', 'Deposit Date', ''].map((h, i) => (
+                              <th key={i} style={{ padding: '6px 10px', fontSize: 9.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '1px solid #E2E8F0', textAlign: i === 2 ? 'right' : i === 4 ? 'right' : 'center', width: i === 0 ? 34 : i === 4 ? 56 : undefined }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -735,7 +939,10 @@ export default function DailyEntryPage() {
                           {remits.map((r, i) => (
                             <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC' }}>
                               <td style={{ padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'center', borderBottom: '1px solid #F1F5F9' }}>{i + 1}</td>
-                              <td style={{ padding: '6px 10px', fontSize: 13, fontWeight: 800, color: '#0369A1', textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{inr(r.amount)}</td>
+                              <td style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>
+                                <span style={{ display: 'inline-block', background: ACCT[r.account].bg, border: `1px solid ${ACCT[r.account].bd}`, color: ACCT[r.account].fg, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 5 }}>{ACCT[r.account].label}</span>
+                              </td>
+                              <td style={{ padding: '6px 10px', fontSize: 13, fontWeight: 800, color: ACCT[r.account].fg, textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{inr(r.amount)}</td>
                               <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, color: '#334155', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{r.date.split('-').reverse().join('/')}</td>
                               <td style={{ padding: '4px 10px', textAlign: 'right', borderBottom: '1px solid #F1F5F9' }}>
                                 <button type="button" onClick={() => setRemits((list) => list.filter((_, j) => j !== i))} title="Remove this remittance" style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>✕</button>
@@ -746,8 +953,13 @@ export default function DailyEntryPage() {
                         <tfoot>
                           <tr style={{ background: '#F0F9FF' }}>
                             <td />
+                            <td style={{ padding: '7px 10px', fontSize: 9.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'center' }}>Day Total</td>
                             <td style={{ padding: '7px 10px', fontSize: 13, fontWeight: 900, color: '#0369A1', textAlign: 'right', whiteSpace: 'nowrap' }}>{inr(remitTotal)}</td>
-                            <td colSpan={2} style={{ padding: '7px 10px', fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>{remits.length} remittance{remits.length === 1 ? '' : 's'}</td>
+                            <td colSpan={2} style={{ padding: '7px 10px', fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>
+                              {remits.length} remittance{remits.length === 1 ? '' : 's'}
+                              {remitNC ? <span style={{ color: ACCT.nc.fg, marginLeft: 8 }}>Non-Cereal {inr(remitNC)}</span> : null}
+                              {remitCE ? <span style={{ color: ACCT.ce.fg, marginLeft: 8 }}>Cereal {inr(remitCE)}</span> : null}
+                            </td>
                           </tr>
                         </tfoot>
                       </table>
@@ -776,6 +988,15 @@ export default function DailyEntryPage() {
         </div>
       )}
       {inspOpen && crsId ? <InspectionModal crsId={crsId} date={date} onClose={() => setInspOpen(false)} /> : null}
+
+      {dssPay ? (
+        <PaymentDialog
+          order={dssPay.order}
+          upi={dssPay.upi}
+          onClose={() => setDssPay(null)}
+          onSubmitted={(o) => setDssPay((p) => (p ? { ...p, order: o } : p))}
+        />
+      ) : null}
     </div>
   );
 }

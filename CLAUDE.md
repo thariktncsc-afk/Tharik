@@ -98,6 +98,71 @@ looked like "invalid credentials" and took a while to find.
 
 Every seeded account still shares the password `pds123`.
 
+## Paid downloads
+
+Shop users pay per sheet before a statement can be opened; **ADMIN downloads are
+always free**. There is no gateway — the customer pays into the office's UPI
+handle, types the UTR back, and an admin matches it against the bank feed and
+approves. Every approval is a human decision, and `decided_by`/`decided_at` on
+`payment_orders` is the only thing standing behind it.
+
+Tariff (migration `0004_payments.sql`, editable in Settings): **₹40 per sheet
+inclusive of GST**, so 13 sheets = ₹520 and 14 = ₹560; **DSS ₹5 per day plus
+GST**; GST 18%. A *sheet* is a statement section, not a printed copy — the four
+sections with `copies: 2` still cost one sheet. **CRS 29 has twelve sections**,
+not thirteen, so `13` is never hardcoded: counts come from
+`engine.sectionsFor(crsId)`.
+
+**Money is stored in paise as integers.** Rupee floats do not survive being
+totalled and reconciled against a bank statement.
+
+### Where the gate actually is
+
+`/api/statements/render`, and nowhere else. The /statements page used to build
+sheets in the browser, which made any React gate advisory — the document was
+already in the page. The builders now run under Node in
+`src/lib/payments/server.ts` (`loadStatementEngine`), reading crs_state
+directly, and **the page no longer imports the statement engine at all**. Do not
+put it back: that one import is the difference between a paywall and a disabled
+button.
+
+Preview, Print and Excel all take that route because they are the same document.
+Gating only the download would collect nothing — Print → Save as PDF is free.
+
+The builders themselves are unchanged; only their location moved.
+`node tools/verify-statements.mjs` still proves every section byte-identical,
+and that is the check that matters after touching anything here.
+
+**The DSS export is the exception.** It is still assembled in the browser: the
+styled .xlsx needs `xlsx-js-style`'s borders and fonts, which the `xlsx` in this
+project cannot write, and shipping a DSS with its formatting stripped is a worse
+regression than a weaker gate. Its check is server-verified but client-enforced.
+To close that gap, add `xlsx-js-style` as a dependency and port
+`downloadDSSExcel()` server-side, shimming `XLSX.writeFile` to capture the
+workbook instead of writing it.
+
+### Gotchas
+
+- **The payee VPA is NOT in `__config`.** Any signed-in user can write crs_state
+  through /api/state, so a shop user could redirect every payment to their own
+  handle. It lives in `payment_settings`, written only through the admin-only
+  `/api/payments/settings`.
+- **Entitlement is per SHOP, not per user.** crs9's Bill Clerk and Packer are
+  two users behind one shop; billing that shop twice for one month would be
+  indefensible.
+- **Approvals accumulate.** Buying three sheets today and ten tomorrow leaves
+  the shop entitled to all thirteen, re-downloadable without paying again.
+- **Prices are frozen onto the order.** Changing the tariff must not
+  retroactively alter what someone already paid.
+- **The server never reads an amount from the request.** It takes only *what* is
+  being bought and re-derives the price from the settings row.
+- **`Math.max(0, NaN)` is NaN, not 0.** Quantities go through `units()` in
+  `pricing.ts` before touching money — a NaN reaches the customer as a "₹NaN"
+  price tag and lands an unreconcilable amount in the ledger.
+- Missing `payment_settings` (0004 not run) falls back to charging **off**, so a
+  migration gap makes downloads free rather than locking shops out of statutory
+  paperwork.
+
 ## Tools
 
 ```
@@ -153,7 +218,9 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 - Set all four env vars in Vercel (`.env.local` is local only)
 - Vercel → Functions region **Mumbai (`bom1`)** — users are in Tamil Nadu, and
   the default `iad1` round-trips every request through Virginia
-- Run any new migration against the live database as an explicit step
+- Run any new migration against the live database as an explicit step —
+  `0004_payments.sql` included, or the Payments screen 503s and every download
+  silently stays free
 - Supabase free tier **pauses after 7 days idle and has no backups** — upgrade
   before real users depend on it
 

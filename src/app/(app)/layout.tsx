@@ -24,6 +24,9 @@ const MENU = [
   { href: '/crs', icon: '🏪', label: 'CRS Shops' },
   { href: '/commodities', icon: '📦', label: 'Commodities' },
   { href: '/statements', icon: '📄', label: 'Statements' },
+  // Not admin-only: an admin sees the approval queue here, a shop user sees
+  // their own download payments and can finish one they left half-done.
+  { href: '/payments', icon: '💳', label: 'Payments' },
   { href: '/reports', icon: '📈', label: 'Reports' },
 ];
 const ADMIN = [

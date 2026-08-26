@@ -21,6 +21,7 @@ import { crsData, useStore } from '@/lib/dataStore';
 import { bagsOf, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 import CardAllot from './CardAllot';
 import GunnyTable from './GunnyTable';
 import RemitTable from './RemitTable';
@@ -48,6 +49,7 @@ export default function MonthlyEntryPage() {
   const meAdvanceStore = useStore<Record<string, Record<string, number>>>('meAdvanceStore') ?? {};
   const meCardConfirmed = useStore<Record<string, boolean>>('meCardConfirmed') ?? {};
   const salesCloseStore = useStore<Record<string, SalesClose>>('salesCloseStore') ?? {};
+  const receiptStore = useStore<ReceiptRow[]>('receiptStore') ?? [];
 
   const isCrsUser = !!user?.crsId && user.role !== 'ADMIN';
   const shopIds = isCrsUser ? [user!.crsId as number] : shops.map((_, i) => i + 1);
@@ -73,8 +75,8 @@ export default function MonthlyEntryPage() {
   // Merge the daily roll-up with the saved manual values (rule: daily wins).
   const { merged, source } = useMemo(() => {
     if (!crsId) return { merged: { a: {}, b: {} } as MonthlyBlock, source: { a: {}, b: {} } as SourceBlock };
-    return rebuildMonthlyFromDaily(crsId, month, year, entryStore, inspectionStore, meManualStore[key], lists);
-  }, [crsId, month, year, entryStore, inspectionStore, meManualStore, key]);
+    return rebuildMonthlyFromDaily(crsId, month, year, entryStore, inspectionStore, meManualStore[key], lists, receiptStore);
+  }, [crsId, month, year, entryStore, inspectionStore, meManualStore, key, lists, receiptStore]);
 
   // Inspection adjustments summed over the month, per section+commodity.
   const inspMonth = useMemo(() => {
@@ -100,6 +102,8 @@ export default function MonthlyEntryPage() {
     c: Commodity;
     sec: 'a' | 'b';
     derived: boolean;
+    /** Receipt came from the Receipt Register — that one cell is read-only. */
+    rcpLocked: boolean;
     open: number;
     receipt: number;
     sales: number;
@@ -114,11 +118,15 @@ export default function MonthlyEntryPage() {
 
   const rowFor = (sec: 'a' | 'b', c: Commodity): Row => {
     const rec = merged[sec][c.id] as MonthlyRec | undefined;
-    const derived = source[sec][c.id] === 'daily';
+    const src = source[sec][c.id];
+    const derived = src === 'daily';
+    // A 'receipt' row is otherwise hand-keyed: only its Receipt is fixed, so
+    // the clerk can still key that month's Opening and Sales around it.
+    const rcpLocked = derived || src === 'receipt';
     const e = edits[`${sec}:${c.id}`] ?? {};
     const num = (edit: string | undefined, stored: number | undefined) => (edit !== undefined ? Number(edit) || 0 : Number(stored) || 0);
     const open = derived ? Number(rec?.open) || 0 : num(e.open, rec?.open);
-    const receipt = derived ? Number(rec?.receipt) || 0 : num(e.receipt, rec?.receipt);
+    const receipt = rcpLocked ? Number(rec?.receipt) || 0 : num(e.receipt, rec?.receipt);
     const sales = derived ? Number(rec?.sales) || 0 : num(e.sales, rec?.sales);
     let adj = inspMonth[`${sec}:${c.id}`] ?? { excess: 0, shortage: 0, transfer: 0 };
     if (!adj.excess && !adj.shortage && !adj.transfer && rec) {
@@ -142,10 +150,13 @@ export default function MonthlyEntryPage() {
       const storedG = Number(rec?.[`g_${f}` as keyof MonthlyRec]) || 0;
       // A stored bag count that differs from the kgs-derived one is the
       // office's own figure (imported workbook) — it wins (40-cs-column.js
-      // era fix in 05-monthly-entry.js).
-      g[f] = !derived && storedG > 0 && storedG !== auto ? storedG : auto;
+      // era fix in 05-monthly-entry.js). The three counts that move with the
+      // Receipt are the exception on a 'receipt' row: the stored ones describe
+      // the figure the register just replaced, so they are re-derived.
+      const staleG = src === 'receipt' && (f === 'receipt' || f === 'total' || f === 'close');
+      g[f] = !derived && !staleG && storedG > 0 && storedG !== auto ? storedG : auto;
     }
-    return { c, sec, derived, open, receipt, sales, total, close, amount, adj, cs, gCs, g };
+    return { c, sec, derived, rcpLocked, open, receipt, sales, total, close, amount, adj, cs, gCs, g };
   };
 
   const rows = useMemo(() => {
@@ -225,7 +236,7 @@ export default function MonthlyEntryPage() {
     crsData.update<Record<string, Partial<MonthlyBlock>>>('meManualStore', (d) => {
       d[ctx.key] = manual;
     });
-    const next = rebuildMonthlyFromDaily(ctx.crsId, ctx.month, ctx.year, entryStore, inspectionStore, manual, lists);
+    const next = rebuildMonthlyFromDaily(ctx.crsId, ctx.month, ctx.year, entryStore, inspectionStore, manual, lists, crsData.get<ReceiptRow[]>('receiptStore') ?? []);
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[ctx.key] = next.merged;
     });
@@ -251,7 +262,8 @@ export default function MonthlyEntryPage() {
     const footBd = secA ? '2px solid #BAE6FD' : '2px solid #FED7AA';
     const s = sec === 'a' ? sumA : sumB;
     const kgsInput = (r: Row, field: 'open' | 'receipt' | 'sales', style?: React.CSSProperties) => {
-      const locked = r.derived;
+      const fromRegister = field === 'receipt' && r.rcpLocked && !r.derived;
+      const locked = field === 'receipt' ? r.rcpLocked : r.derived;
       const e = edits[`${sec}:${r.c.id}`] ?? {};
       const stored = merged[sec][r.c.id]?.[field];
       const val = locked
@@ -269,9 +281,15 @@ export default function MonthlyEntryPage() {
           readOnly={locked}
           placeholder="0.000"
           value={val}
-          title={locked ? 'Accumulated from Daily Entry — edit the day sheet to change this' : undefined}
+          title={
+            fromRegister
+              ? 'Total of this month’s godown receipts — change them on the Receipt page'
+              : locked
+                ? 'Accumulated from Daily Entry — edit the day sheet to change this'
+                : undefined
+          }
           onChange={(e2) => setEdit(sec, r.c.id, { [field]: e2.target.value } as Partial<GridEdit>)}
-          style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 5, padding: '4px 5px', fontSize: 11, textAlign: 'right', ...(locked ? { background: '#F0F9FF', color: '#0369A1', fontWeight: 700 } : {}), ...style }}
+          style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 5, padding: '4px 5px', fontSize: 11, textAlign: 'right', ...(fromRegister ? { background: '#DBEAFE', color: '#1E40AF', fontWeight: 700 } : locked ? { background: '#F0F9FF', color: '#0369A1', fontWeight: 700 } : {}), ...style }}
         />
       );
     };

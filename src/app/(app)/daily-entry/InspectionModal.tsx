@@ -16,6 +16,7 @@ import { crsData } from '@/lib/dataStore';
 import { type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 
 type InspRec = { excess?: number; shortage?: number; transfer?: number };
 type InspDay = { a?: Record<string, InspRec>; b?: Record<string, InspRec> };
@@ -83,7 +84,8 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
     const entryStore = crsData.get<Record<string, DayEntry>>('entryStore') ?? {};
     const inspectionStore = crsData.get<Record<string, InspDay>>('inspectionStore') ?? {};
     const manual = (crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {})[`${crsId}_${m}_${y}`];
-    const next = rebuildMonthlyFromDaily(crsId, m, y, entryStore, inspectionStore as never, manual, lists);
+    const receiptStore = crsData.get<ReceiptRow[]>('receiptStore') ?? [];
+    const next = rebuildMonthlyFromDaily(crsId, m, y, entryStore, inspectionStore as never, manual, lists, receiptStore);
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[`${crsId}_${m}_${y}`] = next.merged;
     });

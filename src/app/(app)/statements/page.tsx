@@ -1,49 +1,57 @@
 'use client';
 
 /**
- * Statement Generation — React port of the screen (pageStatement.ts,
- * 11-statement-core.js UI logic) on top of the legacy statement engine
- * wrapped in src/generated/statements-legacy.js.
+ * Statement Generation.
  *
- * The builders themselves are the REAL legacy source behind a context shim
- * (see tools/build-stmt-module.mjs) — their output is verified byte-for-byte
- * against golden/statements/ by tools/verify-statements.mjs, because these
- * are statutory documents. This file only rebuilds the screen around them:
- * section tiles, preview, select/export bar, print and Excel flows.
+ * This screen no longer builds statements. It used to construct the legacy
+ * engine in the browser and render every section locally, which meant any
+ * paywall here was advisory — the document was already in the page. The
+ * builders now run in /api/statements/render, behind the entitlement check,
+ * and this file only asks for what the user selected and presents what comes
+ * back. Preview, Print and Excel all take that same route, because they are
+ * the same document: gating the download alone would have collected nothing.
+ *
+ * The builders themselves are untouched (src/generated/statements-legacy.js,
+ * verified byte-for-byte by tools/verify-statements.mjs) — only their location
+ * changed.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { appAlert } from '@/components/dialog';
-import { createStatementEngine } from '@/generated/statements-legacy';
+import PaymentDialog from '@/components/PaymentDialog';
 import { useAuth } from '@/lib/authClient';
-import { crsData, useDataStatus, useStore, useUsers } from '@/lib/dataStore';
+import { crsData, useDataStatus } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
-import { rebuildMonthlyFromDaily } from '@/lib/engine/monthlyRollup';
-
-type ShopRec = { name: string; code: string; taluk: string; district: string; cards: number; active: boolean };
-type Section = { id: string; label: string; icon: string; desc: string; copies: number; color: string; availableFor: string };
-type StmtData = {
-  crsId: number;
-  mo: string;
-  yr: number;
-  avail: Record<string, boolean | number>;
-};
-type Engine = {
-  getData: (crsId: number, month: number, year: number) => StmtData;
-  buildSection: (id: string, d: StmtData) => string;
-  sectionsFor: (crsId: number) => Section[];
-  printCss: string;
-};
+import { formatRupees, quoteStatement } from '@/lib/payments/pricing';
+import {
+  ApiError,
+  createOrder,
+  fetchAccess,
+  fetchOrders,
+  renderStatements,
+  STATUS_LABEL,
+  STATUS_COLOR,
+  type Access,
+  type Order,
+  type Rendered,
+  type Section,
+  type Upi,
+} from '@/lib/payments/client';
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+const MODULES: { key: string; label: string }[] = [
+  { key: 'monthly', label: 'Monthly Entry' },
+  { key: 'daily', label: 'Daily Entry' },
+  { key: 'receipt', label: 'Receipt' },
+  { key: 'inspection', label: 'Inspection' },
+  { key: 'gunny', label: 'Gunny Stock' },
+  { key: 'cards', label: 'Card Details' },
+  { key: 'remittance', label: 'Remittance' },
+];
 
 export default function StatementsPage() {
   const { user } = useAuth();
   const { status } = useDataStatus();
-  const users = useUsers();
-  // Dropdowns and headings use the full 30-shop list; the `__shops` master
-  // (nine demo rows from the original port) only lends its extra fields to
-  // the engine's CRS_LIST, matching the environment the goldens verify.
-  const shopExtras = useStore<ShopRec[]>('__shops') ?? [];
   const shops = useShops();
   const now = new Date();
 
@@ -58,124 +66,125 @@ export default function StatementsPage() {
   const [preview, setPreview] = useState<null | { section: Section; html: string; sub: string }>(null);
   const [history, setHistory] = useState<{ at: string; label: string; crsId: number; period: string }[]>([]);
 
+  const [access, setAccess] = useState<Access | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [busy, setBusy] = useState('');
+  const [pay, setPay] = useState<null | { order: Order; upi: Upi | null }>(null);
+
   const crsId = crsVal ? Number(crsVal) : null;
 
-  // The engine reads the SAME store objects the data layer holds, so a
-  // republished month lands exactly where the legacy app put it.
-  const engine: Engine | null = useMemo(() => {
-    if (status !== 'ready') return null;
-    const stores = {
-      entryStore: crsData.get('entryStore') ?? {},
-      inspectionStore: crsData.get('inspectionStore') ?? {},
-      monthlyStore: crsData.get('monthlyStore') ?? {},
-      meManualStore: crsData.get('meManualStore') ?? {},
-      meSourceStore: crsData.get('meSourceStore') ?? {},
-      meRemitStore: crsData.get('meRemitStore') ?? {},
-      meGunnyStore: crsData.get('meGunnyStore') ?? {},
-      meCardStore: crsData.get('meCardStore') ?? {},
-      salesCloseStore: crsData.get('salesCloseStore') ?? {},
-      receiptStore: crsData.get('receiptStore') ?? [],
-      meAllotStore: crsData.get('meAllotStore') ?? {},
-      meCardConfirmed: crsData.get('meCardConfirmed') ?? {},
-      meAdvanceStore: crsData.get('meAdvanceStore') ?? {},
-    } as Record<string, Record<string, unknown> | unknown[]>;
-    const CRS_LIST = shops.map((s) => ({ ...(shopExtras[s.id - 1] ?? {}), id: s.id, name: s.name }));
-    return createStatementEngine({
-      stores,
-      users,
-      CRS_LIST,
-      CRS_MASTER: crsData.get('__crsMaster') ?? [],
-      TN_GOVT_HOLIDAYS: crsData.get('__holidays'),
-      APP_CONFIG: crsData.get('__config') ?? {},
-      CRS_ACCOUNTS: crsData.get('__accounts') ?? {},
-      currentUser: user,
-      // Same behaviour as the legacy stmtGetData: refresh the month from the
-      // daily sheets + manual values before the sections read it.
-      rebuildMonthlyFromDaily: (cid: number, m: number, y: number) => {
-        const manual = (stores.meManualStore as Record<string, unknown>)[`${cid}_${m}_${y}`];
-        const next = rebuildMonthlyFromDaily(cid, m, y, stores.entryStore as never, stores.inspectionStore as never, manual as never);
-        (stores.monthlyStore as Record<string, unknown>)[`${cid}_${m}_${y}`] = next.merged;
-        (stores.meSourceStore as Record<string, unknown>)[`${cid}_${m}_${y}`] = next.source;
-      },
-    }) as Engine;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, shopExtras, shops, users, user, crsId, month, year]);
-
-  const sections = engine && crsId ? engine.sectionsFor(crsId) : [];
-  const visibleSections = sections.filter((s) => s.availableFor === 'all' || (s.availableFor === 'admin' && isAdmin));
-
-  const avail = useMemo(() => {
-    if (!engine || !crsId) return null;
-    try {
-      return engine.getData(crsId, month, year).avail;
-    } catch {
-      return null;
-    }
-  }, [engine, crsId, month, year]);
-
-  const record = (section: Section) =>
-    setHistory((h) => [{ at: new Date().toLocaleString('en-IN'), label: section.label, crsId: crsId!, period: `${MONTHS[month]} ${year}` }, ...h].slice(0, 50));
-
-  const doPreview = (section: Section) => {
-    if (!engine || !crsId) {
-      void appAlert('Please select a CRS shop first.');
+  // ── Access ────────────────────────────────────────────────────────────────
+  const refreshAccess = useCallback(async () => {
+    if (!crsId) {
+      setAccess(null);
       return;
     }
-    const d = engine.getData(crsId, month, year);
-    const html = engine.buildSection(section.id, d);
-    setPreview({
-      section,
-      html: `<style>${engine.printCss}</style>` + html,
-      sub: `CRS ${crsId} — ${d.mo} ${d.yr}${section.copies > 1 ? ` — ×${section.copies} copies` : ''}`,
-    });
-    record(section);
+    try {
+      const [a, o] = await Promise.all([fetchAccess(crsId, month, year), fetchOrders().catch(() => [])]);
+      setAccess(a);
+      setOrders(o);
+    } catch (e) {
+      setAccess(null);
+      if (e instanceof ApiError && e.status !== 403) console.error('[statements] access failed:', e.message);
+    }
+  }, [crsId, month, year]);
+
+  useEffect(() => {
+    void refreshAccess();
+  }, [refreshAccess]);
+
+  const sections = access?.sections ?? [];
+  const avail = access?.avail ?? null;
+  const paid = useMemo(() => new Set(access?.paidSections ?? []), [access]);
+  const free = access?.free ?? false;
+  const locked = useCallback((id: string) => !free && !paid.has(id), [free, paid]);
+
+  const labels = useMemo(() => Object.fromEntries(sections.map((s) => [s.id, s.label])), [sections]);
+
+  const selectedIds = useMemo(() => Object.keys(selected).filter((id) => selected[id]), [selected]);
+  const unpaidSelected = useMemo(() => selectedIds.filter(locked), [selectedIds, locked]);
+
+  const quote = access ? quoteStatement(unpaidSelected.length, access.settings) : null;
+
+  const openForMonth = orders.filter(
+    (o) => o.crsId === crsId && o.month === month && o.year === year && (o.status === 'pending' || o.status === 'awaiting_approval'),
+  );
+
+  const record = (label: string) =>
+    setHistory((h) => [{ at: new Date().toLocaleString('en-IN'), label, crsId: crsId!, period: `${MONTHS[month]} ${year}` }, ...h].slice(0, 50));
+
+  // ── Rendering (server) ────────────────────────────────────────────────────
+
+  /**
+   * The statements are built from the DATABASE now, not from this tab's
+   * memory, so anything typed in the last few seconds has to be flushed first
+   * — otherwise a figure entered and immediately previewed would be missing.
+   */
+  const render = async (ids: string[], what: string): Promise<Rendered | null> => {
+    if (!crsId) {
+      void appAlert('Please select a CRS shop first.');
+      return null;
+    }
+    if (!ids.length) {
+      void appAlert('Please select at least one section.');
+      return null;
+    }
+    setBusy(what);
+    try {
+      await crsData.save();
+      return await renderStatements({ crsId, month, year, sectionIds: ids });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402) {
+        // Not paid for. Raise the order for exactly the sheets that are owing
+        // and put the QR in front of the customer rather than an error.
+        await startPayment(e.unpaid.length ? e.unpaid : ids);
+        return null;
+      }
+      void appAlert(e instanceof Error ? e.message : 'Could not build the statements.');
+      return null;
+    } finally {
+      setBusy('');
+    }
   };
 
-  const openPrintWindow = (title: string, html: string) => {
+  const openPrintWindow = (title: string, css: string, html: string) => {
     const win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) return;
-    win.document.write(`<html><head><title>${title}</title><style>${engine!.printCss}</style></head><body>${html}</body></html>`);
+    if (!win) {
+      void appAlert('The print window was blocked by the browser. Allow pop-ups for this site and try again.');
+      return;
+    }
+    win.document.write(`<html><head><title>${title}</title><style>${css}</style></head><body>${html}</body></html>`);
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 600);
   };
 
-  const printSelected = () => {
-    if (!engine || !crsId) {
-      void appAlert('Please select a CRS shop.');
-      return;
-    }
-    const ids = Object.keys(selected).filter((id) => selected[id]);
-    if (!ids.length) {
-      void appAlert('Please select at least one section.');
-      return;
-    }
-    const d = engine.getData(crsId, month, year);
-    let html = '';
-    for (const id of ids) {
-      const sec = sections.find((s) => s.id === id);
-      const secHtml = engine.buildSection(id, d);
-      for (let i = 0; i < (sec?.copies ?? 1); i++) html += secHtml;
-    }
-    openPrintWindow(`TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`, html);
+  const doPreview = async (section: Section) => {
+    const out = await render([section.id], `preview:${section.id}`);
+    if (!out) return;
+    const built = out.sections[0];
+    setPreview({
+      section,
+      html: `<style>${out.css}</style>` + built.html,
+      sub: `CRS ${crsId} — ${out.period.mo} ${out.period.yr}${section.copies > 1 ? ` — ×${section.copies} copies` : ''}`,
+    });
+    record(section.label);
   };
 
-  const excelSelected = () => {
-    if (!engine || !crsId) {
-      void appAlert('Please select a CRS shop.');
-      return;
-    }
-    const ids = Object.keys(selected).filter((id) => selected[id]);
-    if (!ids.length) {
-      void appAlert('Please select at least one section.');
-      return;
-    }
-    const d = engine.getData(crsId, month, year);
+  const printSelected = async () => {
+    const out = await render(selectedIds, 'print');
+    if (!out) return;
+    let html = '';
+    for (const s of out.sections) for (let i = 0; i < s.copies; i++) html += s.html;
+    openPrintWindow(`TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`, out.css, html);
+    out.sections.forEach((s) => record(s.label));
+  };
+
+  const excelSelected = async () => {
+    const out = await render(selectedIds, 'excel');
+    if (!out) return;
     let html = '<html><head><meta charset="UTF-8"/></head><body>';
-    for (const id of ids) {
-      const sec = sections.find((s) => s.id === id);
-      html += `<h2>${sec?.label ?? id}</h2>` + engine.buildSection(id, d) + '<br><br>';
-    }
+    for (const s of out.sections) html += `<h2>${s.label}</h2>` + s.html + '<br><br>';
     html += '</body></html>';
     const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
@@ -184,20 +193,26 @@ export default function StatementsPage() {
     a.download = `TNCSC_CRS${crsId}_${MONTHS[month]}_${year}_Statements.xls`;
     a.click();
     URL.revokeObjectURL(url);
+    out.sections.forEach((s) => record(s.label));
   };
 
-  const selectedCount = Object.values(selected).filter(Boolean).length;
-  const sel = { width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13 } as const;
+  // ── Payment ───────────────────────────────────────────────────────────────
+  const startPayment = async (ids: string[]) => {
+    if (!crsId) return;
+    setBusy('order');
+    try {
+      const { order, upi } = await createOrder({ kind: 'statement', month, year, sectionIds: ids });
+      setPay({ order, upi });
+    } catch (e) {
+      void appAlert(e instanceof Error ? e.message : 'Could not raise the payment order.');
+    } finally {
+      setBusy('');
+    }
+  };
 
-  const MODULES: { key: string; label: string }[] = [
-    { key: 'monthly', label: 'Monthly Entry' },
-    { key: 'daily', label: 'Daily Entry' },
-    { key: 'receipt', label: 'Receipt' },
-    { key: 'inspection', label: 'Inspection' },
-    { key: 'gunny', label: 'Gunny Stock' },
-    { key: 'cards', label: 'Card Details' },
-    { key: 'remittance', label: 'Remittance' },
-  ];
+  const sel = { width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13 } as const;
+  const selectedCount = selectedIds.length;
+  const working = busy !== '';
 
   return (
     <div className="page active" id="page-statement">
@@ -208,6 +223,16 @@ export default function StatementsPage() {
             {crsId ? `CRS ${crsId} — ${shops[crsId - 1]?.name ?? ''} · ${MONTHS[month]} ${year}` : 'Generate official TNCSC monthly statements'}
           </div>
         </div>
+        {access && !free ? (
+          <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700 }}>
+            🔒 {formatRupees(access.settings.statementSheetPaise)} per sheet, GST included
+          </div>
+        ) : null}
+        {access && free && access.isAdmin ? (
+          <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', color: '#15803D', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700 }}>
+            ✓ Administrator — downloads are free
+          </div>
+        ) : null}
       </div>
 
       <div className="card mb-4">
@@ -218,7 +243,7 @@ export default function StatementsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, alignItems: 'end', marginBottom: 16 }}>
             <div>
               <label className="form-label">CRS Shop</label>
-              <select value={crsVal} onChange={(e) => { setCrsVal(e.target.value); setPreview(null); }} style={sel}>
+              <select value={crsVal} onChange={(e) => { setCrsVal(e.target.value); setPreview(null); setSelected({}); }} style={sel}>
                 <option value="">Select CRS Shop...</option>
                 {shopIds.map((id) => (
                   <option key={id} value={String(id)}>
@@ -287,18 +312,60 @@ export default function StatementsPage() {
         </div>
       </div>
 
+      {openForMonth.length ? (
+        <div className="card mb-4">
+          <div className="card-header">
+            <div className="card-title">Your payment requests for this month</div>
+          </div>
+          <div style={{ padding: '10px 16px' }}>
+            {openForMonth.map((o) => {
+              const tone = STATUS_COLOR[o.status];
+              return (
+                <div key={o.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderBottom: '1px solid #F1F5F9', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 12 }}>
+                    <strong>{o.orderNo}</strong> — {formatRupees(o.totalPaise)} ·{' '}
+                    {o.kind === 'dss' ? `DSS ${o.dayCount} day(s)` : `${o.sheetCount} sheet(s)`}
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                      {o.kind === 'statement' ? o.sectionIds.map((id) => labels[id] ?? id).join(' · ') : ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ background: tone.bg, color: tone.fg, border: `1px solid ${tone.border}`, borderRadius: 20, padding: '3px 10px', fontSize: 10.5, fontWeight: 700 }}>
+                      {STATUS_LABEL[o.status]}
+                    </span>
+                    {o.status === 'pending' ? (
+                      <button
+                        onClick={() => setPay({ order: o, upi: null })}
+                        style={{ background: '#0284C7', border: 'none', color: '#fff', padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Enter UTR
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       <div className="card mb-4">
         <div className="card-header">
           <div className="card-title">Statement Sections</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>Click a heading to preview · Select checkboxes to export</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            {free ? 'Click a heading to preview · Select checkboxes to export' : 'Select the sheets you need, then pay to unlock them'}
+          </div>
         </div>
         <div className="card-body">
           {!crsId ? (
             <div style={{ textAlign: 'center', padding: 24, color: 'var(--muted)', fontSize: 13 }}>Select a CRS shop above to list its statement sections.</div>
+          ) : !access ? (
+            <div style={{ textAlign: 'center', padding: 24, color: 'var(--muted)', fontSize: 13 }}>Loading…</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-              {visibleSections.map((s) => {
+              {sections.map((s) => {
                 const isSel = !!selected[s.id];
+                const isLocked = locked(s.id);
                 return (
                   <div
                     key={s.id}
@@ -339,14 +406,31 @@ export default function StatementsPage() {
                     <div style={{ fontWeight: 800, fontSize: 13, color: s.color, marginBottom: 3 }}>{s.label}</div>
                     <div style={{ fontSize: 10, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 6 }}>{s.desc}</div>
                     {s.copies > 1 ? <div style={{ fontSize: 10, color: '#D97706', fontWeight: 700 }}>✖{s.copies} copies</div> : null}
+                    {!free ? (
+                      <div style={{ fontSize: 10, fontWeight: 700, color: isLocked ? '#B45309' : '#15803D', marginTop: 4 }}>
+                        {isLocked ? `🔒 ${formatRupees(access.settings.statementSheetPaise)}` : '✓ Paid'}
+                      </div>
+                    ) : null}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        doPreview(s);
+                        void doPreview(s);
                       }}
-                      style={{ marginTop: 8, width: '100%', background: s.color, color: '#fff', border: 'none', padding: 5, borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      disabled={working}
+                      style={{
+                        marginTop: 8,
+                        width: '100%',
+                        background: working ? '#94A3B8' : s.color,
+                        color: '#fff',
+                        border: 'none',
+                        padding: 5,
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: working ? 'default' : 'pointer',
+                      }}
                     >
-                      👁 Preview
+                      {busy === `preview:${s.id}` ? 'Loading…' : isLocked ? '🔒 Pay & Preview' : '👁 Preview'}
                     </button>
                   </div>
                 );
@@ -374,24 +458,37 @@ export default function StatementsPage() {
             <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{selectedCount} section(s) selected</div>
             <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11, marginTop: 2 }}>
               for CRS {crsId ? `${crsId} — ${shops[crsId - 1]?.name ?? ''}` : '—'}
+              {quote && unpaidSelected.length ? ` · ${unpaidSelected.length} unpaid — ${formatRupees(quote.totalPaise)}` : ''}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => setSelected(Object.fromEntries(visibleSections.map((s) => [s.id, true])))} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+            <button onClick={() => setSelected(Object.fromEntries(sections.map((s) => [s.id, true])))} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
               ☑ Select All
             </button>
             <button onClick={() => setSelected({})} style={{ background: 'rgba(255,255,255,.15)', border: '1px solid rgba(255,255,255,.3)', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer' }}>
               ✕ Clear
             </button>
-            <button onClick={excelSelected} style={{ background: '#16A34A', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>
-              📊 Excel
-            </button>
-            <button onClick={printSelected} style={{ background: '#DC2626', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>
-              📄 PDF
-            </button>
-            <button onClick={printSelected} style={{ background: '#D97706', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 700 }}>
-              🖨️ Print
-            </button>
+            {quote && unpaidSelected.length ? (
+              <button
+                onClick={() => void startPayment(unpaidSelected)}
+                disabled={working}
+                style={{ background: '#F59E0B', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}
+              >
+                {busy === 'order' ? 'Please wait…' : `🔒 Pay ${formatRupees(quote.totalPaise)}`}
+              </button>
+            ) : (
+              <>
+                <button onClick={() => void excelSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#16A34A', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
+                  {busy === 'excel' ? 'Building…' : '📊 Excel'}
+                </button>
+                <button onClick={() => void printSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#DC2626', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
+                  {busy === 'print' ? 'Building…' : '📄 PDF'}
+                </button>
+                <button onClick={() => void printSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#D97706', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
+                  🖨️ Print
+                </button>
+              </>
+            )}
           </div>
         </div>
       ) : null}
@@ -411,9 +508,8 @@ export default function StatementsPage() {
                 <button
                   onClick={() => {
                     let html = '';
-                    const inner = preview.html;
-                    for (let i = 0; i < preview.section.copies; i++) html += inner;
-                    openPrintWindow(`${preview.section.label} - CRS ${crsId} ${MONTHS[month]} ${year}`, html);
+                    for (let i = 0; i < preview.section.copies; i++) html += preview.html;
+                    openPrintWindow(`${preview.section.label} - CRS ${crsId} ${MONTHS[month]} ${year}`, '', html);
                   }}
                   style={{ background: '#0284C7', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
                 >
@@ -447,6 +543,27 @@ export default function StatementsPage() {
           )}
         </div>
       </div>
+
+      {pay ? (
+        <PaymentDialog
+          order={pay.order}
+          upi={pay.upi}
+          labels={labels}
+          onClose={() => {
+            setPay(null);
+            void refreshAccess();
+          }}
+          onSubmitted={(o) => {
+            setOrders((list) => [o, ...list.filter((x) => x.id !== o.id)]);
+          }}
+        />
+      ) : null}
+
+      {status === 'error' ? (
+        <div style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', fontSize: 12, marginTop: 12 }}>
+          The data layer could not reach the server — statements may be out of date.
+        </div>
+      ) : null}
     </div>
   );
 }

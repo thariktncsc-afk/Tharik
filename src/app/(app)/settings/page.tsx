@@ -17,6 +17,7 @@
 import { useRef, useState } from 'react';
 import { crsData, useStore, type StoreKey } from '@/lib/dataStore';
 import { useUsers } from '@/lib/dataStore';
+import PaymentSettingsCard from './PaymentSettingsCard';
 
 type Config = {
   orgName?: string;
@@ -210,6 +211,8 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      <PaymentSettingsCard />
 
       <div className="card">
         <div className="card-body">
