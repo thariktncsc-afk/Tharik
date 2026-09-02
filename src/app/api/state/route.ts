@@ -29,6 +29,13 @@ const ALLOWED_KEYS = new Set([
   'meCardStore',
   'salesCloseStore',
   'receiptStore',
+  // Monthly Entry's card/allotment block (22-allotment.js, 24-coll.js). The
+  // legacy client has always tried to save these through the backup registry;
+  // accepting them here means the month's allotment finally survives a reload
+  // for both apps.
+  'meAllotStore',
+  'meCardConfirmed',
+  'meAdvanceStore',
   // userStore is deliberately absent — users live in their own table with hashed
   // passwords (0002_users.sql) and are served by /api/users. Accepting it here
   // would let a client write a second, competing copy of the roster.
@@ -40,6 +47,10 @@ const ALLOWED_KEYS = new Set([
   '__commodities',
   '__crsMaster',
   '__holidays',
+  // Full commodity records (id/names/unit/rate/section) for the converted
+  // screens — the legacy '__commodities' row is a bare id list and cannot
+  // carry rates, so it stays untouched for the classic app.
+  '__commodityMaster',
 ]);
 
 async function requireSession() {

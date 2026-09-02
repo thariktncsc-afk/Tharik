@@ -20,3 +20,5 @@ public/js/tncsc-engine.js
 
 # local database backups — contain staff names and phone numbers
 backups/
+
+public/golden-stores.json

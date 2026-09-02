@@ -73,6 +73,7 @@ const NEW_ENGINE = new Set([
   '39-staff-roles.js',
   '40-cs-column.js',
   '41-session-resume.js',
+  '42-opening-carry.js',
 ]);
 
 /**
