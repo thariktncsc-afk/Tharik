@@ -26,6 +26,7 @@
  */
 import { bagsOf, entryListsFor, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { receiptQtyForMonth, type ReceiptRow } from '@/lib/engine/receiptRollup';
+import { isProjectedSheet } from '@/lib/engine/monthProjection';
 
 export type MonthlyRec = {
   open: number;
@@ -101,7 +102,12 @@ export function dailyRollupForMonth(
 
   for (let day = 1; day <= n; day++) {
     const ds = `${year}-${pad2(month)}-${pad2(day)}`;
-    const ent = entryStore[`${crsId}_${ds}`];
+    // A projected sheet is this month's own manual figures written out as a
+    // day for the DSS and the date-wise sections to print. It is an output of
+    // the month, never an input — read back here it would lock every row as
+    // "from Daily" and, once a real sheet was keyed, count the month twice.
+    const kept = entryStore[`${crsId}_${ds}`];
+    const ent = isProjectedSheet(kept) ? undefined : kept;
     const ins = inspectionStore[`${crsId}_${ds}`];
     const rcp = godown[ds];
     if (!ent && !ins && !rcp) continue;
@@ -210,6 +216,36 @@ function withRegisterReceipt(m: MonthlyRec, receipt: number, id: string): Monthl
 }
 
 /**
+ * A hand-keyed month with the month's inspections applied over it.
+ *
+ * The clerk's Opening, Receipt, Sales and C.S stay; the three adjustments are
+ * REPLACED by the inspection totals — replaced, not added, because after a
+ * Monthly Entry save the manual row already holds the same sums, and adding
+ * would count every inspection twice. Total and Closing follow Monthly
+ * Entry's own rule (total − sales − cs), and the two bag counts that move
+ * with them are re-derived. Same arithmetic as rowFor() on that page, so the
+ * screen and the statements agree.
+ */
+function withInspection(m: MonthlyRec, adj: { excess: number; shortage: number; transfer: number }, id: string): MonthlyRec {
+  const open = Number(m.open) || 0;
+  const receipt = Number(m.receipt) || 0;
+  const sales = Number(m.sales) || 0;
+  const cs = Number(m.cs) || 0;
+  const total = open + receipt + adj.excess - adj.shortage - adj.transfer;
+  const close = total - sales - cs;
+  return {
+    ...m,
+    excess: adj.excess,
+    shortage: adj.shortage,
+    transfer: adj.transfer,
+    total,
+    close,
+    g_total: bagsOf(total, id),
+    g_close: bagsOf(close, id),
+  };
+}
+
+/**
  * Merge the daily roll-up with the month's manual values and return the
  * published monthly block + per-commodity source flags. Callers write the
  * result into monthlyStore/meSourceStore through the data layer.
@@ -235,7 +271,13 @@ export function rebuildMonthlyFromDaily(
     for (const c of comms) {
       const d = roll.data[sec][c.id];
       const m = manual?.[sec]?.[c.id];
-      const fromDaily = d && (d.days > 0 || d.excess || d.shortage || d.transfer);
+      // Only a keyed day sheet makes a row "from Daily". An inspection on its
+      // own used to as well — the original engine's rule — which meant a shop
+      // keying its month on the Monthly Entry page lost the whole row to zeros
+      // the moment it recorded a shortage there. Adjustments alone now overlay
+      // the manual row; it stays the clerk's to key.
+      const fromDaily = !!d && d.days > 0;
+      const adjOnly = !!d && !fromDaily && (d.excess !== 0 || d.shortage !== 0 || d.transfer !== 0);
       if (fromDaily) {
         // The day sheets already carry the register's figure in their Receipt
         // column — dailyRollupForMonth substituted it day by day.
@@ -246,13 +288,22 @@ export function rebuildMonthlyFromDaily(
         // A hand-keyed month. Its Opening and Sales are the clerk's and stay
         // the clerk's; only the Receipt defers to the register, and only when
         // the register actually holds a dated row for this commodity.
-        merged[sec][c.id] = d?.godown ? withRegisterReceipt(m, d.receipt, c.id) : m;
+        let rec = d?.godown ? withRegisterReceipt(m, d.receipt, c.id) : m;
+        if (adjOnly) rec = withInspection(rec, d, c.id);
+        merged[sec][c.id] = rec;
         source[sec][c.id] = d?.godown ? 'receipt' : 'manual';
       } else if (d?.godown) {
         // Nothing keyed anywhere — the receipt alone carries the month.
         const { days: _days, godown: _godown, ...rec } = d;
         merged[sec][c.id] = rec;
         source[sec][c.id] = 'receipt';
+      } else if (adjOnly) {
+        // Nothing keyed anywhere but an inspection. Publish the adjustment so
+        // the statements carry it, as a keyable row — there is no day sheet
+        // to send the clerk back to.
+        const { days: _days, godown: _godown, ...rec } = d;
+        merged[sec][c.id] = rec;
+        source[sec][c.id] = 'manual';
       }
     }
   }

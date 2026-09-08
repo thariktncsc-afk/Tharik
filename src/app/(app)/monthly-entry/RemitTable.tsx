@@ -1,21 +1,52 @@
 'use client';
 
 /**
- * Monthly Remittance — SRCB — port of buildMeRemitTable (15-monthly-extras.js).
- * One row per day of the month plus three extra rows (Poly & C.Box amount,
- * two labelled misc rows). Non-Cereal is numeric, Cereal accepts notes, the
- * total column is Non-Cereal + numeric Cereal. Edits write meRemitStore
- * immediately (the autosave loop persists), exactly like the legacy inputs.
+ * Monthly Remittance — SRCB — port of buildMeRemitTable (15-monthly-extras.js),
+ * with the day sheets' deposits folded in.
+ *
+ * A day that was keyed in Daily Sales Entry shows its deposits here
+ * automatically, one row per transaction, READ-ONLY — nobody keys the same
+ * remittance twice, and because the rows are derived rather than copied they
+ * cannot duplicate on a re-save or drift from the day sheet. Correct them on
+ * the Daily Entry page. A day with no sheet keeps the hand-keyed inputs it
+ * always had, so the imported months and the monthly-only shops are unchanged.
+ *
+ * A sales date can carry several deposits: the first is the ordinary one, and
+ * each later one is an additional remittance with a reason (Missed / Tea /
+ * Salt / C.Box). Those always sit in Non-Cereal, and their reason is shown
+ * where a plain row shows a Cereal figure. That substitution is display only —
+ * see src/lib/engine/remittance.ts — so the Cereal total below, and the Cereal
+ * column on the statutory statement, stay totals of money.
  */
 import { crsData } from '@/lib/dataStore';
+import { amounts, monthTxns, type RemitRow, type SheetLike } from '@/lib/engine/remittance';
 import type { MonthCtx, RemitDay, RemitExtra, RemitMonth } from './lib';
 
 const inr = (n: number) => '₹' + n.toFixed(2);
 
-export default function RemitTable({ ctx, remit, subtitle }: { ctx: MonthCtx; remit: Record<string, RemitMonth>; subtitle: string }) {
+export default function RemitTable({
+  ctx,
+  remit,
+  entryStore,
+  subtitle,
+}: {
+  ctx: MonthCtx;
+  remit: Record<string, RemitMonth>;
+  entryStore: Record<string, SheetLike>;
+  subtitle: string;
+}) {
   const month = remit[ctx.key] ?? {};
   const daysInMonth = new Date(ctx.year, ctx.month, 0).getDate();
   const extra = (month['extra'] ?? {}) as RemitExtra;
+
+  // Deposits recorded on this month's day sheets, grouped by the sales date
+  // they belong to — an additional deposit banked in October still belongs to
+  // its September sales date, and stays under it.
+  const byDay = new Map<number, RemitRow[]>();
+  for (const t of monthTxns(entryStore, ctx.crsId, ctx.month, ctx.year)) {
+    const d = Number(t.salesDate.slice(8));
+    byDay.set(d, [...(byDay.get(d) ?? []), t]);
+  }
 
   const writeDay = (day: number, field: keyof RemitDay, value: string) => {
     crsData.update<Record<string, RemitMonth>>('meRemitStore', (d) => {
@@ -42,20 +73,91 @@ export default function RemitTable({ ctx, remit, subtitle }: { ctx: MonthCtx; re
   let totNC = 0;
   let totCE = 0;
   const dayRows = [];
+  /**
+   * Every remittance is one row, numbered in sequence — a sales date with two
+   * deposits simply appears twice. The S.No is therefore a row counter, not
+   * the day of the month, and the striping follows it, so a derived row is
+   * indistinguishable from a keyed one.
+   */
+  let serial = 0;
+  const stripe = () => (serial % 2 === 0 ? '#F8FAFF' : '#fff');
+
+  /**
+   * A read-only cell that occupies exactly the space an input would. The keyed
+   * rows put a 1px-bordered, 5px/8px-padded, 12px control inside a 4px/6px
+   * cell; matching all three here keeps the row height identical whether the
+   * figure came from a day sheet or was typed in.
+   */
+  const ro = (content: React.ReactNode, align: 'center' | 'right', style?: React.CSSProperties) => (
+    <span
+      style={{
+        display: 'inline-block', width: '100%', boxSizing: 'border-box',
+        border: '1px solid transparent', borderRadius: 6, padding: '5px 8px',
+        fontSize: 12, textAlign: align, whiteSpace: 'nowrap', ...style,
+      }}
+    >
+      {content}
+    </span>
+  );
+
   for (let day = 1; day <= daysInMonth; day++) {
-    const d = (month[day] ?? {}) as RemitDay;
     const dateObj = new Date(ctx.year, ctx.month - 1, day);
+    const salesLabel = `${String(day).padStart(2, '0')}/${String(ctx.month).padStart(2, '0')}/${ctx.year}`;
+    const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dateObj.getDay()];
+    const txns = byDay.get(day);
+
+    // ── Days keyed in Daily Entry: one read-only row per deposit ───────────
+    if (txns?.length) {
+      txns.forEach((t) => {
+        const { nc, ce } = amounts(t);
+        totNC += nc;
+        totCE += ce;
+        serial++;
+        dayRows.push(
+          <tr key={`${day}-${t.id}`} style={{ background: stripe() }}>
+            <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--muted)', fontSize: 11, borderBottom: '1px solid #EFF6FF' }}>{serial}</td>
+            <td style={{ padding: '6px 12px', fontSize: 12, borderBottom: '1px solid #EFF6FF', whiteSpace: 'nowrap' }}>
+              <span style={{ fontWeight: 600 }}>{salesLabel}</span>
+              <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{dow}</span>
+            </td>
+            <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
+              {ro(t.date ? t.date.split('-').reverse().join('/') : '—', 'center', { color: '#0369A1', fontWeight: 600 })}
+            </td>
+            <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
+              {ro(nc ? inr(nc) : '—', 'right', { color: '#0369A1', fontWeight: 700 })}
+            </td>
+            <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
+              {/* The reason sits where a Cereal figure would, in the same box
+                  with no tint or border of its own — a row carrying one must
+                  not read as a different KIND of row. Its colour is the only
+                  hint that it is a label rather than an amount. */}
+              {t.reason
+                ? ro(t.reason, 'right', { color: '#92400E', fontWeight: 700 })
+                : ro(ce ? inr(ce) : '—', 'right', ce ? { color: '#15803D', fontWeight: 700 } : { color: 'var(--muted)' })}
+            </td>
+            <td style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '1px solid #EFF6FF', background: '#EFF6FF' }}>
+              <span style={{ fontWeight: 800, color: '#0369A1', fontSize: 12 }}>{inr(nc + ce)}</span>
+            </td>
+          </tr>,
+        );
+      });
+      continue;
+    }
+
+    // ── Days with no sheet: the hand-keyed row, exactly as before ──────────
+    serial++;
+    const d = (month[day] ?? {}) as RemitDay;
     const nonCereal = d.nonCereal !== undefined ? d.nonCereal : '';
     const cereal = d.cereal !== undefined ? d.cereal : '';
     totNC += num(nonCereal);
     totCE += num(cereal);
     const rowTotal = num(nonCereal) + num(cereal);
     dayRows.push(
-      <tr key={day} style={{ background: day % 2 === 0 ? '#F8FAFF' : '#fff' }}>
-        <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--muted)', fontSize: 11, borderBottom: '1px solid #EFF6FF' }}>{day}</td>
+      <tr key={day} style={{ background: stripe() }}>
+        <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--muted)', fontSize: 11, borderBottom: '1px solid #EFF6FF' }}>{serial}</td>
         <td style={{ padding: '6px 12px', fontSize: 12, borderBottom: '1px solid #EFF6FF', whiteSpace: 'nowrap' }}>
-          <span style={{ fontWeight: 600 }}>{String(day).padStart(2, '0')}/{String(ctx.month).padStart(2, '0')}/{ctx.year}</span>
-          <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dateObj.getDay()]}</span>
+          <span style={{ fontWeight: 600 }}>{salesLabel}</span>
+          <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{dow}</span>
         </td>
         <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF', textAlign: 'center' }}>
           <input type="date" value={d.remitDate ?? ''} onChange={(e) => writeDay(day, 'remitDate', e.target.value)} style={{ border: '1px solid #BAE6FD', borderRadius: 6, padding: '4px 7px', fontSize: 11, color: '#0369A1', background: '#F0F9FF', width: 130 }} />
@@ -100,7 +202,7 @@ export default function RemitTable({ ctx, remit, subtitle }: { ctx: MonthCtx; re
     const inputCol = amber ? '#92400E' : '#0369A1';
     return (
       <tr key={`e${n}`} style={{ background: amber ? '#FEF9C3' : n === 2 ? '#F8FAFF' : '#fff', borderTop: amber ? '2px solid #FDE047' : undefined }}>
-        <td style={{ padding: '6px 10px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: amber ? '#92400E' : 'var(--muted)', borderBottom: bd }}>{daysInMonth + n}</td>
+        <td style={{ padding: '6px 10px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: amber ? '#92400E' : 'var(--muted)', borderBottom: bd }}>{serial + n}</td>
         <td style={{ padding: '6px 12px', borderBottom: bd, fontSize: 11, fontWeight: 700, color: amber ? '#92400E' : undefined, whiteSpace: amber ? 'nowrap' : undefined }}>
           {amber ? (
             <>📦 Poly &amp; C.Box Amount</>

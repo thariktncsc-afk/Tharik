@@ -31,6 +31,12 @@ import { receiptQtyForDay, receiptRefsForDay, type ReceiptRow } from '@/lib/engi
 import PaymentDialog from '@/components/PaymentDialog';
 import { createOrder, fetchAccess, type Order, type Upi } from '@/lib/payments/client';
 import InspectionModal from './InspectionModal';
+import { dropProjectedAdjustments, dropProjectedSheet, isProjectedSheet } from '@/lib/engine/monthProjection';
+import ClearRequestDialog from '@/components/ClearRequestDialog';
+import AdditionalRemitDialog from '@/components/AdditionalRemitDialog';
+import { newRemitId, sheetTotals, txnsOf, type RemitAcct, type RemitReason, type RemitTxn } from '@/lib/engine/remittance';
+import { hasData } from '@/lib/clearGuard';
+import type { ClearScope } from '@/lib/clearClient';
 
 type ShopRec = { name: string };
 
@@ -42,11 +48,10 @@ type ShopRec = { name: string };
  * Rows saved before the split have no `account` and read as Non-Cereal —
  * that is what the single amount box always meant.
  */
-type RemitAcct = 'nc' | 'ce';
-type Remit = { amount: number; date: string; account: RemitAcct };
+type Remit = RemitTxn;
 
 type SavedSheet = DayEntry & {
-  remits?: { amount: number; date: string; account?: RemitAcct }[];
+  remits?: RemitTxn[];
   remitAmount?: number;
   remitDate?: string;
   remitNonCereal?: number;
@@ -145,6 +150,9 @@ export default function DailyEntryPage() {
   const [remitErr, setRemitErr] = useState<{ amount?: string; date?: string }>({});
   const [savedMsg, setSavedMsg] = useState('');
   const [inspOpen, setInspOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  /** A second-or-later deposit waiting for its reason. */
+  const [pendingRemit, setPendingRemit] = useState<null | { amount: number; date: string; account: RemitAcct }>(null);
   /** Set when the DSS download needs paying for before it can be built. */
   const [dssPay, setDssPay] = useState<null | { order: Order; upi: Upi | null }>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -170,13 +178,10 @@ export default function DailyEntryPage() {
           };
         }
       }
-      if (sheet.remits?.length) {
-        setRemits(sheet.remits.map((r) => ({ amount: Number(r.amount) || 0, date: r.date || '', account: r.account === 'ce' ? 'ce' : 'nc' })));
-      } else if (Number(sheet.remitAmount)) {
-        setRemits([{ amount: Number(sheet.remitAmount), date: sheet.remitDate || date, account: 'nc' }]);
-      } else {
-        setRemits([]);
-      }
+      // Read through the shared reader so sheets saved before transactions
+      // existed (a bare remits array, or only remitAmount) still come back as
+      // deposits with stable ids rather than vanishing from the month.
+      setRemits(txnsOf(sheet, date).map(({ salesDate: _s, additional: _a, ...t }) => t));
     } else {
       setRemits([]);
     }
@@ -294,7 +299,13 @@ export default function DailyEntryPage() {
         setRemitErr({ date: 'Please select the Remittance Date.' });
         return null;
       }
-      list.push({ amount: amt, date: remitDate, account: remitAcct });
+      // A second deposit for the same sales date needs its reason, and that is
+      // asked for by Add — so a typed-but-not-added amount cannot slip past it.
+      if (list.length) {
+        setRemitErr({ amount: 'Press ➕ Add to record this as an additional remittance and choose its reason.' });
+        return null;
+      }
+      list.push({ id: newRemitId(), amount: amt, date: remitDate, account: remitAcct, createdBy: user?.username, createdAt: new Date().toISOString() });
     } else if (!list.length) {
       setRemitErr({ amount: 'Please enter the Remittance Amount.', date: remitDate ? undefined : 'Please select the Remittance Date.' });
       return null;
@@ -312,7 +323,24 @@ export default function DailyEntryPage() {
       setRemitErr(errs);
       return;
     }
-    setRemits((r) => [...r, { amount: amt, date: remitDate, account: remitAcct }]);
+    // The first deposit of a sales date is the ordinary one. Every later one
+    // is an additional remittance and must say why.
+    if (remits.length) {
+      setPendingRemit({ amount: amt, date: remitDate, account: remitAcct });
+      return;
+    }
+    setRemits((r) => [...r, { id: newRemitId(), amount: amt, date: remitDate, account: remitAcct, createdBy: user?.username, createdAt: new Date().toISOString() }]);
+    setRemitAmt('');
+  };
+
+  /** Second-or-later deposit, once its reason has been chosen. */
+  const commitAdditional = (reason: RemitReason) => {
+    if (!pendingRemit) return;
+    setRemits((r) => [
+      ...r,
+      { id: newRemitId(), amount: pendingRemit.amount, date: pendingRemit.date, account: pendingRemit.account, reason, createdBy: user?.username, createdAt: new Date().toISOString() },
+    ]);
+    setPendingRemit(null);
     setRemitAmt('');
   };
 
@@ -322,16 +350,29 @@ export default function DailyEntryPage() {
     const list = remitCollect();
     if (!list) return false;
 
+    const wasProjected = isProjectedSheet(saved);
     if (saved) {
       const when = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-      const ok = await appConfirm({
-        title: 'Replace saved day sheet',
-        tone: 'warning',
-        confirmLabel: 'Replace',
-        message:
-          `A day sheet is already saved for CRS ${crsVal} — ${shops[Number(crsVal) - 1]?.name ?? ''} on ${when}.\n\n` +
-          'Saving now replaces it with what is currently on screen. This cannot be undone.\n\nReplace the saved sheet?',
-      });
+      const shop = `CRS ${crsVal} — ${shops[Number(crsVal) - 1]?.name ?? ''}`;
+      const ok = await appConfirm(
+        wasProjected
+          ? {
+              title: "Convert the month's sheet into a day sheet",
+              tone: 'warning',
+              confirmLabel: 'Convert',
+              message:
+                `${when} holds the whole month for ${shop}, written by Monthly Entry.\n\n` +
+                'Saving here turns it into a day sheet keyed on this page, and from then on Monthly Entry follows the day sheets for this month. This cannot be undone.\n\nConvert it?',
+            }
+          : {
+              title: 'Replace saved day sheet',
+              tone: 'warning',
+              confirmLabel: 'Replace',
+              message:
+                `A day sheet is already saved for ${shop} on ${when}.\n\n` +
+                'Saving now replaces it with what is currently on screen. This cannot be undone.\n\nReplace the saved sheet?',
+            },
+      );
       if (!ok) return false;
     }
 
@@ -348,22 +389,28 @@ export default function DailyEntryPage() {
     // `remitAmount` stays the day's whole deposit and `remitDate` the earliest
     // of them, so the statement builders and the DSS export keep reading the
     // fields they always have; the account split is carried alongside.
-    const total = list.reduce((t, r) => t + r.amount, 0);
     snap.remits = list;
-    snap.remitAmount = total;
-    snap.remitNonCereal = list.reduce((t, r) => (r.account === 'ce' ? t : t + r.amount), 0);
-    snap.remitCereal = list.reduce((t, r) => (r.account === 'ce' ? t + r.amount : t), 0);
-    snap.remitDate = list.map((r) => r.date).filter(Boolean).sort()[0] ?? '';
+    Object.assign(snap, sheetTotals(list));
 
+    // A month is keyed by day OR by month, never both. This sheet makes it a
+    // day-keyed month, so whatever Monthly Entry projected onto the last day
+    // goes with it — left behind, the roll-up would still be right (it never
+    // reads a projection) but the DSS and the date-wise sections would print
+    // the month twice.
+    const [y, m] = date.split('-').map(Number);
+    let tookOver = false;
     crsData.update<Record<string, SavedSheet>>('entryStore', (d) => {
       d[key] = snap;
+      tookOver = dropProjectedSheet(d, Number(crsVal), m, y);
+    });
+    crsData.update<Record<string, InspDay>>('inspectionStore', (d) => {
+      dropProjectedAdjustments(d, Number(crsVal), m, y);
     });
 
     // Republish the month so Monthly Entry and statements see this day.
     // Stores are re-read AFTER the confirm dialog: an autosave conflict can
     // reload them while it sits open, and the rollup must not drop a day
     // someone else saved in the meantime.
-    const [y, m] = date.split('-').map(Number);
     const freshEntry = crsData.get<Record<string, SavedSheet>>('entryStore') ?? {};
     const freshInsp = crsData.get<Record<string, InspDay>>('inspectionStore') ?? {};
     const freshManual = crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};
@@ -381,7 +428,8 @@ export default function DailyEntryPage() {
     setRemitAmt('');
     if (snap.remitDate) setRemitDate(snap.remitDate);
     setSavedMsg(
-      `CRS ${crsVal} — ${shops[Number(crsVal) - 1]?.name ?? ''} (${new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })})`,
+      `CRS ${crsVal} — ${shops[Number(crsVal) - 1]?.name ?? ''} (${new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })})` +
+        (tookOver || wasProjected ? " — this month is now keyed by day; Monthly Entry's projected sheet was removed" : ''),
     );
     setTimeout(() => setSavedMsg(''), 5000);
     void crsData.save();
@@ -428,12 +476,41 @@ export default function DailyEntryPage() {
     });
   };
 
-  const clearForm = () => {
+  const resetForm = () => {
     setRows({});
     setRemits([]);
     setRemitAmt('');
     setRemitAcct('nc');
     setRemitErr({});
+  };
+
+  /**
+   * Clear only resets the form — it never wrote to the database. What erases a
+   * saved day is clearing and then SAVING, so this is where the approval rule
+   * belongs: with saved figures on this date, Clear asks for approval instead
+   * of emptying the boxes the clerk would then save over. An admin, and a date
+   * with nothing saved, clear normally.
+   *
+   * The refusal is enforced in /api/state regardless of what happens here.
+   */
+  const savedHasData = !!saved && hasData(saved) && !isProjectedSheet(saved);
+  const clearScope: ClearScope | null =
+    crsVal && date
+      ? {
+          crsId: Number(crsVal),
+          shopName: shops[Number(crsVal) - 1]?.name ?? '',
+          storeKeys: [`${crsVal}_${date}`],
+          scopeKind: 'day',
+          scopeLabel: fmtDay(date),
+        }
+      : null;
+
+  const clearForm = () => {
+    if (savedHasData && user?.role !== 'ADMIN' && clearScope) {
+      setClearOpen(true);
+      return;
+    }
+    resetForm();
   };
 
   // DSS preview/export — the verbatim legacy builder behind a real-DOM shim
@@ -574,8 +651,16 @@ export default function DailyEntryPage() {
     );
   };
 
+  /**
+   * The border is spelled out longhand rather than as the `border` shorthand
+   * because a caller overrides `borderColor` on its own — the negative-closing
+   * cell below does. Mixed with the shorthand, that colour is a property React
+   * has to REMOVE when the value stops being negative, which it cannot do
+   * predictably next to a shorthand and warns about. Longhand here means the
+   * base colour is always present and callers simply replace it.
+   */
   const roCell = (val: number, style?: React.CSSProperties) => (
-    <input type="number" readOnly value={val ? val.toFixed(3) : ''} placeholder="0.000" style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', background: '#F8FAFC', color: 'var(--muted)', ...style }} />
+    <input type="number" readOnly value={val ? val.toFixed(3) : ''} placeholder="0.000" style={{ width: '100%', borderWidth: 1, borderStyle: 'solid', borderColor: '#E2E8F0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', background: '#F8FAFC', color: 'var(--muted)', ...style }} />
   );
 
   const section = (sec: 'a' | 'b', comms: Commodity[]) => {
@@ -746,6 +831,17 @@ export default function DailyEntryPage() {
           {savedMsg ? (
             <div style={{ display: 'flex', background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 10, padding: '12px 16px', marginBottom: 14, color: '#15803D', fontSize: 13, fontWeight: 600, alignItems: 'center', gap: 8 }}>
               ✓ Entry saved: <span>{savedMsg}</span>
+            </div>
+          ) : null}
+
+          {isProjectedSheet(saved) ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#9A3412', fontSize: 12 }}>
+              <span style={{ fontSize: 18, lineHeight: 1.2 }}>📅</span>
+              <div>
+                <strong>The whole of {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}, not one day's trading.</strong> Monthly Entry
+                wrote the month here on its last day so the DSS and the date-wise statements have a sheet to print. Correct the figures on the Monthly Entry
+                page. Saving on this page converts it into a day sheet, and Monthly Entry will follow the day sheets from then on.
+              </div>
             </div>
           ) : null}
 
@@ -940,7 +1036,15 @@ export default function DailyEntryPage() {
                             <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC' }}>
                               <td style={{ padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'center', borderBottom: '1px solid #F1F5F9' }}>{i + 1}</td>
                               <td style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>
-                                <span style={{ display: 'inline-block', background: ACCT[r.account].bg, border: `1px solid ${ACCT[r.account].bd}`, color: ACCT[r.account].fg, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 5 }}>{ACCT[r.account].label}</span>
+                                {/* An additional deposit is Non-Cereal by rule, so it shows its
+                                    reason rather than an account it does not really sit in. */}
+                                {r.reason ? (
+                                  <span style={{ display: 'inline-block', background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 5 }} title="Additional remittance against this sales date">
+                                    {r.reason}
+                                  </span>
+                                ) : (
+                                  <span style={{ display: 'inline-block', background: ACCT[r.account].bg, border: `1px solid ${ACCT[r.account].bd}`, color: ACCT[r.account].fg, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 5 }}>{ACCT[r.account].label}</span>
+                                )}
                               </td>
                               <td style={{ padding: '6px 10px', fontSize: 13, fontWeight: 800, color: ACCT[r.account].fg, textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{inr(r.amount)}</td>
                               <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, color: '#334155', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{r.date.split('-').reverse().join('/')}</td>
@@ -988,6 +1092,18 @@ export default function DailyEntryPage() {
         </div>
       )}
       {inspOpen && crsId ? <InspectionModal crsId={crsId} date={date} onClose={() => setInspOpen(false)} /> : null}
+      {clearOpen && clearScope ? (
+        <ClearRequestDialog scope={clearScope} onClose={() => setClearOpen(false)} onApprovedClear={resetForm} />
+      ) : null}
+      {pendingRemit ? (
+        <AdditionalRemitDialog
+          amount={pendingRemit.amount}
+          salesDate={date}
+          remitDate={pendingRemit.date}
+          onPick={commitAdditional}
+          onClose={() => setPendingRemit(null)}
+        />
+      ) : null}
 
       {dssPay ? (
         <PaymentDialog

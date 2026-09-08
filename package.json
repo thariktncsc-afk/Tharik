@@ -6,11 +6,15 @@
   "scripts": {
     "build:stmt": "node tools/build-stmt-module.mjs",
     "verify:statements": "node tools/verify-statements.mjs",
+    "verify:rollup": "node tools/verify-rollup.mjs",
+    "verify:clear-guard": "node tools/verify-clear-guard.mjs",
+    "verify:clear-execute": "node tools/verify-clear-execute.mjs",
     "predev": "npm run build:stmt",
     "dev": "next dev",
     "prebuild": "npm run build:stmt",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "verify:remittance": "node tools/verify-remittance.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

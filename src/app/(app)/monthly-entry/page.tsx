@@ -21,7 +21,23 @@ import { crsData, useStore } from '@/lib/dataStore';
 import { bagsOf, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import {
+  applyProjectedAdjustments,
+  buildProjectedSheet,
+  dropProjectedAdjustments,
+  dropProjectedSheet,
+  isProjectedSheet,
+  lastDayOfMonth,
+  projectionKey,
+  realSheetDates,
+  type ProjectedMonth,
+} from '@/lib/engine/monthProjection';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
+import { appAlert } from '@/components/dialog';
+import ClearRequestDialog from '@/components/ClearRequestDialog';
+import { hasData } from '@/lib/clearGuard';
+import type { ClearScope } from '@/lib/clearClient';
+import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
 import GunnyTable from './GunnyTable';
 import RemitTable from './RemitTable';
@@ -32,6 +48,7 @@ type InspDay = { a?: Record<string, { excess?: number; shortage?: number; transf
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDay = (ds: string) => new Date(ds + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 type GridEdit = { open?: string; receipt?: string; sales?: string; close?: string; g?: Partial<Record<'open' | 'receipt' | 'total' | 'sales' | 'close', string>> };
 
@@ -59,7 +76,10 @@ export default function MonthlyEntryPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [edits, setEdits] = useState<Record<string, GridEdit>>({});
   const [saved, setSaved] = useState(false);
+  const [closeNote, setCloseNote] = useState('');
   const [stmtOpen, setStmtOpen] = useState(false);
+  const [inspOpen, setInspOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
 
   const crsId = crsVal ? Number(crsVal) : null;
   const key = crsVal ? `${crsVal}_${month}_${year}` : '';
@@ -69,8 +89,20 @@ export default function MonthlyEntryPage() {
   useEffect(() => {
     setEdits({});
     setSaved(false);
+    setCloseNote('');
     setStmtOpen(false);
+    setInspOpen(false);
+    setClearOpen(false);
   }, [key]);
+
+  // Which way this month is keyed. Day sheets present → they accumulate here
+  // and lock their rows (Mode A). None → the month is keyed on this page and
+  // the month-close writes it out as the last day's sheet (Mode B). See
+  // src/lib/engine/monthProjection.ts.
+  const lastDay = crsId ? lastDayOfMonth(month, year) : '';
+  const dayDates = useMemo(() => (crsId ? realSheetDates(entryStore, crsId, month, year) : []), [entryStore, crsId, month, year]);
+  const projection = crsId ? entryStore[projectionKey(crsId, month, year)] : undefined;
+  const projectedAt = isProjectedSheet(projection) ? projection.__projection.at : '';
 
   // Merge the daily roll-up with the saved manual values (rule: daily wins).
   const { merged, source } = useMemo(() => {
@@ -217,11 +249,51 @@ export default function MonthlyEntryPage() {
     setEdit('a', commId, { sales: issues === '' ? '' : String(Number(issues) || 0) });
   };
 
+  /**
+   * Clear drops the unsaved edits only — it never wrote to the database. But
+   * on a month that already holds saved figures, emptying the boxes is the
+   * first half of erasing them (the second is Save), so it asks for approval
+   * instead. The month's own stores are all keyed `<crs>_<m>_<y>`, so one
+   * request covers Monthly Entry, Remittance, Gunny, Card Details and
+   * Allotment together — they are cleared together too.
+   *
+   * /api/state refuses the write regardless of what this does.
+   */
+  const monthSaved = ctx
+    ? hasData(meManualStore[ctx.key]) ||
+      hasData(meRemitStore[ctx.key]) ||
+      hasData(meGunnyStore[ctx.key]) ||
+      hasData(meCardStore[ctx.key]) ||
+      hasData(meAllotStore[ctx.key])
+    : false;
+  const clearScope: ClearScope | null = ctx
+    ? {
+        crsId: ctx.crsId,
+        shopName: shops[ctx.crsId - 1]?.name ?? '',
+        storeKeys: [ctx.key],
+        scopeKind: 'month',
+        scopeLabel: `${ME_MONTH_NAMES[month]} ${year}`,
+      }
+    : null;
+
+  const clearMonth = () => {
+    if (monthSaved && user?.role !== 'ADMIN' && clearScope) {
+      setClearOpen(true);
+      return;
+    }
+    setEdits({});
+  };
+
   const save = () => {
     if (!ctx) return;
     const manual: Partial<MonthlyBlock> = { a: {}, b: {} };
+    const whole: ProjectedMonth = { a: {}, b: {} };
     for (const [sec, list] of [['a', rows.a], ['b', rows.b]] as const) {
       for (const r of list) {
+        whole[sec][r.c.id] = {
+          open: r.open, receipt: r.receipt, total: r.total, sales: r.sales, close: r.close, amount: r.amount,
+          excess: r.adj.excess, shortage: r.adj.shortage, transfer: r.adj.transfer,
+        };
         if (r.derived) continue;
         const rec: MonthlyRec = {
           open: r.open, receipt: r.receipt, total: r.total, sales: r.sales, close: r.close, amount: r.amount,
@@ -236,7 +308,53 @@ export default function MonthlyEntryPage() {
     crsData.update<Record<string, Partial<MonthlyBlock>>>('meManualStore', (d) => {
       d[ctx.key] = manual;
     });
-    const next = rebuildMonthlyFromDaily(ctx.crsId, ctx.month, ctx.year, entryStore, inspectionStore, manual, lists, crsData.get<ReceiptRow[]>('receiptStore') ?? []);
+
+    // A month is keyed by day OR by month, never both — and the store, not
+    // the screen, decides which: a day sheet saved since this page loaded is
+    // the truth. With none, the month-close writes the month out as its last
+    // day (with the adjustments the grid took from the manual rows) so the
+    // DSS and the date-wise statements have a sheet to print; with any, it
+    // makes sure no projection lingers from before the first day was keyed.
+    const byDay = realSheetDates(crsData.get<Record<string, DayEntry>>('entryStore') ?? {}, ctx.crsId, ctx.month, ctx.year);
+    let note: string;
+    if (byDay.length === 0) {
+      const at = new Date().toISOString();
+      crsData.update<Record<string, DayEntry>>('entryStore', (d) => {
+        d[projectionKey(ctx.crsId, ctx.month, ctx.year)] = buildProjectedSheet(whole, at);
+      });
+      let carried = 0;
+      crsData.update<Record<string, InspDay>>('inspectionStore', (d) => {
+        carried = applyProjectedAdjustments(d, ctx.crsId, ctx.month, ctx.year, whole);
+      });
+      note =
+        `Recorded as the ${fmtDay(lastDay)} day sheet, so the DSS and the date-wise statements print the month there` +
+        (carried ? ` (${carried} adjustment${carried === 1 ? '' : 's'} carried across)` : '') +
+        '.';
+    } else {
+      let gone = false;
+      crsData.update<Record<string, DayEntry>>('entryStore', (d) => {
+        gone = dropProjectedSheet(d, ctx.crsId, ctx.month, ctx.year);
+      });
+      crsData.update<Record<string, InspDay>>('inspectionStore', (d) => {
+        dropProjectedAdjustments(d, ctx.crsId, ctx.month, ctx.year);
+      });
+      note =
+        `Figures accumulate from ${byDay.length} day ${byDay.length === 1 ? 'sheet' : 'sheets'}.` +
+        (gone ? ' An earlier month-close projection was removed.' : '');
+    }
+
+    // Re-read after the writes above: the adjustments just carried across are
+    // part of the month the roll-up publishes.
+    const next = rebuildMonthlyFromDaily(
+      ctx.crsId,
+      ctx.month,
+      ctx.year,
+      crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
+      crsData.get<Record<string, InspDay>>('inspectionStore') ?? {},
+      manual,
+      lists,
+      crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+    );
     crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
       d[ctx.key] = next.merged;
     });
@@ -244,8 +362,9 @@ export default function MonthlyEntryPage() {
       d[ctx.key] = next.source;
     });
     void crsData.save();
+    setCloseNote(note);
     setSaved(true);
-    setTimeout(() => setSaved(false), 4000);
+    setTimeout(() => setSaved(false), 6000);
   };
 
   const subtitle = ctx ? `CRS ${ctx.crsId} — ${shops[ctx.crsId - 1]?.name ?? ''} — ${ME_MONTH_NAMES[month]} ${year}` : '';
@@ -539,7 +658,20 @@ export default function MonthlyEntryPage() {
                 ))}
               </select>
             </div>
-            <div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => {
+                  if (!ctx) {
+                    void appAlert('Please select a CRS shop and month first.');
+                    return;
+                  }
+                  setInspOpen(true);
+                }}
+                title={ctx ? `Record a shortage, excess or transfer for ${ME_MONTH_NAMES[month]} ${year} — written against ${fmtDay(lastDay)}` : undefined}
+                style={{ background: 'linear-gradient(135deg,#7C3AED,#9333EA)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 10px rgba(124,58,237,.3)' }}
+              >
+                🔍 Inspection
+              </button>
               <button
                 onClick={() => setStmtOpen(true)}
                 style={{ background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}
@@ -562,6 +694,7 @@ export default function MonthlyEntryPage() {
           {saved ? (
             <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 10, padding: '12px 16px', marginBottom: 14, color: '#15803D', fontSize: 13, fontWeight: 600 }}>
               ✅ மாத விற்பனை நிறைவு — this month&apos;s entry, remittance, gunny stock and card details are saved.
+              {closeNote ? <div style={{ marginTop: 4, fontWeight: 500 }}>{closeNote}</div> : null}
             </div>
           ) : null}
 
@@ -575,6 +708,25 @@ export default function MonthlyEntryPage() {
               <div style={{ color: '#fff', fontWeight: 900, fontSize: 22 }}>{inr(grand)}</div>
             </div>
           </div>
+
+          {dayDates.length ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRight: '1px solid #BFDBFE', borderBottom: '1px solid #BFDBFE', borderLeft: '1px solid #BFDBFE', background: '#EFF6FF', color: '#1E40AF', fontSize: 12 }}>
+              <span style={{ fontSize: 16 }}>📋</span>
+              <div>
+                <strong>Keyed by day.</strong> {dayDates.length} day {dayDates.length === 1 ? 'sheet' : 'sheets'} this month ({dayDates.map((d) => Number(d.slice(8))).join(', ')})
+                accumulate here; their commodities are read-only — correct them on the Daily Entry page.
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRight: '1px solid #FDE68A', borderBottom: '1px solid #FDE68A', borderLeft: '1px solid #FDE68A', background: '#FFFBEB', color: '#92400E', fontSize: 12 }}>
+              <span style={{ fontSize: 16 }}>📅</span>
+              <div>
+                <strong>Keyed by month.</strong> No day sheets this month. Saving records the whole month as the <strong>{fmtDay(lastDay)}</strong> day sheet, so the DSS and
+                the date-wise statements print it there.
+                {projectedAt ? ` Last recorded ${new Date(projectedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.` : ''}
+              </div>
+            </div>
+          )}
 
           {gridSection('a', rows.a)}
           {gridSection('b', rows.b)}
@@ -594,7 +746,7 @@ export default function MonthlyEntryPage() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, width: '100%' }}>
-                <button className="btn btn-outline btn-sm" onClick={() => setEdits({})}>🗑 Clear</button>
+                <button className="btn btn-outline btn-sm" onClick={clearMonth}>🗑 Clear</button>
                 <button
                   onClick={save}
                   title="மாத விற்பனை நிறைவு — store this month's entry, remittance, gunny stock and card details"
@@ -604,11 +756,30 @@ export default function MonthlyEntryPage() {
                 </button>
               </div>
 
-              <RemitTable ctx={ctx} remit={meRemitStore} subtitle={subtitle} />
+              <RemitTable ctx={ctx} remit={meRemitStore} entryStore={entryStore} subtitle={subtitle} />
               <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} onIssuesToMonthly={issuesToMonthly} subtitle={subtitle} />
               <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} subtitle={subtitle} />
             </div>
           </div>
+
+          {clearOpen && clearScope ? (
+            <ClearRequestDialog scope={clearScope} onClose={() => setClearOpen(false)} onApprovedClear={() => setEdits({})} />
+          ) : null}
+
+          {inspOpen ? (
+            <InspectionModal
+              crsId={ctx.crsId}
+              date={lastDay}
+              context={{
+                label: `${ME_MONTH_NAMES[month]} ${year} — recorded against ${fmtDay(lastDay)}`,
+                stock: (sec, id) => {
+                  const r = rows[sec].find((x) => x.c.id === id);
+                  return r ? r.open + r.receipt : 0;
+                },
+              }}
+              onClose={() => setInspOpen(false)}
+            />
+          ) : null}
 
           {stmtOpen ? (
             <div style={{ marginTop: 20 }}>
