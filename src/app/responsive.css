@@ -1,10 +1,9 @@
 /* ============================================================================
    Responsive layer.
 
-   Added on top of the ported desktop CSS, never edited into it. Everything that
-   changes layout lives inside a media query, so above 1100px the design renders
-   exactly as the original single-file build did — `npm run verify:parity` still
-   compares globals.css against the source untouched.
+   Added on top of the ported desktop CSS in globals.css, never edited into it.
+   Everything that changes layout lives inside a media query, so above 1100px the
+   design still renders exactly as the original single-file build did.
 
    Layout the app has to survive: a fixed 220px sidebar, KPI/quick-action grids
    with hard column counts, and data tables that are 560-900px wide by design.

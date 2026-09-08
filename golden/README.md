@@ -12,35 +12,30 @@ these are statutory documents; "close enough" is not a pass.
 
 ## Regenerate (against the current engine)
 
-1. `node tools/dump-golden-stores.mjs` — dumps every store + the users roster
-   to `public/golden-stores.json` (contains live data, gitignored).
-2. Open the app in a browser on the dev server (login screen is enough) and run
-   the harness snippet below in the console. It fills the engine's globals via
-   `crsPersistWrite`, renders every shop × section through `stmtGetData` +
-   `buildSectionHTML`, and POSTs the results to the dev-only `/api/golden`
-   route, which writes the files here.
+**These files are a frozen baseline — captured from the legacy engine, and not
+meant to be regenerated.** Their whole value is that they predate the
+conversion: re-rendering them through today's code would only prove the code
+agrees with itself. Treat a diff as a bug in the code, never as a stale
+snapshot.
 
-```js
-(async function(){
-  const dump = await fetch('/golden-stores.json').then(r=>r.json());
-  for(const [k,v] of Object.entries(dump.stores)){ try{ crsPersistWrite(k,v); }catch(e){} }
-  userStore.length = 0; dump.userStore.forEach(u=>userStore.push(u));
-  const SHOPS=[1,5,7,8,9,10,11,12,14,15,16,17,19,20,23,24,25,26,27,28,29,30];
-  const snapshots=[];
-  for(const crs of SHOPS){
-    const ids=(crs===29?CRS29_SECTIONS:STMT_SECTIONS_STANDARD).map(s=>s.id);
-    const d=stmtGetData(crs,6,2026);
-    for(const id of ids) snapshots.push({name:'crs'+crs+'_'+id, html:buildSectionHTML(id,d)});
-  }
-  return (await fetch('/api/golden',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({snapshots})}).then(r=>r.json())).written;
-})()
+The original capture ran the browser engine (`public/js/tncsc-engine.js`) from
+the console of the legacy page at `/`. Both were removed when the legacy UI was
+retired, so that procedure no longer exists. If the baseline ever genuinely has
+to be extended — a new month, a new shop — render the new sections through
+`src/generated/statements-legacy.js`, which `verify-statements` proves
+byte-identical to the engine that produced everything here, and say so in the
+commit.
+
+## Compare (the check that runs today)
+
+```
+node tools/dump-golden-stores.mjs     # refresh public/golden-stores.json (live data, gitignored)
+npm run build:stmt                    # regenerate the module from src/legacy
+npm run verify:statements             # render every shop × section, diff against these files
 ```
 
-## Compare (converted code vs baseline)
-
-Render the same sections through the converted builders and diff against
-these files. Whitespace differences count — do not normalise before diffing.
+Whitespace differences count — nothing is normalised before diffing. Expect
+`306 byte-identical, 0 failing`.
 
 Not covered here: XLSX exports (DSS export & friends download client-side).
 They are baselined separately in the phase that converts them, by diffing
