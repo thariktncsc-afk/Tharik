@@ -28,6 +28,9 @@ const MENU = [
   // their own download payments and can finish one they left half-done.
   { href: '/payments', icon: '💳', label: 'Payments' },
   { href: '/reports', icon: '📈', label: 'Reports' },
+  // Not admin-only: an admin decides clear requests here, a shop user watches
+  // its own and can withdraw one raised by mistake.
+  { href: '/clear-requests', icon: '🔒', label: 'Clear Approvals' },
 ];
 const ADMIN = [
   { href: '/users', icon: '👥', label: 'Users' },

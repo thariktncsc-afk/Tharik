@@ -173,12 +173,57 @@ workbook instead of writing it.
   migration gap makes downloads free rather than locking shops out of statutory
   paperwork.
 
+## Two ways to key a month — and the projected day sheet
+
+A shop keys its month either **by day** (Daily Entry; the sheets accumulate
+into Monthly Entry and lock their rows) or **by month** (straight into Monthly
+Entry). Never both. `src/lib/engine/monthProjection.ts` is the rule.
+
+A month keyed by month has no day sheets, and two things only ever print from
+day sheets: the DSS, and the two date-wise statement sections. So the
+month-close (the save button) writes the month out as **one day sheet dated
+the last calendar day**, marked `__projection`, plus the manual rows'
+adjustments into `inspectionStore` on that date, marked the same way — the
+DSS recomputes a day from inspectionStore and ignores a sheet's own
+total/close, so without them it would disagree with Monthly Entry.
+
+- **The roll-up never reads a projected sheet.** It is an output of the
+  month's manual values. Read back, it would lock every row as "from Daily"
+  and the shop could never correct its month again — and once a real sheet
+  was keyed, the month would count twice.
+- **Saving a real day sheet drops the projection** for that month. That is the
+  exclusivity rule, enforced in code, not by convention.
+- **An inspection alone no longer locks a row.** The original engine's rule
+  was `days > 0 || excess || shortage || transfer`. Monthly Inspection lands
+  on the last day, so under that rule recording a shortage wiped the month to
+  zeros. Now only a keyed day sheet makes a row `'daily'`; adjustments
+  overlay the manual row — replaced, not added, because after a save the
+  manual row already holds the same sums.
+- Monthly Inspection is the Daily Entry overlay with a month `context`; the
+  record is keyed by the last calendar day in both modes. One store, one key,
+  nothing to sync.
+- Remittance and gunny are NOT copied onto the projected sheet. Their monthly
+  stores already carry them and the statements fall back to those; a copy
+  would be summed twice.
+
+**The goldens cannot see any of this.** `verify:statements` renders from the
+stored `monthlyStore` and never runs the roll-up — but production does
+(`server.ts` rebuilds the month before rendering), so a roll-up change
+reaches every statement unnoticed. `npm run verify:rollup` covers the gap:
+the roll-up at `dev` and the working tree must publish identical figures for
+every live month, plus the two-mode rules as synthetic months. Run it after
+touching `monthlyRollup.ts` or `monthProjection.ts`.
+
+32 of the 35 live months are keyed by month (the imported workbooks). They
+are projected only when someone presses save on them — never on open.
+
 ## Tools
 
 ```
 npm run dev                 regenerates the statement modules, then next dev
 npm run build:stmt          regenerate src/generated/*-legacy.js from src/legacy
 npm run verify:statements    306 golden statements, byte-for-byte
+npm run verify:rollup        roll-up at dev vs working tree, every live month + two-mode rules
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
 node tools/seed-masters.mjs

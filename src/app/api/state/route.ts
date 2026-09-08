@@ -13,6 +13,9 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { cookies } from 'next/headers';
+import { describe, inspectWrite, isProtectedStore } from '@/lib/clearGuard';
+import { logEvent } from '@/lib/clearServer';
+import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -86,6 +89,12 @@ export async function GET() {
   const stores: Record<string, unknown> = {};
   const versions: Record<string, number> = {};
   for (const row of data ?? []) {
+    // The approval record is not shop state. It carries other shops' reasons,
+    // requester names and snapshots, and handing it to every signed-in client
+    // would leak all three; /api/clear-requests serves it, scoped to the
+    // caller. It is absent from ALLOWED_KEYS below for the matching reason —
+    // an approval a client could write would not be an approval.
+    if (row.store_key === CLEAR_STORE_KEY) continue;
     stores[row.store_key] = row.data;
     versions[row.store_key] = row.version;
   }
@@ -112,6 +121,72 @@ export async function POST(req: Request) {
   const db = supabaseAdmin();
   const savedVersions: Record<string, number> = {};
   const conflicts: string[] = [];
+
+  // ── Clear/delete guard ────────────────────────────────────────────────────
+  // Destroying saved figures needs an administrator's approval, and a shop may
+  // only touch its own records. Both are decided here, on the difference
+  // between what is stored and what is being written, because this endpoint is
+  // where the data actually changes — a dialog in the browser is only manners.
+  // Admins bypass: the point is a reviewed trail for shop staff.
+  const isAdmin = session.role === 'ADMIN';
+
+  if (!isAdmin) {
+    const touched = Object.keys(stores).filter(isProtectedStore);
+    if (touched.length) {
+      const { data: current } = await db
+        .from('crs_state')
+        .select('store_key, data, version')
+        .eq('scope', 'global')
+        .in('store_key', touched);
+
+      const stored: Record<string, unknown> = {};
+      const stale: string[] = [];
+      for (const row of current ?? []) {
+        const key = row.store_key as string;
+        stored[key] = row.data;
+        if (Number(versions[key] ?? 0) !== Number(row.version)) stale.push(key);
+      }
+
+      // Version first, guard second. A client that has not seen someone else's
+      // save is holding an old copy of every shop's data, and diffing against
+      // it would read those untouched records as changes this user is making —
+      // reported as another shop's, when the real answer is "reload". The 409
+      // is also what the data layer already knows how to recover from.
+      if (stale.length) {
+        return NextResponse.json(
+          { error: 'Someone else saved these first. Reload before saving again.', conflicts: stale, versions: {} },
+          { status: 409 },
+        );
+      }
+
+      const ownCrsId = typeof session.crsId === 'number' ? session.crsId : null;
+      const verdict = inspectWrite(stored, stores, ownCrsId);
+
+      if (verdict.foreign.length) {
+        const shops = [...new Set(verdict.foreign.map((f) => f.crsId))].join(', ');
+        await logEvent(null, 'blocked', session, `Attempted to change CRS ${shops} while signed in to CRS ${ownCrsId}`);
+        return NextResponse.json(
+          { error: `This account may only change CRS ${ownCrsId} records — the save also altered CRS ${shops}.` },
+          { status: 403 },
+        );
+      }
+
+      // Shop staff never destroy saved figures — not even with an approval in
+      // hand, because approving now does the deleting itself (clearExecute.ts).
+      // So there is nothing to check against here: destructive is refused.
+      if (verdict.destructive.length) {
+        await logEvent(null, 'blocked', session, `Clear refused: ${describe(verdict.destructive)}`);
+        return NextResponse.json(
+          {
+            error: 'This entry already contains saved data. Admin approval is required to clear or reset this entry.',
+            needsApproval: true,
+            records: verdict.destructive,
+          },
+          { status: 403 },
+        );
+      }
+    }
+  }
 
   for (const [key, value] of Object.entries(stores)) {
     if (!ALLOWED_KEYS.has(key)) continue;
