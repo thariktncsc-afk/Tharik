@@ -1,5 +1,5 @@
 /* App shell chrome: the top bar, and the sidebar toggle that sits over it
-   (src/components/SidebarToggle.tsx).
+   (src/components/NavToggle.tsx).
 
    New, not ported — kept out of globals.css so that stays exactly the ported
    original, and out of responsive.css since that file is specifically the

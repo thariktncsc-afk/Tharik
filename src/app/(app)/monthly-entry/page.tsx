@@ -250,9 +250,30 @@ export default function MonthlyEntryPage() {
 
   const subtitle = ctx ? `CRS ${ctx.crsId} — ${shops[ctx.crsId - 1]?.name ?? ''} — ${ME_MONTH_NAMES[month]} ${year}` : '';
 
-  const th = (label: React.ReactNode, extra?: React.CSSProperties, cls?: string) => (
-    <th className={cls} style={{ padding: '8px 6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)', ...extra }}>{label}</th>
-  );
+  /**
+   * `colSpan` is an attribute, not a style. It is accepted here alongside the
+   * CSS so the call sites can stay one-liners, but it has to be pulled back out
+   * before the rest is spread into `style` — a colSpan left in there silently
+   * does nothing, and every grouped header (Opening, Receipt, Total, Sales,
+   * C.S, Closing) covers two body columns, so the row ends up six cells short
+   * and every label sits over the wrong column.
+   */
+  const th = (
+    label: React.ReactNode,
+    extra?: React.CSSProperties & { colSpan?: number },
+    cls?: string
+  ) => {
+    const { colSpan, ...style } = extra ?? {};
+    return (
+      <th
+        className={cls}
+        colSpan={colSpan}
+        style={{ padding: '8px 6px', textAlign: 'center', fontSize: 9, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)', ...style }}
+      >
+        {label}
+      </th>
+    );
+  };
 
   const gridSection = (sec: 'a' | 'b', list: Row[]) => {
     if (!list.length) return null;
@@ -337,15 +358,15 @@ export default function MonthlyEntryPage() {
                 {th('#', { width: 30 })}
                 {th('பொருட்கள் / Commodity', { textAlign: 'left', minWidth: 130, padding: '8px 10px' }, 'frz-comm')}
                 {th('Unit', { width: 38 })}
-                {th('Opening', { colSpan: 2 } as never)}
-                {th('Receipt', { colSpan: 2 } as never)}
+                {th('Opening', { colSpan: 2 })}
+                {th('Receipt', { colSpan: 2 })}
                 {showAdj.excess ? th('Excess', { color: '#166534', background: '#F0FDF4', width: 52 }) : null}
                 {showAdj.shortage ? th(<>Short<br />age</>, { color: '#B91C1C', background: '#FEF2F2', width: 52 }) : null}
                 {showAdj.transfer ? th(<>Trans<br />fer</>, { color: '#92400E', background: '#FFFBEB', width: 52 }) : null}
-                {th('Total', { colSpan: 2, color: '#0284C7', background: '#EFF6FF' } as never)}
-                {th('Sales', { colSpan: 2 } as never)}
-                {showAdj.cs ? th('C.S / Cum.Short', { colSpan: 2, color: '#7C3AED', background: '#F3E8FF' } as never) : null}
-                {th('Closing', { colSpan: 2 } as never)}
+                {th('Total', { colSpan: 2, color: '#0284C7', background: '#EFF6FF' })}
+                {th('Sales', { colSpan: 2 })}
+                {showAdj.cs ? th('C.S / Cum.Short', { colSpan: 2, color: '#7C3AED', background: '#F3E8FF' }) : null}
+                {th('Closing', { colSpan: 2 })}
                 {th('Rate (₹)', { width: 52, background: '#FFFBEB', color: '#D97706' })}
                 {th('Amount (₹)', { minWidth: 80, background: secA ? '#EFF6FF' : '#FFF3E8', color: col })}
               </tr>
