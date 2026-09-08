@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Sidebar toggle for the converted (React) routes — same behaviour and CSS
- * hooks as SidebarToggle.tsx on the legacy page (app-chrome.css positions
- * it), minus the login-screen MutationObserver: inside the (app) layout the
- * user is signed in by definition, so the button always renders.
+ * Sidebar toggle for the app routes (app-chrome.css positions it). There is no
+ * login-screen MutationObserver, as the legacy page's toggle had: inside the
+ * (app) layout the user is signed in by definition, so the button always
+ * renders.
  *
  *  - <=900px: off-canvas drawer (body.nav-open + backdrop)
  *  - >900px:  permanent column collapsing in place (body.sidebar-collapsed)

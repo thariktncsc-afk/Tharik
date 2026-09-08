@@ -8,43 +8,53 @@ Most of what follows is here because it already cost someone a day.
 
 ## The one thing to understand first
 
-**Two implementations of this app live in the repo, and both run.**
+The app is React (Next.js App Router) end to end. Every screen lives under
+`src/app/(app)/*`; `/` just redirects to `/dashboard`.
 
-| | Where | Served at |
+**`src/legacy/` is not a second app. It is the source of the statement
+engine** — 13 files, all that survives of the original single-file build.
+Nothing in it runs in the browser as a script any more. It exists because
+`tools/build-stmt-module.mjs` concatenates it into two importable modules:
+
+| Generated | From | Used by |
 | --- | --- | --- |
-| Legacy engine | `src/legacy/*.js` (41 files) + `src/markup/*.ts` | `src/app/page.tsx` |
-| React conversion | `src/app/(app)/*` | `/dashboard`, `/daily-entry`, … |
+| `src/generated/statements-legacy.js` | 11 files | `/api/statements/render` (Node) |
+| `src/generated/dss-legacy.js` | `17-dss-export.js` | Daily Entry's DSS export (browser) |
 
-The engine is the original single-file app split into numbered parts and
-concatenated back into one classic script by `tools/bundle-engine.mjs`. Screens
-are being migrated to React one at a time. **Both run against the same database
-and the same store shapes**, so a data-model change has to work for both.
-`src/lib/dataStore.ts` is the React port of `src/legacy/36-persistence.js` and
-deliberately keeps the same wire contract.
+`DSS_A` / `DSS_B` are additionally sliced out of `03-daily-entry.js` for both
+preludes, which is the only reason that file is still here.
 
-## The parity guarantee — do not break it
+Regeneration is wired into `predev` / `prebuild`, so the modules cannot drift
+from their sources. **If you edit anything in `src/legacy/`, run
+`npm run verify:statements` before you believe it.**
 
-`npm run verify:parity` proves the ported code is byte-for-byte identical to the
-original `TNCSC_CRS_Demo_19 (1).html`. It is the project's evidence that the port
-did not silently change a calculation.
+## Why the statement code is still legacy JavaScript
 
-- **Never edit a ported file** (`src/legacy/0*`–`19*`, `src/markup/*`) to add
-  behaviour. Put new behaviour in a **new numbered file at the end** — currently
-  up to `41-session-resume.js` — and add its name to `NEW_ENGINE` in
-  `tools/verify-parity.mjs`.
-- If you genuinely must touch a line inside a ported file, tag that line `[+]`.
-  Parity drops every line containing `[+]` before comparing. A one-line early
-  return is the intended scale.
-- The engine is a **classic script, not a module**. Inline `on*` handlers call
-  its functions by name off `window`, and it hoists across its whole length.
-  Later files redefining earlier functions is the supported override mechanism.
+These are statutory print formats. `12-statement-builders.js` alone is 1,827
+lines of string building whose output ends up on government paperwork, and
+`golden/statements/` holds 306 snapshots of exactly what it produced before the
+conversion. `npm run verify:statements` renders every shop × section through the
+generated module and diffs byte-for-byte against them.
 
-**Parity needs `TNCSC_CRS_Demo_19 (1).html` in the repo's PARENT directory**
-(`D:\services projects\`). It is not in the repo and is currently missing, so the
-check dies with ENOENT. Get that file before trusting a green run.
+That check is the safety net, so:
 
-One known pre-existing failure at offset ~123514: commit `a404a6d` changed a
-login error string inside ported `07-auth.js` without a `[+]` tag. Not yours.
+- **Don't rewrite the builders in TypeScript for tidiness.** The rewrite buys
+  nothing a user can see and risks a silent digit change on a statutory form.
+- Prefer a **new numbered file at the end** that overrides an earlier function,
+  the way `22-allotment.js`, `26-crs29.js` and `39-staff-roles.js` already wrap
+  `stmtGetData`. Add it to `FILES` in `tools/build-stmt-module.mjs`.
+- The legacy files are **classic-script style** — `var`, hoisting across the
+  whole block, later definitions overriding earlier ones. That still holds
+  inside the generated factory function, which is one concatenated scope.
+- Symbols from files that no longer exist are supplied by the generator's
+  `PRELUDE`. If you hit a `ReferenceError` after adding a file, that's where it
+  goes — not into a resurrected engine part.
+
+Historical note: this used to be a two-app repo (a legacy browser engine at `/`
+alongside the React routes), guarded by a `verify:parity` check against the
+original `TNCSC_CRS_Demo_19 (1).html`. The legacy UI and that check are gone;
+the golden snapshots replaced them, and are the stronger guarantee because they
+check rendered output rather than source text.
 
 ## Database
 
@@ -130,7 +140,7 @@ Preview, Print and Excel all take that route because they are the same document.
 Gating only the download would collect nothing — Print → Save as PDF is free.
 
 The builders themselves are unchanged; only their location moved.
-`node tools/verify-statements.mjs` still proves every section byte-identical,
+`npm run verify:statements` still proves every section byte-identical,
 and that is the check that matters after touching anything here.
 
 **The DSS export is the exception.** It is still assembled in the browser: the
@@ -166,13 +176,17 @@ workbook instead of writing it.
 ## Tools
 
 ```
-npm run dev                 bundles the engine, then next dev
-npm run verify:parity       byte-for-byte check against the original
+npm run dev                 regenerates the statement modules, then next dev
+npm run build:stmt          regenerate src/generated/*-legacy.js from src/legacy
+npm run verify:statements    306 golden statements, byte-for-byte
+node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
 node tools/seed-masters.mjs
 node tools/backup-crs-state.mjs
-node tools/verify-statements.mjs
 ```
+
+`verify:statements` needs `public/golden-stores.json`, which is gitignored live
+data — run `dump-golden-stores.mjs` (needs `.env.local`) or it dies with ENOENT.
 
 The Excel importer maps columns **by header name, never by position**. Not a
 style preference: the 22 monthly workbooks have **13 distinct column layouts**,
@@ -183,10 +197,6 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 
 ## Gotchas that have already bitten
 
-- **`const` globals are not on `window`.** `CRS_SHOPS` and `COMMODITIES` are
-  `const`; top-level `const`/`let` live in the global lexical environment and
-  never become `window` properties. Reading them off `window` yields `undefined`
-  silently. Reference them by identifier.
 - **Write to `meManualStore`, not just `monthlyStore`.**
   `rebuildMonthlyFromDaily()` regenerates `monthlyStore` from the daily rollup
   plus `meManualStore` whenever Monthly Entry opens. Data written only to
@@ -202,13 +212,8 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
   transferDelta(transfer)`, and `TRANSFER_IS_OUTWARD = true`, so a positive
   transfer subtracts. Store shortages as positive magnitudes. Shortage does not
   apply to Section B (police) commodities.
-- **Show/hide is not symmetric in ported UI code.** Several ported renderers only
-  ever *show* an element when data exists and never hide it when absent, so the
-  previous shop's values linger. `39-staff-roles.js` fixes the dashboard staff
-  blocks; assume the pattern exists elsewhere.
-- **The engine bundle is cache-busted** by a content hash (`?v=…`) written to
-  `src/generated/engine-version.json` by the bundler. If behaviour looks stale,
-  hard-reload before debugging.
+- **`src/generated/*-legacy.js` are build output.** Their header says DO NOT
+  EDIT and means it — `predev`/`prebuild` overwrite them. Edit `src/legacy/`.
 - Statement layout arrays in `12-statement-builders.js` are **form templates, not
   data**. Leave them in code — a bad database row there produces malformed
   statutory paperwork with no diff and no review.
