@@ -18,7 +18,7 @@ import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 
-type InspRec = { excess?: number; shortage?: number; transfer?: number };
+type InspRec = { excess?: number; shortage?: number; transfer?: number; __projection?: boolean };
 type InspDay = { a?: Record<string, InspRec>; b?: Record<string, InspRec> };
 type InspType = 'shortage' | 'excess' | 'transfer';
 
@@ -31,7 +31,27 @@ const INSP_TYPES: Record<
   transfer: { label: 'Transfer', ta: 'இடமாற்றம்', icon: '🔄', color: '#0369A1', bg: '#EFF6FF', bd: '#BAE6FD', hdr: '#1D4ED8', sign: '±', desc: 'Stock moved in (+) or out (−)', verb: 'Transfer (in +/out −)' },
 };
 
-export default function InspectionModal({ crsId, date, onClose }: { crsId: number; date: string; onClose: () => void }) {
+/**
+ * `context` turns the overlay into a whole month's: the subtitle names the
+ * month and the date it is written to, and Available Stock is the month's
+ * Opening + Receipt rather than one day's. The record itself is still keyed
+ * by `date` — Monthly Entry passes the month's last calendar day — so it is
+ * one entry in one store, read alike by Daily Entry, the DSS and the monthly
+ * roll-up. There is nothing to keep in sync.
+ */
+type MonthContext = { label: string; stock: (sec: 'a' | 'b', id: string) => number };
+
+export default function InspectionModal({
+  crsId,
+  date,
+  context,
+  onClose,
+}: {
+  crsId: number;
+  date: string;
+  context?: MonthContext;
+  onClose: () => void;
+}) {
   const [step, setStep] = useState<'menu' | InspType>('menu');
   const [values, setValues] = useState<Record<string, string>>({});
   const [savedMsg, setSavedMsg] = useState('');
@@ -43,7 +63,8 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
   const shops = useShops();
 
   const dLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const sub = `CRS ${crsId} — ${shops[crsId - 1]?.name ?? ''} • ${dLabel}`;
+  const sub = `CRS ${crsId} — ${shops[crsId - 1]?.name ?? ''} • ${context ? context.label : dLabel}`;
+  const span = context ? 'month' : 'day';
 
   const comms: { c: Commodity; sec: 'a' | 'b' }[] = useMemo(() => {
     const a = lists.a.map((c) => ({ c, sec: 'a' as const }));
@@ -52,7 +73,7 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
     return step === 'shortage' ? a : [...a, ...b];
   }, [lists, step]);
 
-  const existing = (sec: 'a' | 'b', id: string): Required<InspRec> => {
+  const existing = (sec: 'a' | 'b', id: string): { excess: number; shortage: number; transfer: number } => {
     const r = insp[sec]?.[id] ?? {};
     return { excess: Number(r.excess) || 0, shortage: Number(r.shortage) || 0, transfer: Number(r.transfer) || 0 };
   };
@@ -75,7 +96,10 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
       const rec: InspDay = { a: { ...(d[key]?.a ?? {}) }, b: { ...(d[key]?.b ?? {}) } };
       for (const { c, sec } of comms) {
         const val = parseFloat(values[`${sec}:${c.id}`] ?? '') || 0;
-        rec[sec]![c.id] = { ...(rec[sec]![c.id] ?? {}), [t]: val };
+        // A figure the inspector confirms is a real entry, whatever a
+        // month-close projected into this slot before — the marker goes.
+        const { __projection: _projected, ...prev } = rec[sec]![c.id] ?? {};
+        rec[sec]![c.id] = { ...prev, [t]: val };
       }
       d[key] = rec;
     });
@@ -122,7 +146,7 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
             </button>
           </div>
           <div style={{ padding: '18px 20px' }}>
-            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>Choose the type of stock adjustment to record for this day:</div>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>Choose the type of stock adjustment to record for this {span}:</div>
             {(['shortage', 'excess', 'transfer'] as InspType[]).map((t) => {
               const o = INSP_TYPES[t];
               return (
@@ -175,7 +199,7 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: meta.bg, border: `1px solid ${meta.bd}`, borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 12, color: meta.color }}>
             <span style={{ fontSize: 16, lineHeight: 1.2 }}>ℹ️</span>
             <span>
-              <b>Available Stock</b> = Opening + Receipt for the day. Enter the <b>{meta.verb}</b> quantity per commodity — the <b>Value (₹)</b> and <b>New Total</b> update automatically (Value = quantity × rate).
+              <b>Available Stock</b> = Opening + Receipt for the {span}. Enter the <b>{meta.verb}</b> quantity per commodity — the <b>Value (₹)</b> and <b>New Total</b> update automatically (Value = quantity × rate).
             </span>
           </div>
           {step === 'shortage' ? (
@@ -210,11 +234,11 @@ export default function InspectionModal({ crsId, date, onClose }: { crsId: numbe
                 const d = sheet?.[sec]?.[c.id] ?? {};
                 const open = Number(d.open) || 0;
                 const rec = Number(d.receipt) || 0;
-                const avail = open + rec;
+                const avail = context ? context.stock(sec, c.id) : open + rec;
                 const ei = existing(sec, c.id);
                 const v = parseFloat(values[`${sec}:${c.id}`] ?? '') || 0;
                 const adj = { ...ei, [step]: v };
-                const total = open + rec + adj.excess - adj.shortage - adj.transfer;
+                const total = avail + adj.excess - adj.shortage - adj.transfer;
                 const amt = c.free ? 0 : v * c.rate;
                 const rowBg = i % 2 === 1 ? '#F8FAFC' : '#fff';
                 return (
