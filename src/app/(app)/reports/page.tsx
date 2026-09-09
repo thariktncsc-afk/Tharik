@@ -21,7 +21,11 @@ import { useStore } from '@/lib/dataStore';
 import { appAlert } from '@/components/dialog';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityMaster, useShops } from '@/lib/masters';
-import { buildPVTable, pvAggregatePeriod } from '@/lib/engine/pvStatement';
+import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow } from '@/lib/engine/pvStatement';
+import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
+import { buildMonthlySheet, consolidateMonths, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
+import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
+import ManualPvUpload from './ManualPvUpload';
 
 type ShopRec = { name: string };
 type ReceiptRec = { crsId: number; date: string; items?: Record<string, { qty: number }> };
@@ -49,6 +53,7 @@ export default function ReportsPage() {
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
   const monthlyStore = useStore<Record<string, never>>('monthlyStore') ?? {};
   const meGunnyStore = useStore<Record<string, Record<string, { opening?: number }>>>('meGunnyStore') ?? {};
+  const rawPvOfficers = useStore<PvOfficerStore>('__pvOfficers');
 
   const isAdmin = user?.role === 'ADMIN';
   const now = new Date();
@@ -57,10 +62,34 @@ export default function ReportsPage() {
   const [crsVal, setCrsVal] = useState(isAdmin ? '' : String(user?.crsId ?? ''));
   const [dateVal, setDateVal] = useState(now.toISOString().split('T')[0]);
   const [monthVal, setMonthVal] = useState(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}`);
-  const [quarterVal, setQuarterVal] = useState(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}`);
+  /**
+   * A quarter is a financial year plus which of its four it is, so the screen
+   * needs one year selector and four buttons rather than a dropdown of every
+   * quarter ever. Both PV tabs share the year.
+   */
+  const [quarterIdx, setQuarterIdx] = useState(() => quarterIndexOf({ year: now.getFullYear(), month: now.getMonth() + 1 }));
   const curFY = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const [fyVal, setFyVal] = useState(String(curFY));
   const [generated, setGenerated] = useState(0); // bump to (re)generate
+  /**
+   * Automatic reads the shop's own stored months; Manual consolidates uploaded
+   * Excel statements. Automatic is the default because for a shop using this
+   * system the figures are already here, and re-reading them from a file can
+   * only lose fidelity.
+   */
+  const [pvSource, setPvSource] = useState<'auto' | 'manual'>('auto');
+  /**
+   * Who verified this shop and on what day. Resolved from the group assignment
+   * (src/lib/engine/pvOfficer.ts) so it reaches every PV the same way —
+   * quarterly or annual, automatic or from uploaded files.
+   */
+  const pvOfficerStore = useMemo(() => normalisePvOfficers(rawPvOfficers), [rawPvOfficers]);
+  const pvOfficer = useMemo(
+    () => (crsVal ? resolveForStatement(pvOfficerStore, Number(crsVal)) : { officer: '', date: '' }),
+    [pvOfficerStore, crsVal],
+  );
+  const [manualRows, setManualRows] = useState<PvMonthRow[] | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const shopIds = shops.map((_, i) => i + 1);
   const crsIds = crsVal ? [Number(crsVal)] : shopIds;
@@ -75,19 +104,14 @@ export default function ReportsPage() {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const quarterOptions = useMemo(() => {
-    const out: { value: string; label: string }[] = [];
-    for (let back = 0; back < 8; back++) {
-      const qd = new Date(now.getFullYear(), now.getMonth() - back * 3, 1);
-      const endMo = new Date(qd.getFullYear(), qd.getMonth() + 3, 0);
-      out.push({
-        value: `${qd.getFullYear()}-${pad2(qd.getMonth() + 1)}`,
-        label: `${MNAMES[qd.getMonth() + 1]} ${qd.getFullYear()} — ${MNAMES[endMo.getMonth() + 1]} ${endMo.getFullYear()}`,
-      });
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  /**
+   * A PV period is a financial year plus which quarter of it — so the screen
+   * offers one year list and four fixed quarters, rather than a dropdown of
+   * rolling three-month windows. Those windows were the old bug: opened in
+   * September they offered "Sep–Nov", a period no PV covers, whose opening and
+   * closing came from the wrong months.
+   */
+  const fyList = useMemo(() => annualOptions(now), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Daily / Monthly aggregation ───────────────────────────────────────────
   const summary = useMemo(() => {
@@ -95,6 +119,7 @@ export default function ReportsPage() {
     const commMap: Record<string, { name: string; unit: string; qty: number; amount: number; free: boolean }> = {};
     let totalSales = 0;
     let totalReceipts = 0;
+    let totalRemit = 0;
     const daysSet = new Set<string>();
     const daysInMo = moYear ? new Date(moYear, moNum, 0).getDate() : 0;
     const lookup = commodityMaster ?? [...DSS_A, ...DSS_B, ...CRS29_STOCK];
@@ -108,6 +133,10 @@ export default function ReportsPage() {
           for (const [commId, row] of Object.entries(e[sec] ?? {})) {
             const qty = Number(row.sales) || 0;
             const amt = Number(row.amount) || 0;
+            // A day sheet writes a row for EVERY commodity, so an all-zero row
+            // is "not sold", not "sold nothing". Counting them filled the
+            // table with 21 zero rows and hid the real empty state behind it.
+            if (!qty && !amt) continue;
             totalSales += amt;
             if (!commMap[commId]) {
               const cm = lookup.find((x) => x.id === commId);
@@ -117,6 +146,10 @@ export default function ReportsPage() {
             commMap[commId].amount += amt;
           }
         }
+        // Deposits recorded on the day sheet. A month can hold remittance and
+        // no sales at all — that month is not empty, and reporting it as
+        // "₹0.00" with nothing else is what made this screen look broken.
+        totalRemit += Number((entryStore[dk] as { remitAmount?: number }).remitAmount) || 0;
       }
       for (const r of receiptStore) {
         if (r.crsId !== cid) continue;
@@ -125,48 +158,133 @@ export default function ReportsPage() {
         for (const it of Object.values(r.items ?? {})) totalReceipts += Number(it?.qty) || 0;
       }
     }
-    return { commMap, totalSales, totalReceipts, days: daysSet.size, moYear, moNum };
+    return { commMap, totalSales, totalReceipts, totalRemit, days: daysSet.size, moYear, moNum };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryStore, receiptStore, monthVal, crsVal, generated, commodityMaster]);
 
   // ── PV statement HTML ─────────────────────────────────────────────────────
+  /** The period the PV covers — decided by pvPeriod.ts, never by the clock. */
+  const pvPeriod: PvPeriod | null = useMemo(() => {
+    if (!isPV) return null;
+    if (type === 'quarterly') return quarterByIndex(Number(fyVal), quarterIdx);
+    return annualFor(Number(fyVal));
+  }, [isPV, type, quarterIdx, fyVal]);
+
+  /** Which of the period's months have a published monthly record. */
+  const pvCoverage = useMemo((): { have: YearMonth[]; missing: YearMonth[] } => {
+    if (!pvPeriod || !crsVal) return { have: [], missing: [] };
+    const cid = Number(crsVal);
+    const have = pvPeriod.months.filter((m) => !!monthlyStore[`${cid}_${m.month}_${m.year}`]);
+    const missing = pvPeriod.months.filter((m) => !monthlyStore[`${cid}_${m.month}_${m.year}`]);
+    return { have, missing };
+  }, [pvPeriod, crsVal, monthlyStore]);
+
   const pvHtml = useMemo(() => {
-    if (!isPV || !crsVal) return '';
-    const months: { year: number; month: number }[] = [];
-    let periodLabel = '';
-    if (type === 'quarterly') {
-      const [qYear, qMo] = quarterVal.split('-').map(Number);
-      for (let i = 0; i < 3; i++) {
-        let m = qMo + i;
-        let y = qYear;
-        if (m > 12) {
-          m -= 12;
-          y++;
-        }
-        months.push({ year: y, month: m });
-      }
-      const end = months[2];
-      const endDate = new Date(end.year, end.month, 0);
-      periodLabel = `1.${pad2(months[0].month)}.${months[0].year} TO ${endDate.getDate()}.${pad2(end.month)}.${end.year}`;
-    } else {
-      const fy = Number(fyVal);
-      for (let m = 4; m <= 12; m++) months.push({ year: fy, month: m });
-      for (let m = 1; m <= 3; m++) months.push({ year: fy + 1, month: m });
-      periodLabel = `1.04.${fy} TO 31.03.${fy + 1}`;
-    }
+    if (!isPV || !crsVal || !pvPeriod) return '';
     const crsId = Number(crsVal);
-    const agg = pvAggregatePeriod([crsId], months, { entryStore, receiptStore, monthlyStore });
-    const gunny = meGunnyStore[`${crsId}_${months[0].month}_${months[0].year}`] ?? {};
+    // Manual: the uploaded months, already consolidated. Automatic: the stored
+    // months. Both then go through the same builder, so the printed PV is the
+    // same document either way.
+    if (pvSource === 'manual') {
+      if (!manualRows) return '';
+      const commMap: Record<string, PvCommRow> = {};
+      for (const r of manualRows) {
+        commMap[r.commId] = {
+          name: r.name, unit: r.unit, open: r.open, receipt: r.receipt,
+          total: r.total, issues: r.sales, closing: r.closing, amount: r.amount, free: false,
+        };
+      }
+      const first = pvPeriod.months[0];
+      return buildPVTable({
+        commMap,
+        periodLabel: pvPeriod.rangeLabel,
+        crsId,
+        crsName: shops[crsId - 1]?.name ?? '',
+        gunny: meGunnyStore[`${crsId}_${first.month}_${first.year}`] ?? {},
+        billClerk: user?.fullName ?? '',
+        pvOfficer: pvOfficer.officer,
+        pvDate: pvOfficer.date,
+      });
+    }
+    const agg = pvAggregatePeriod([crsId], pvPeriod.months, { entryStore, receiptStore, monthlyStore }, pvCommodityScope(crsId));
+    const first = pvPeriod.months[0];
+    const gunny = meGunnyStore[`${crsId}_${first.month}_${first.year}`] ?? {};
     return buildPVTable({
       commMap: agg.commMap,
-      periodLabel,
+      periodLabel: pvPeriod.rangeLabel,
       crsId,
       crsName: shops[crsId - 1]?.name ?? '',
       gunny,
       billClerk: user?.fullName ?? '',
+        pvOfficer: pvOfficer.officer,
+        pvDate: pvOfficer.date,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, type, crsVal, quarterVal, fyVal, entryStore, receiptStore, monthlyStore, meGunnyStore, generated]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualRows, pvOfficer, entryStore, receiptStore, monthlyStore, meGunnyStore, generated]);
+
+  /**
+   * The rows this month would export.
+   *
+   * Prefer the published month — it is what the statements read, and a
+   * monthly-keyed shop has one even with no day sheets at all. Gating the
+   * export on day-sheet sales alone would refuse exactly those shops.
+   */
+  const exportRows = useMemo((): PvMonthRow[] => {
+    if (!crsVal || !summary.moNum) return [];
+    const crsId = Number(crsVal);
+    const scope = pvCommodityScope(crsId);
+    const lookup = commodityMaster ?? [...DSS_A, ...DSS_B, ...CRS29_STOCK];
+    const out: PvMonthRow[] = [];
+    const mo = monthlyStore[`${crsId}_${summary.moNum}_${summary.moYear}`] as
+      | { a?: Record<string, Record<string, number>>; b?: Record<string, Record<string, number>> }
+      | undefined;
+    if (mo) {
+      for (const sec of ['a', 'b'] as const) {
+        for (const [commId, v] of Object.entries(mo[sec] ?? {})) {
+          if (scope && !scope.has(commId)) continue;
+          const open = Number(v.open) || 0;
+          const receipt = Number(v.receipt) || 0;
+          const sales = Number(v.sales) || 0;
+          if (!open && !receipt && !sales) continue;
+          const cm = lookup.find((x) => x.id === commId);
+          out.push({
+            commId, name: cm?.en ?? commId, unit: cm?.unit ?? 'KG',
+            open, receipt, total: open + receipt, sales, closing: open + receipt - sales,
+            amount: Number(v.amount) || 0,
+          });
+        }
+      }
+    }
+    if (out.length) return out;
+    for (const [commId, r] of Object.entries(summary.commMap)) {
+      if (scope && !scope.has(commId)) continue;
+      out.push({ commId, name: r.name, unit: r.unit, open: 0, receipt: 0, total: 0, sales: r.qty, closing: 0, amount: r.amount });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crsVal, summary, monthlyStore, commodityMaster]);
+
+  /** This month as the sheet readMonthlyStatement() expects. */
+  const exportMonthlyData = async () => {
+    if (!crsVal || !exportRows.length) return;
+    setExporting(true);
+    try {
+      const xlsx = await loadXlsx();
+      const crsId = Number(crsVal);
+      const data: PvMonthData = {
+        crsId,
+        crsName: shops[crsId - 1]?.name ?? '',
+        month: summary.moNum,
+        year: summary.moYear,
+        rows: exportRows,
+      };
+      xlsx.writeFile(buildMonthlySheet(xlsx, data), monthlyFileName(data));
+    } catch (e) {
+      void appAlert(e instanceof Error ? e.message : 'Could not build the Excel file.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const rows = Object.entries(summary.commMap)
     .map(([id, r]) => ({ id, ...r }))
@@ -231,30 +349,40 @@ export default function ReportsPage() {
                 </select>
               </div>
             ) : null}
-            {type === 'quarterly' ? (
+            {isPV ? (
               <div>
-                <label className="form-label">QUARTER START MONTH</label>
-                <select value={quarterVal} onChange={(e) => setQuarterVal(e.target.value)} style={sel}>
-                  {quarterOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
+                <label className="form-label">PV SOURCE</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {([['auto', '⚡ Automatic'], ['manual', '📤 Manual Upload']] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => { setPvSource(v); setManualRows(null); }}
+                      disabled={v === 'manual' && type !== 'quarterly'}
+                      title={v === 'manual' && type !== 'quarterly' ? 'Manual upload is available for the 3-Month PV' : undefined}
+                      style={{
+                        padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+                        cursor: v === 'manual' && type !== 'quarterly' ? 'not-allowed' : 'pointer',
+                        border: `1px solid ${pvSource === v ? 'var(--navy, #0369A1)' : 'var(--border)'}`,
+                        background: pvSource === v ? 'var(--navy, #0369A1)' : '#fff',
+                        color: pvSource === v ? '#fff' : v === 'manual' && type !== 'quarterly' ? '#94A3B8' : 'var(--text)',
+                      }}
+                    >
+                      {label}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
             ) : null}
-            {type === 'yearly' ? (
+            {isPV ? (
               <div>
                 <label className="form-label">FINANCIAL YEAR</label>
                 <select value={fyVal} onChange={(e) => setFyVal(e.target.value)} style={sel}>
-                  {[0, 1, 2, 3].map((back) => {
-                    const fy = curFY - back;
-                    return (
-                      <option key={fy} value={String(fy)}>
-                        {fy}-{String(fy + 1).slice(-2)} (Apr {fy} — Mar {fy + 1})
-                      </option>
-                    );
-                  })}
+                  {fyList.map((p) => (
+                    <option key={p.fy} value={String(p.fy)}>
+                      {p.fyLabel} — Apr {p.fy} to Mar {p.fy + 1}
+                    </option>
+                  ))}
                 </select>
               </div>
             ) : null}
@@ -264,6 +392,47 @@ export default function ReportsPage() {
               </button>
             </div>
           </div>
+
+          {/* All four quarters of the chosen year, always visible, so the PV
+              cycle reads at a glance and switching between them is one click.
+              Jan–Mar carries the NEXT calendar year — that is the financial
+              year, not a typo, so each card prints its own year. */}
+          {type === 'quarterly' ? (
+            <div style={{ marginTop: 16 }}>
+              <label className="form-label" style={{ display: 'block', marginBottom: 8 }}>SELECT 3-MONTH PERIOD</label>
+              <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                {QUARTER_LABELS.map((label, qi) => {
+                  const p = quarterByIndex(Number(fyVal), qi);
+                  const on = qi === quarterIdx;
+                  const covered = crsVal && p.months.every((m) => !!monthlyStore[`${crsVal}_${m.month}_${m.year}`]);
+                  return (
+                    <button
+                      key={qi}
+                      type="button"
+                      onClick={() => { setQuarterIdx(qi); setManualRows(null); }}
+                      style={{
+                        textAlign: 'left', cursor: 'pointer', borderRadius: 10, padding: '12px 14px',
+                        border: `2px solid ${on ? 'var(--navy, #0369A1)' : 'var(--border)'}`,
+                        background: on ? '#EFF6FF' : '#fff',
+                        boxShadow: on ? '0 2px 10px rgba(3,105,161,.15)' : 'none',
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: 13, color: on ? '#0369A1' : 'var(--text)', whiteSpace: 'nowrap' }}>
+                        {label.toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+                        3-Month PV · {p.months[0].year === p.months[2].year ? p.months[0].year : `${p.months[0].year}–${p.months[2].year}`}
+                      </div>
+                      <div style={{ fontSize: 10, marginTop: 5, fontWeight: 700, color: covered ? '#15803D' : 'var(--muted)' }}>
+                        {covered ? '● All 3 months in system' : crsVal ? '○ Needs upload or entry' : '○ Select a shop'}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           {isPV ? (
             <div style={{ display: 'flex', marginTop: 12, gap: 10, alignItems: 'center' }}>
               <button
@@ -284,8 +453,26 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {isPV && pvSource === 'manual' && type === 'quarterly' && pvPeriod && crsVal ? (
+        <ManualPvUpload
+          period={pvPeriod}
+          crsId={Number(crsVal)}
+          crsName={shops[Number(crsVal) - 1]?.name ?? ''}
+          onGenerate={(months) => { setManualRows(consolidateMonths(months)); setGenerated((g) => g + 1); }}
+        />
+      ) : null}
+      {isPV && pvSource === 'manual' && !crsVal ? (
+        <div className="card mb-4">
+          <div className="card-body" style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+            Select a CRS shop to upload its monthly statements.
+          </div>
+        </div>
+      ) : null}
+
+      {/* Four cards, so the row divides evenly at every breakpoint — g3 left a
+          lone third card stranded below two once the grid halved. */}
       {!isPV ? (
-        <div className="grid g3 mb-4">
+        <div className="grid g4 mb-4">
           <div className="kpi">
             <div className="kpi-icon" style={{ background: '#FEE2E2' }}>💰</div>
             <div>
@@ -303,6 +490,13 @@ export default function ReportsPage() {
             </div>
           </div>
           <div className="kpi">
+            <div className="kpi-icon" style={{ background: '#E0E7FF' }}>🏦</div>
+            <div>
+              <div className="kpi-val" style={{ color: '#4338CA' }}>{fmtAmt(summary.totalRemit)}</div>
+              <div className="kpi-label">Remittance Deposited</div>
+            </div>
+          </div>
+          <div className="kpi">
             <div className="kpi-icon" style={{ background: '#DBEAFE' }}>📅</div>
             <div>
               <div className="kpi-val" style={{ color: 'var(--navy)' }}>{summary.days}</div>
@@ -312,25 +506,97 @@ export default function ReportsPage() {
         </div>
       ) : null}
 
+      {/* The month as a machine-readable sheet. Without this there is nothing
+          for the manual PV to consume: the Statements "Excel" button writes
+          the statement's HTML with a .xls extension, which Excel opens but
+          which carries no reliable figures to read back. */}
+      {type === 'monthly' && crsVal ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            disabled={exporting || !exportRows.length}
+            onClick={() => void exportMonthlyData()}
+            style={{
+              background: exporting || !exportRows.length ? '#94A3B8' : '#16A34A', color: '#fff', border: 'none',
+              padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+              cursor: exporting || !exportRows.length ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {exporting ? 'Building…' : '📊 PV Data (Excel)'}
+          </button>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            {exportRows.length
+              ? `${exportRows.length} commodities. Download this month for a Manual 3-Month PV — it carries the CRS number, month and year, so it cannot be uploaded into the wrong slot.`
+              : 'Nothing to export — this month has no published figures.'}
+          </span>
+        </div>
+      ) : null}
+
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="card-title">
-            {isPV
-              ? crsVal
-                ? `PV Statement — CRS ${crsVal}`
-                : 'PV Statement'
-              : `Sales by Commodity — ${moLabel} · ${crsLabel}`}
+            {isPV && pvPeriod ? (
+              <>
+                {pvPeriod.kind === 'quarter' ? '3-Month PV' : 'Annual PV'} — {pvPeriod.label}
+                {crsVal ? (
+                  <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--muted)', marginTop: 3 }}>
+                    CRS {crsVal} — {shops[Number(crsVal) - 1]?.name ?? ''} · FY {pvPeriod.fyLabel} · generated{' '}
+                    {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              `Sales by Commodity — ${moLabel} · ${crsLabel}`
+            )}
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           {isPV ? (
             crsVal ? (
-              <div dangerouslySetInnerHTML={{ __html: pvHtml }} />
+              <>
+                {/* A PV built from an incomplete period is the failure mode
+                    that matters: the figures look finished. Say which months
+                    the shop has not published rather than quietly totalling
+                    the ones it has. */}
+                {pvCoverage.missing.length ? (
+                  <div style={{ margin: '0 0 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 14px', color: '#92400E', fontSize: 12 }}>
+                    <strong>
+                      {pvCoverage.have.length} of {(pvPeriod?.months.length ?? 0)} months published.
+                    </strong>{' '}
+                    No monthly record yet for{' '}
+                    {pvCoverage.missing.map((m) => `${MNAMES[m.month]} ${m.year}`).join(', ')} — this PV covers only what has been keyed.
+                  </div>
+                ) : (
+                  <div style={{ margin: '0 0 12px', background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 14px', color: '#15803D', fontSize: 12 }}>
+                    <strong>All {pvPeriod?.months.length} months published.</strong> This PV is complete for {pvPeriod?.label}.
+                  </div>
+                )}
+                <div dangerouslySetInnerHTML={{ __html: pvHtml }} />
+              </>
             ) : (
               <div style={{ textAlign: 'center', padding: 24, color: 'var(--muted)' }}>Please select a specific CRS shop to generate a PV Statement.</div>
             )
           ) : rows.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>No entry data found for the selected period.</div>
+            // Distinguish "nothing keyed" from "days keyed, but no commodity
+            // sold". Both used to read as the same blank month, which is what
+            // made a remittance-only month look like a broken report.
+            <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)', fontSize: 13, lineHeight: 1.7 }}>
+              {summary.days === 0 ? (
+                <>No day sheets were keyed for {moLabel} · {crsLabel}.</>
+              ) : (
+                <>
+                  <strong style={{ color: 'var(--text)' }}>
+                    {summary.days} day {summary.days === 1 ? 'sheet' : 'sheets'} keyed for {moLabel}, but no commodity was sold.
+                  </strong>
+                  <br />
+                  {summary.totalRemit > 0 ? (
+                    <>Remittance of {fmtAmt(summary.totalRemit)} is recorded against {summary.days === 1 ? 'it' : 'them'} — see the Remittance card above, and Monthly Entry for the day-by-day deposits.</>
+                  ) : (
+                    <>Nothing to report until sales figures are keyed on the Daily Entry page.</>
+                  )}
+                </>
+              )}
+            </div>
           ) : (
             <>
               <div className="table-wrap">

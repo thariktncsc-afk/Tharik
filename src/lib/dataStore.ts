@@ -44,7 +44,8 @@ export type StoreKey =
   | '__commodities'
   | '__crsMaster'
   | '__holidays'
-  | '__commodityMaster';
+  | '__commodityMaster'
+  | '__pvOfficers';
 
 export type DataStatus = 'idle' | 'loading' | 'ready' | 'error';
 

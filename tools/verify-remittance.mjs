@@ -62,8 +62,11 @@ for (const r of rows.slice(1)) {
   const { nc, ce } = R.amounts(r);
   check(`${r.reason}: ₹${r.amount} stays in Non-Cereal, Cereal carries no money`, nc === r.amount && ce === 0);
 }
+// Daily Entry no longer offers a Cereal destination, but sheets saved when it
+// did must keep reading back the way they were entered.
 const plainCereal = R.amounts({ ...t(700, SALES, { account: 'ce' }), salesDate: SALES, additional: false });
-check('a genuine Cereal deposit still lands in Cereal', plainCereal.ce === 700 && plainCereal.nc === 0);
+check('a legacy Cereal deposit still lands in Cereal', plainCereal.ce === 700 && plainCereal.nc === 0);
+check('a legacy Cereal row carrying a reason is still Non-Cereal', R.amounts({ ...t(300, SALES, { account: 'ce', reason: 'Tea' }), salesDate: SALES, additional: true }).nc === 300);
 
 console.log('totals');
 const totNC = rows.reduce((s, r) => s + R.amounts(r).nc, 0);

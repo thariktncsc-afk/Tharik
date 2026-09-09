@@ -145,7 +145,6 @@ export default function DailyEntryPage() {
   const [rows, setRows] = useState<Record<string, RowInput>>({});
   const [remits, setRemits] = useState<Remit[]>([]);
   const [remitAmt, setRemitAmt] = useState('');
-  const [remitAcct, setRemitAcct] = useState<RemitAcct>('nc');
   const [remitDate, setRemitDate] = useState(todayIso());
   const [remitErr, setRemitErr] = useState<{ amount?: string; date?: string }>({});
   const [savedMsg, setSavedMsg] = useState('');
@@ -187,7 +186,6 @@ export default function DailyEntryPage() {
     }
     setRows(next);
     setRemitAmt('');
-    setRemitAcct('nc');
     setRemitDate(date);
     setRemitErr({});
     setSavedMsg('');
@@ -305,7 +303,7 @@ export default function DailyEntryPage() {
         setRemitErr({ amount: 'Press ➕ Add to record this as an additional remittance and choose its reason.' });
         return null;
       }
-      list.push({ id: newRemitId(), amount: amt, date: remitDate, account: remitAcct, createdBy: user?.username, createdAt: new Date().toISOString() });
+      list.push({ id: newRemitId(), amount: amt, date: remitDate, account: 'nc', createdBy: user?.username, createdAt: new Date().toISOString() });
     } else if (!list.length) {
       setRemitErr({ amount: 'Please enter the Remittance Amount.', date: remitDate ? undefined : 'Please select the Remittance Date.' });
       return null;
@@ -326,10 +324,10 @@ export default function DailyEntryPage() {
     // The first deposit of a sales date is the ordinary one. Every later one
     // is an additional remittance and must say why.
     if (remits.length) {
-      setPendingRemit({ amount: amt, date: remitDate, account: remitAcct });
+      setPendingRemit({ amount: amt, date: remitDate, account: 'nc' });
       return;
     }
-    setRemits((r) => [...r, { id: newRemitId(), amount: amt, date: remitDate, account: remitAcct, createdBy: user?.username, createdAt: new Date().toISOString() }]);
+    setRemits((r) => [...r, { id: newRemitId(), amount: amt, date: remitDate, account: 'nc', createdBy: user?.username, createdAt: new Date().toISOString() }]);
     setRemitAmt('');
   };
 
@@ -480,7 +478,6 @@ export default function DailyEntryPage() {
     setRows({});
     setRemits([]);
     setRemitAmt('');
-    setRemitAcct('nc');
     setRemitErr({});
   };
 
@@ -917,34 +914,21 @@ export default function DailyEntryPage() {
               <div style={{ width: '100%', borderTop: '1px solid var(--border)', margin: '14px 0 10px', paddingTop: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
                   🏭 Remittance Details <span style={{ color: '#DC2626' }}>*</span>
-                  <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--muted)', marginLeft: 6 }}>(required — bank account, deposit amount &amp; date; add more than one for the same day if the deposit was split or went to both accounts)</span>
+                  <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--muted)', marginLeft: 6 }}>(required — deposit amount &amp; date; add more than one for the same day if the takings were banked in parts)</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(210px,auto) 1fr 1fr auto', gap: 14, alignItems: 'start' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
-                      Deposited To <span style={{ color: '#DC2626' }}>*</span>
-                    </label>
-                    <div style={{ display: 'flex', border: '2px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
-                      {(['nc', 'ce'] as const).map((k) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setRemitAcct(k)}
-                          title={ACCT[k].hint}
-                          style={{ flex: 1, border: 'none', borderLeft: k === 'ce' ? '1px solid #E2E8F0' : undefined, padding: '9px 10px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', background: remitAcct === k ? ACCT[k].fg : '#fff', color: remitAcct === k ? '#fff' : 'var(--muted)' }}
-                        >
-                          {ACCT[k].label}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 4, lineHeight: 1.35 }}>{ACCT[remitAcct].hint}</div>
-                  </div>
+                {/* No account chooser. Every deposit keyed here goes to the
+                    Non-Cereal account; the Cereal A/C column on Monthly
+                    Remittance carries the REASON for a second or later deposit
+                    (Missed / Tea / Salt / C.Box), not a second account to pay
+                    into. Offering the choice here put money in a column that
+                    is not a money column. */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 14, alignItems: 'start' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                       Remittance Amount (₹) <span style={{ color: '#DC2626' }}>*</span>
                     </label>
                     <div style={{ position: 'relative' }}>
-                      <span style={{ position: 'absolute', left: 10, top: 19, transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: ACCT[remitAcct].fg }}>₹</span>
+                      <span style={{ position: 'absolute', left: 10, top: 19, transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: ACCT.nc.fg }}>₹</span>
                       <input
                         type="number"
                         min={0}
@@ -961,7 +945,7 @@ export default function DailyEntryPage() {
                             addRemit();
                           }
                         }}
-                        style={{ width: '100%', border: `2px solid ${remitErr.amount ? '#DC2626' : ACCT[remitAcct].bd}`, borderRadius: 8, padding: '9px 12px 9px 26px', fontSize: 14, fontWeight: 700, color: ACCT[remitAcct].fg, background: ACCT[remitAcct].bg, outline: 'none' }}
+                        style={{ width: '100%', border: `2px solid ${remitErr.amount ? '#DC2626' : ACCT.nc.bd}`, borderRadius: 8, padding: '9px 12px 9px 26px', fontSize: 14, fontWeight: 700, color: ACCT.nc.fg, background: ACCT.nc.bg, outline: 'none' }}
                       />
                       {remitErr.amount ? <div style={{ fontSize: 10, marginTop: 3, color: '#DC2626', fontWeight: 600 }}>{remitErr.amount}</div> : null}
                       {(() => {
@@ -970,10 +954,13 @@ export default function DailyEntryPage() {
                         // sheet has nothing for a Cereal deposit to match.
                         const pend = parseFloat(remitAmt.trim());
                         const pending = remitAmt.trim() !== '' && !isNaN(pend) && pend > 0 ? pend : 0;
-                        const nc = remitNC + (remitAcct === 'nc' ? pending : 0);
-                        const ce = remitCE + (remitAcct === 'ce' ? pending : 0);
+                        // Everything keyed here is Non-Cereal now; `ce` only
+                        // carries deposits from sheets saved when the account
+                        // could still be chosen.
+                        const nc = remitNC + pending;
+                        const ce = remitCE;
                         if (!nc && !ce) return null;
-                        const ncRows = remits.filter((r) => r.account !== 'ce').length + (remitAcct === 'nc' && pending ? 1 : 0);
+                        const ncRows = remits.filter((r) => r.account !== 'ce').length + (pending ? 1 : 0);
                         const many = ncRows > 1 ? ` (${ncRows} deposits)` : '';
                         const diff = nc - grand;
                         const st: React.CSSProperties = { fontSize: 10, marginTop: 3 };
@@ -1019,7 +1006,7 @@ export default function DailyEntryPage() {
                 <div style={{ marginTop: 12 }}>
                   {!remits.length ? (
                     <div style={{ fontSize: 11, color: '#B45309', background: '#FFFBEB', border: '1px dashed #FDE047', borderRadius: 8, padding: '8px 12px' }}>
-                      ⚠ No remittance added yet — pick the account, enter the amount and date, then press <strong>Add</strong>. At least one deposit — Non-Cereal or Cereal — is required to complete the day.
+                      ⚠ No remittance added yet — enter the amount and date, then press <strong>Add</strong>. At least one deposit is required to complete the day.
                     </div>
                   ) : (
                     <div style={{ border: '1px solid #E2E8F0', borderRadius: 9, overflow: 'hidden' }}>
@@ -1080,11 +1067,15 @@ export default function DailyEntryPage() {
                   </span>
                 ) : null}
                 <button className="btn btn-outline btn-sm" onClick={clearForm}>🗑 Clear</button>
-                <button onClick={() => void save()} title="Save this day sheet. Requires at least one remittance." style={{ background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
-                  💾 தினசரி விற்பனை நிறைவு
-                </button>
-                <button onClick={() => void markSalesClose()} title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#B45309,#F59E0B)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(245,158,11,.3)' }}>
+                {/* Monthly on the left, Daily pushed to the right. The only
+                    change is the order and which button carries the auto
+                    margin that does the pushing — each keeps its own colour,
+                    padding, title and handler. */}
+                <button onClick={() => void markSalesClose()} title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style={{ background: 'linear-gradient(135deg,#B45309,#F59E0B)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(245,158,11,.3)' }}>
                   🔒 மாத விற்பனை நிறைவு
+                </button>
+                <button onClick={() => void save()} title="Save this day sheet. Requires at least one remittance." style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
+                  💾 தினசரி விற்பனை நிறைவு
                 </button>
               </div>
             </div>
