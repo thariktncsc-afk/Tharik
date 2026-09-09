@@ -26,6 +26,7 @@ export async function resolve(spec, ctx, next) {
 );
 
 const { planClear } = await import(pathToFileURL(join(root, 'src/lib/clearExecute.ts')).href);
+const { resyncReceiptMonth } = await import(pathToFileURL(join(root, 'src/lib/engine/receiptSync.ts')).href);
 
 const arg = (n, d) => (process.argv.find((a) => a.startsWith(`--${n}=`)) ?? `--${n}=${d}`).split('=')[1];
 const CRS = Number(arg('crs', 1));
@@ -108,6 +109,55 @@ if (sc) {
   );
 } else {
   console.log('  note  no Sales Close mark for this month');
+}
+
+// ── An approved clear of a RECEIPT ────────────────────────────────────────
+// A receipt can be deleted two ways: an administrator on the Receipt page, or
+// a shop's clear request once it is approved. The two must leave the data
+// identical — otherwise which route was taken would show up in the statements.
+console.log('\nan approved clear of a receipt');
+{
+  const CR = 4;
+  const mrec = { open: 1000, receipt: 1000, total: 2000, sales: 1000, close: 1000, amount: 0, excess: 0, shortage: 0, transfer: 0, cs: 0, g_cs: 0, g_open: 20, g_receipt: 20, g_total: 40, g_sales: 20, g_close: 20 };
+  const proj = { a: { BRA: { open: 1000, receipt: 1000, total: 2000, sales: 1000, close: 1000, amount: 0, excess: 0, shortage: 0, transfer: 0 } }, b: {}, __projection: { source: 'monthly', at: 'x' } };
+  const receipt = { id: 77, crsId: CR, date: '2026-09-09', receiptNo: 'R/77', items: { BRA: { qty: 1000 } } };
+  const mk = () => ({
+    entryStore: { data: { [`${CR}_2026-09-30`]: JSON.parse(JSON.stringify(proj)) }, version: 1 },
+    inspectionStore: { data: {}, version: 1 },
+    meManualStore: { data: { [`${CR}_9_2026`]: { a: { BRA: { ...mrec } }, b: {} } }, version: 1 },
+    meSourceStore: { data: { [`${CR}_9_2026`]: { a: { BRA: 'receipt' }, b: {} } }, version: 1 },
+    monthlyStore: { data: { [`${CR}_9_2026`]: { a: { BRA: { ...mrec } }, b: {} } }, version: 1 },
+    receiptStore: { data: [receipt], version: 1 },
+  });
+
+  const req2 = {
+    id: 1000, crsId: CR, shopName: 'test', storeKeys: ['77'], modules: ['Receipt'],
+    scopeKind: 'receipt', scopeLabel: '2026-09-09', requestedBy: 't', requestedById: null, requestedRole: 'BC',
+    reason: 'verification', snapshot: {}, status: 'clearing', createdAt: '', decidedBy: 'admin',
+    decidedAt: '', decisionNote: '', clearedAt: null, clearedRecords: [], lastError: null,
+  };
+  const approved = planClear(req2, mk()).next;
+
+  // The same deletion, taken the administrator's way.
+  const r = mk();
+  const direct = resyncReceiptMonth(
+    { entryStore: r.entryStore.data, inspectionStore: {}, meManualStore: r.meManualStore.data,
+      meSourceStore: r.meSourceStore.data, monthlyStore: r.monthlyStore.data, receiptStore: [] },
+    CR, 9, 2026, { dateIso: '2026-09-09', before: [receipt] },
+  );
+
+  const bra = approved.monthlyStore?.[`${CR}_9_2026`]?.a?.BRA;
+  check('the receipt itself goes', Array.isArray(approved.receiptStore) && approved.receiptStore.length === 0);
+  check('the month drops its Receipt', bra?.receipt === 0, `got ${bra?.receipt}`);
+  check('Total falls back to Opening and Closing to Total − Sales', bra?.total === 1000 && bra?.close === 0);
+  check('the manual month lets go of the copy it held', approved.meManualStore?.[`${CR}_9_2026`]?.a?.BRA?.receipt === 0);
+  check('the projected day sheet is rewritten', approved.entryStore?.[`${CR}_2026-09-30`]?.a?.BRA?.receipt === 0);
+  check(
+    'an approved clear and an administrator’s delete leave identical data',
+    JSON.stringify(approved.monthlyStore) === JSON.stringify(direct.monthlyStore) &&
+      JSON.stringify(approved.meManualStore) === JSON.stringify(direct.meManualStore) &&
+      JSON.stringify(approved.entryStore) === JSON.stringify(direct.entryStore),
+  );
 }
 
 console.log(failures === 0 ? '\nCLEAR EXECUTE OK' : `\n${failures} FAILURE(S)`);

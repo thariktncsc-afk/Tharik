@@ -14,6 +14,7 @@ import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { cookies } from 'next/headers';
 import { describe, inspectWrite, isProtectedStore } from '@/lib/clearGuard';
+import { describeStock, inspectStockWrite } from '@/lib/stockGuard';
 import { logEvent } from '@/lib/clearServer';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 
@@ -133,23 +134,40 @@ export async function POST(req: Request) {
   // Admins bypass: the point is a reviewed trail for shop staff.
   const isAdmin = session.role === 'ADMIN';
 
-  if (!isAdmin) {
-    const touched = Object.keys(stores).filter(isProtectedStore);
-    if (touched.length) {
-      const { data: current } = await db
-        .from('crs_state')
-        .select('store_key, data, version')
-        .eq('scope', 'global')
-        .in('store_key', touched);
+  const touched = Object.keys(stores).filter(isProtectedStore);
+  if (touched.length) {
+    // The stock guard judges a keyed Receipt against the Receipt Register, and
+    // a save that changes only the day sheet does not carry the register with
+    // it — the client posts just the stores that changed. So it is read here
+    // whether or not it is being written.
+    const needsRegister = 'entryStore' in stores || 'meManualStore' in stores;
+    const read = [...new Set(needsRegister ? [...touched, 'receiptStore'] : touched)];
 
-      const stored: Record<string, unknown> = {};
-      const stale: string[] = [];
-      for (const row of current ?? []) {
-        const key = row.store_key as string;
-        stored[key] = row.data;
-        if (Number(versions[key] ?? 0) !== Number(row.version)) stale.push(key);
-      }
+    const { data: current } = await db
+      .from('crs_state')
+      .select('store_key, data, version')
+      .eq('scope', 'global')
+      .in('store_key', read);
 
+    const stored: Record<string, unknown> = {};
+    const stale: string[] = [];
+    for (const row of current ?? []) {
+      const key = row.store_key as string;
+      stored[key] = row.data;
+      // Only what is actually being written can be stale. receiptStore is
+      // often read here without being sent, and carries no version to compare.
+      if (key in stores && Number(versions[key] ?? 0) !== Number(row.version)) stale.push(key);
+    }
+
+    if (!isAdmin) {
+      // ── Clear/delete guard ────────────────────────────────────────────────
+      // Destroying saved figures needs an administrator's approval, and a shop
+      // may only touch its own records. Both are decided on the difference
+      // between what is stored and what is being written, because this
+      // endpoint is where the data actually changes — a dialog in the browser
+      // is only manners. Admins bypass: the point is a reviewed trail for shop
+      // staff.
+      //
       // Version first, guard second. A client that has not seen someone else's
       // save is holding an old copy of every shop's data, and diffing against
       // it would read those untouched records as changes this user is making —
@@ -188,6 +206,20 @@ export async function POST(req: Request) {
           { status: 403 },
         );
       }
+    }
+
+    // ── Stock field guard ───────────────────────────────────────────────────
+    // Opening locks once saved and Receipt belongs to the Receipt Register —
+    // both for shop staff only. Total and Closing are arithmetic, and that
+    // binds administrators too: a statutory statement whose columns do not add
+    // up is wrong no matter who keyed it. See src/lib/stockGuard.ts.
+    const broken = inspectStockWrite(stored, stores, isAdmin);
+    if (broken.length) {
+      await logEvent(null, 'blocked', session, `Stock field guard refused: ${describeStock(broken)}`);
+      return NextResponse.json(
+        { error: describeStock(broken.slice(0, 3)) + (broken.length > 3 ? ` (+${broken.length - 3} more)` : ''), stockViolations: broken },
+        { status: 403 },
+      );
     }
   }
 

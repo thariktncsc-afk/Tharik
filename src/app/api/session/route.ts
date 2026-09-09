@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, cookieOptions, decodeSession, encodeSession } from '@/lib/session';
+import { canSignIn } from '@/lib/engine/staffAssignment';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -113,9 +114,22 @@ export async function POST(req: Request) {
     );
   }
 
-  const candidates = (data ?? []) as Candidate[];
+  const all = (data ?? []) as Candidate[];
+  // Someone transferred away from this shop, or removed from it, keeps their
+  // account and their history but no longer works here — so they are not one
+  // of the people this shop's username signs in, and the role popup must stop
+  // offering them. Dropped before the count below, so a shop left with one
+  // person signs in straight through rather than being asked to choose from a
+  // list of one. See canSignIn() for why an unassigned shop account is refused
+  // rather than merely hidden.
+  const candidates = all.filter((c) => canSignIn(c.role, c.crs_id));
   if (candidates.length === 0) {
-    return NextResponse.json({ error: 'Incorrect username or password.' }, { status: 401 });
+    return NextResponse.json(
+      all.length
+        ? { error: 'This account is no longer assigned to a CRS shop. Ask an administrator to assign it.' }
+        : { error: 'Incorrect username or password.' },
+      { status: 401 },
+    );
   }
 
   // More than one person registered under this username — let the caller pick,

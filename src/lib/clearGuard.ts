@@ -105,17 +105,25 @@ const MARKER_KEYS = new Set(['__projection', 'updatedAt', 'createdAt', 'id', 'cr
 /**
  * A record the app generated rather than a clerk keyed.
  *
- * Two shapes carry the marker. A projected DAY SHEET holds it at the top
- * level. Projected INSPECTION adjustments hold it per commodity, because a day
- * can mix them with real ones — so an inspection day counts as generated only
- * when every entry carrying a figure is marked. That distinction matters: the
- * month-close removes its own adjustments when a real day sheet takes over
- * (dropProjectedAdjustments), and if that removal needed an administrator the
- * two-mode switch would stall for every shop user.
+ * Three shapes carry a marker. A projected DAY SHEET holds `__projection` at
+ * the top level. Projected INSPECTION adjustments hold it per commodity,
+ * because a day can mix them with real ones — so an inspection day counts as
+ * generated only when every entry carrying a figure is marked. A RECEIPT ROW
+ * written by a Monthly Entry save is marked `source: 'monthly-entry'`
+ * (engine/monthlyReceipt.ts); the constant is repeated here rather than
+ * imported to keep this module free of dependencies, as `__projection` already
+ * is.
+ *
+ * The distinction matters because all three are removed by the two-mode
+ * switch: the first real day sheet of a month takes over from the projection,
+ * its adjustments and its receipt row together. If that removal needed an
+ * administrator, keying the first day of a monthly-keyed month would stall for
+ * every shop user.
  */
 export const isSystemRecord = (rec: unknown): boolean => {
   if (!isObj(rec)) return false;
   if (rec.__projection) return true;
+  if (rec.source === 'monthly-entry') return true;
 
   let sawMarked = false;
   for (const sec of ['a', 'b']) {
@@ -203,15 +211,19 @@ export function diffStore(store: string, before: unknown, after: unknown, ownCrs
       const crsId = Number(row.crsId) || null;
       const period = String(row.date ?? '');
       const next = a.get(id);
+      // The row Monthly Entry writes for a whole month is the app's, and it
+      // goes when the month switches to being keyed by day. Still scope-checked
+      // — a shop may only drop its own — but not an approvable clear.
+      const generated = isSystemRecord(row);
       if (!next) {
         changed(id, crsId);
-        note(id, crsId, period, 'removed');
+        if (!generated) note(id, crsId, period, 'removed');
         continue;
       }
       if (JSON.stringify(row) !== JSON.stringify(next)) changed(id, crsId);
       // A receipt with every commodity taken off it is a deleted receipt in
       // all but name.
-      if (hasData(row.items) && !hasData(next.items)) note(id, crsId, period, 'emptied');
+      if (!generated && hasData(row.items) && !hasData(next.items)) note(id, crsId, period, 'emptied');
     }
     for (const [id, row] of a) {
       if (!b.has(id)) changed(id, Number(row.crsId) || null);

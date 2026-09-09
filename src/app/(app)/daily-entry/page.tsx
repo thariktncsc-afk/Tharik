@@ -28,6 +28,7 @@ import { useCommodityLists, useShops } from '@/lib/masters';
 import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import { receiptQtyForDay, receiptRefsForDay, type ReceiptRow } from '@/lib/engine/receiptRollup';
+import { dropMonthlyReceipt } from '@/lib/engine/monthlyReceipt';
 import PaymentDialog from '@/components/PaymentDialog';
 import { createOrder, fetchAccess, type Order, type Upi } from '@/lib/payments/client';
 import InspectionModal from './InspectionModal';
@@ -36,6 +37,8 @@ import ClearRequestDialog from '@/components/ClearRequestDialog';
 import AdditionalRemitDialog from '@/components/AdditionalRemitDialog';
 import { newRemitId, sheetTotals, txnsOf, type RemitAcct, type RemitReason, type RemitTxn } from '@/lib/engine/remittance';
 import { hasData } from '@/lib/clearGuard';
+import { openingLocked, receiptLocked } from '@/lib/stockGuard';
+import { columnKeyDown } from '@/lib/gridNav';
 import type { ClearScope } from '@/lib/clearClient';
 
 type ShopRec = { name: string };
@@ -162,9 +165,39 @@ export default function DailyEntryPage() {
   const insp = key ? inspectionStore[key] : undefined;
   const lists = useCommodityLists(crsId);
 
-  // Re-open the sheet whenever the shop or date changes.
+  // Field permissions follow the ROLE, not whether a shop is attached: the
+  // server decides on `session.role === 'ADMIN'` and the two must agree, or a
+  // box looks editable and the save comes back 403.
+  const isAdmin = user?.role === 'ADMIN';
+  const sheetProjected = isProjectedSheet(saved);
+
+  /**
+   * Re-open the sheet whenever the shop or date changes — and once more when
+   * the sheet itself arrives.
+   *
+   * The stores load over the network AFTER this page mounts, so on a reload
+   * the effect first runs against an empty entryStore and reads nothing into
+   * the boxes; keyed on the date alone it never ran again, and a shop that
+   * reloaded its own saved day found Sales blank and Closing wrong. The
+   * figures were in the database the whole time, just never read into the
+   * form.
+   *
+   * Keyed on "which day, and has its sheet turned up yet", so it runs once
+   * more the moment the sheet appears — and NOT on every later store change,
+   * which would throw away what the clerk is halfway through typing (and the
+   * just-saved banner with it).
+   */
+  const opened = useRef('');
   useEffect(() => {
     if (!key) return;
+    const stamp = `${key}:${saved ? 'loaded' : 'empty'}`;
+    if (opened.current === stamp) return;
+    // The second run is the same day, now with its sheet — so the boxes are
+    // refilled but the transient state below is not. Saving turns a day from
+    // 'empty' to 'loaded', and clearing the banner it just set would flash it
+    // away before anyone could read it.
+    const changedDay = opened.current.split(':')[0] !== key;
+    opened.current = stamp;
     const next: Record<string, RowInput> = {};
     const sheet = entryStore[key];
     if (sheet) {
@@ -185,12 +218,14 @@ export default function DailyEntryPage() {
       setRemits([]);
     }
     setRows(next);
-    setRemitAmt('');
     setRemitDate(date);
-    setRemitErr({});
-    setSavedMsg('');
+    if (changedDay) {
+      setRemitAmt('');
+      setRemitErr({});
+      setSavedMsg('');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, saved]);
 
   const adjFor = (sec: 'a' | 'b', id: string) => {
     const r = insp?.[sec]?.[id];
@@ -218,23 +253,47 @@ export default function DailyEntryPage() {
   );
   const hasGodown = Object.keys(dayReceipts).length > 0;
 
-  type Derived = { open: number; openAuto: boolean; receipt: number; receiptAuto: boolean; sales: number; total: number; close: number; amount: number; adj: ReturnType<typeof adjFor> };
+  type Derived = {
+    open: number;
+    openAuto: boolean;
+    /** Saved once already — the shop may no longer re-key it. */
+    openHeld: boolean;
+    receipt: number;
+    receiptAuto: boolean;
+    /** Read-only because Receipt belongs to the Receipt Register. */
+    receiptHeld: boolean;
+    sales: number;
+    total: number;
+    close: number;
+    amount: number;
+    adj: ReturnType<typeof adjFor>;
+  };
   const derive = (sec: 'a' | 'b', c: Commodity): Derived => {
     const r = rows[`${sec}:${c.id}`] ?? {};
     const auto = crsVal ? (carrySource(priorDates, entryStore, crsVal, date, c.id, sec)?.close ?? null) : null;
-    const savedOpen = saved?.[sec]?.[c.id]?.open;
+    const savedRow = saved?.[sec]?.[c.id];
+    const savedOpen = savedRow?.open;
     const openAuto = auto !== null && !savedOpen && r.open === undefined;
-    const open = openAuto ? auto! : Number(r.open) || 0;
+    // Opening is a carried balance, so re-keying it after the fact breaks the
+    // chain — the day before still closes at the old figure. A projected sheet
+    // is exempt: converting the month into a real day sheet is meant to
+    // replace it. src/lib/stockGuard.ts is the same rule, server-side.
+    const openHeld = !sheetProjected && openingLocked(isAdmin, savedRow);
+    const open = openHeld ? Number(savedOpen) || 0 : openAuto ? auto! : Number(r.open) || 0;
     // A register quantity is never stored as 0, so its presence alone decides.
     const godown = dayReceipts[c.id] || 0;
     const receiptAuto = godown > 0;
-    const receipt = receiptAuto ? godown : Number(r.receipt) || 0;
+    // Shop staff never key a Receipt here; it fills in from the register. A
+    // figure keyed before that rule existed still shows — read-only — rather
+    // than silently dropping out of a saved sheet.
+    const receiptHeld = !receiptAuto && receiptLocked(isAdmin);
+    const receipt = receiptAuto ? godown : receiptHeld ? Number(savedRow?.receipt) || 0 : Number(r.receipt) || 0;
     const sales = Number(r.sales) || 0;
     const adj = adjFor(sec, c.id);
     const total = open + receipt + adj.excess - adj.shortage - adj.transfer;
     const close = total - sales;
     const amount = c.free ? 0 : sales * c.rate;
-    return { open, openAuto, receipt, receiptAuto, sales, total, close, amount, adj };
+    return { open, openAuto, openHeld, receipt, receiptAuto, receiptHeld, sales, total, close, amount, adj };
   };
 
   const totals = useMemo(() => {
@@ -272,19 +331,16 @@ export default function DailyEntryPage() {
     setRows((prev) => ({ ...prev, [`${sec}:${id}`]: { ...prev[`${sec}:${id}`], [field]: val } }));
   };
 
-  // Enter / arrow-key navigation down and up the editable inputs.
-  const gridKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const inputs = Array.from(gridRef.current?.querySelectorAll<HTMLInputElement>('input[data-nav]') ?? []);
-    const i = inputs.indexOf(e.currentTarget);
-    if (i === -1) return;
-    const next = e.key === 'ArrowUp' ? inputs[i - 1] : inputs[i + 1];
-    if (next) {
-      next.focus();
-      next.select();
-    }
-  };
+  /**
+   * Enter / ↑ / ↓ move down the column being keyed — not along the row.
+   *
+   * This used to walk `input[data-nav]` in DOM order, which for a viewer with
+   * Opening, Receipt and Sales all editable meant Enter from a row's Sales
+   * landed in the NEXT row's Opening. A clerk keying the Sales column would
+   * have been putting sales figures into opening balances. The column is the
+   * unit of travel; see src/lib/gridNav.ts.
+   */
+  const gridKey = (e: React.KeyboardEvent<HTMLInputElement>) => columnKeyDown(e, gridRef.current);
 
   const remitCollect = (): Remit[] | null => {
     setRemitErr({});
@@ -404,6 +460,11 @@ export default function DailyEntryPage() {
     crsData.update<Record<string, InspDay>>('inspectionStore', (d) => {
       dropProjectedAdjustments(d, Number(crsVal), m, y);
     });
+    // The register row Monthly Entry wrote for the whole month goes too. The
+    // day sheets carry their own receipts from here on, and leaving it would
+    // count the month's stock a second time on its last day.
+    const drop = dropMonthlyReceipt(crsData.get<ReceiptRow[]>('receiptStore') ?? [], Number(crsVal), m, y);
+    if (drop.dropped) crsData.set('receiptStore', drop.rows);
 
     // Republish the month so Monthly Entry and statements see this day.
     // Stores are re-read AFTER the confirm dialog: an autosave conflict can
@@ -617,23 +678,30 @@ export default function DailyEntryPage() {
     // both are auto, but one is yesterday's closing and the other is a keyed
     // godown delivery the clerk can trace back to a receipt number.
     const isGodown = field === 'receipt' && d2.receiptAuto;
-    const isAuto = isCarry || isGodown;
-    const val = isCarry ? d2.open.toFixed(3) : isGodown ? d2.receipt.toFixed(3) : '';
+    // Held, rather than auto: the figure is the shop's own, but keying it here
+    // is no longer theirs to do. Slate rather than amber or blue — nothing was
+    // filled in for them, the box is simply closed.
+    const isHeld = (field === 'open' && d2.openHeld) || (field === 'receipt' && d2.receiptHeld);
+    const ro = isCarry || isGodown || isHeld;
+    const shown = field === 'open' ? d2.open : d2.receipt;
+    const val = ro ? (shown ? shown.toFixed(3) : '') : '';
     const refs = isGodown && crsId ? receiptRefsForDay(receiptStore, crsId, date, c.id) : [];
     const tone = isGodown
       ? { background: '#DBEAFE', color: '#1E40AF', fontWeight: 700 }
       : isCarry
         ? { background: '#FEF3C7', color: '#92400E', fontWeight: 700 }
-        : {};
+        : isHeld
+          ? { background: '#F1F5F9', color: '#475569', fontWeight: 700 }
+          : {};
     return (
       <input
         type="number"
         min={0}
         step={0.001}
         placeholder="0.000"
-        readOnly={isAuto}
-        data-nav={isAuto ? undefined : '1'}
-        value={isAuto ? val : (r[field] ?? '')}
+        readOnly={ro}
+        data-col={ro ? undefined : field}
+        value={ro ? val : (r[field] ?? '')}
         onChange={(e) => setField(sec, c.id, field, e.target.value)}
         onKeyDown={gridKey}
         title={
@@ -641,7 +709,11 @@ export default function DailyEntryPage() {
             ? `From the Receipt Register — ${refs.join(', ')}. Edit it on the Receipt page.`
             : isCarry
               ? "Auto-carried from the previous day's closing"
-              : undefined
+              : isHeld
+                ? field === 'open'
+                  ? 'Opening was saved for this day and is locked. An administrator can correct it.'
+                  : 'Receipts are entered on the Receipt page — this column fills in from the register.'
+                : undefined
         }
         style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', ...tone, ...extra }}
       />
