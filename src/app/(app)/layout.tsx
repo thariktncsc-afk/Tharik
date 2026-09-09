@@ -33,12 +33,13 @@ const MENU = [
   { href: '/clear-requests', icon: '🔒', label: 'Clear Approvals' },
 ];
 const ADMIN = [
+  { href: '/pv-officers', icon: '🧑‍💼', label: 'PV Officers' },
   { href: '/users', icon: '👥', label: 'Users' },
   { href: '/settings', icon: '⚙️', label: 'Settings' },
   { href: '/audit', icon: '📜', label: 'Audit Logs' },
 ];
 // Mirrors adminNavLabels in 07-auth.js — hidden from non-admin roles.
-const ADMIN_ONLY = new Set(['CRS Shops', 'Commodities', 'Users', 'Settings', 'Audit Logs', 'Reports']);
+const ADMIN_ONLY = new Set(['CRS Shops', 'Commodities', 'Users', 'Settings', 'Audit Logs', 'Reports', 'PV Officers']);
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');

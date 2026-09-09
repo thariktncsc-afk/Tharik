@@ -11,7 +11,7 @@
  *  - receipt totals read `items[k].qty` (the legacy parseFloat(object) was
  *    always NaN, so period receipt totals were silently 0).
  */
-import { DSS_A, DSS_B, type DayEntry } from '@/lib/engine/commodities';
+import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
 
 export type PvCommRow = {
   name: string;
@@ -32,16 +32,40 @@ export type PvAggregate = {
   days: number;
 };
 
+/** What a published month holds per commodity, as far as the PV needs it. */
+type MonthlyFigures = { open?: number; receipt?: number; sales?: number; amount?: number };
+
 type Stores = {
   entryStore: Record<string, DayEntry>;
   receiptStore: { crsId: number; date: string; items?: Record<string, { qty: number }> }[];
-  monthlyStore: Record<string, { a?: Record<string, { open?: number; receipt?: number }>; b?: Record<string, { open?: number; receipt?: number }> }>;
+  monthlyStore: Record<string, { a?: Record<string, MonthlyFigures>; b?: Record<string, MonthlyFigures> }>;
 };
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const allComms = () => [...DSS_A, ...DSS_B];
 
-export function pvAggregatePeriod(crsIds: number[], months: { year: number; month: number }[], stores: Stores): PvAggregate {
+/**
+ * The commodities a shop's PV may carry.
+ *
+ * CRS 29 (Refugee Camp) stocks its own seven lines plus the two paid packing
+ * ones, and has no police section at all — the Daily and Monthly reports have
+ * always scoped it that way, but the PV path did not, so a CRS 29 PV could
+ * print police commodities the shop does not sell. The scope is applied while
+ * accumulating rather than when rendering, so an out-of-scope line cannot
+ * reach the totals either.
+ */
+export function pvCommodityScope(crsId: number): Set<string> | null {
+  if (!isCrs29(crsId)) return null; // every other shop carries the full list
+  return new Set([...CRS29_STOCK.map((c) => c.id), 'EMPTY_BAG', 'EMPTY_BOX']);
+}
+
+export function pvAggregatePeriod(
+  crsIds: number[],
+  months: { year: number; month: number }[],
+  stores: Stores,
+  /** Commodity ids the PV may include; null means all. */
+  scope: Set<string> | null = null,
+): PvAggregate {
   const commMap: Record<string, PvCommRow> = {};
   let totalSales = 0;
   let totalReceipts = 0;
@@ -57,6 +81,7 @@ export function pvAggregatePeriod(crsIds: number[], months: { year: number; mont
         daysSet.add(dk);
         for (const sec of ['a', 'b'] as const) {
           for (const [commId, row] of Object.entries(e[sec] ?? {})) {
+            if (scope && !scope.has(commId)) continue;
             const qty = Number(row.sales) || 0;
             const amt = Number(row.amount) || 0;
             totalSales += amt;
@@ -84,13 +109,36 @@ export function pvAggregatePeriod(crsIds: number[], months: { year: number; mont
         if (!ms) continue;
         for (const sec of ['a', 'b'] as const) {
           for (const [commId, sv] of Object.entries(ms[sec] ?? {})) {
-            const row = commMap[commId];
-            if (!row) continue;
+            if (scope && !scope.has(commId)) continue;
+            // A shop that keys its month straight into Monthly Entry has no
+            // day sheets, so nothing above created a row for it. Seeding from
+            // the published month is what lets the PV be built from whatever
+            // the shop actually keyed, rather than coming out blank for every
+            // monthly-keyed shop.
+            let row = commMap[commId];
+            if (!row) {
+              const cm = allComms().find((x) => x.id === commId);
+              row = commMap[commId] = {
+                name: cm?.en ?? commId, unit: cm?.unit ?? 'KG',
+                open: 0, receipt: 0, total: 0, issues: 0, closing: 0, amount: 0,
+                free: !!cm?.free,
+              };
+            }
             if (!row._openSet) {
+              // Opening is a stock balance, not a flow: the period opens where
+              // its FIRST month opened, and is never summed across months.
               row.open = Number(sv.open) || 0;
               row._openSet = true;
             }
             row.receipt += Number(sv.receipt) || 0;
+            // Sales/amount come from the day sheets where they exist; take the
+            // month's own figures only when no sheet spoke for this commodity.
+            if (!daysSet.size) {
+              row.issues += Number(sv.sales) || 0;
+              const amt = Number(sv.amount) || 0;
+              row.amount += amt;
+              totalSales += amt;
+            }
           }
         }
       }
@@ -114,8 +162,10 @@ export function buildPVTable(opts: {
   gunny: GunnyMonth;
   billClerk: string;
   pvOfficer?: string;
+  /** Already formatted DD-MM-YYYY; blank leaves the ruled line for the officer. */
+  pvDate?: string;
 }): string {
-  const { commMap, periodLabel, crsId, crsName, gunny, billClerk, pvOfficer } = opts;
+  const { commMap, periodLabel, crsId, crsName, gunny, billClerk, pvOfficer, pvDate } = opts;
   const fmtN = (v: number | undefined | null) => {
     if (v === undefined || v === null || v === 0) return '0';
     const n = Number(v);
@@ -184,7 +234,7 @@ export function buildPVTable(opts: {
     `<tr><td colspan="20" style="border:1px solid #000;padding:4px 8px;font-size:9px"><b>NAME OF THE CRS :</b> ${crsId}${crsName ? ' — ' + crsName : ''}</td>` +
     `<td colspan="19" style="border:1px solid #000;padding:4px 8px;font-size:9px"><b>NAME AND DESIGNATION OF THE P.V.OFFICER :</b> ${pvOfficer || '____________'}</td></tr>` +
     `<tr><td colspan="20" style="border:1px solid #000;padding:4px 8px;font-size:9px"><b>NAME OF THE BILL CLERK :</b> ${billClerk}</td>` +
-    '<td colspan="19" style="border:1px solid #000;padding:4px 8px;font-size:9px"><b>DATE OF P.V. :</b> ____________</td></tr>' +
+    `<td colspan="19" style="border:1px solid #000;padding:4px 8px;font-size:9px"><b>DATE OF P.V. :</b> ${pvDate || '____________'}</td></tr>` +
     `<tr><td colspan="39" style="border:1px solid #000;text-align:center;font-weight:700;font-size:10px;padding:4px">PHYSICAL VERIFICATION REPORT OF COMMODITIES AS ON ${periodLabel}</td></tr>` +
     '<tr style="background:#F5F5F5">' +
     `<td rowspan="4" ${th8}>Sl.<br>No.</td><td rowspan="4" ${th8}>Commodity</td><td rowspan="4" ${th8}>Unit</td><td rowspan="4" ${th8}>Stack<br>No.</td>` +

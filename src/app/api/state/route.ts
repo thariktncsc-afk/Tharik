@@ -54,6 +54,9 @@ const ALLOWED_KEYS = new Set([
   // screens — the legacy '__commodities' row is a bare id list and cannot
   // carry rates, so it stays untouched for the classic app.
   '__commodityMaster',
+  // PV officer groups and visit dates. A master, not shop data — it is not in
+  // PROTECTED_STORES, so the clear-approval guard leaves it alone.
+  '__pvOfficers',
 ]);
 
 async function requireSession() {
