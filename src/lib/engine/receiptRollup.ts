@@ -70,6 +70,71 @@ export function receiptRefsForDay(store: ReceiptRow[] | undefined, crsId: number
   return refs;
 }
 
+type SheetRow = { open?: unknown; receipt?: unknown; sales?: unknown; total?: unknown; close?: unknown; excess?: unknown; shortage?: unknown; transfer?: unknown };
+type Sheet = { a?: Record<string, SheetRow>; b?: Record<string, SheetRow>; [k: string]: unknown };
+
+/**
+ * Write the register's figures onto a day sheet that is already saved.
+ *
+ * The Receipt column of Daily Entry has always DISPLAYED the register
+ * (receiptQtyForDay), and a save writes what is displayed — so a receipt keyed
+ * before the day sheet needs nothing more. A receipt keyed AFTER one does: the
+ * screen shows the new figure while the stored sheet still holds the old, and
+ * two things read the stored sheet rather than the register — the DSS
+ * (17-dss-export.js takes `d.receipt` straight off the day) and tomorrow's
+ * Opening, which carries from this day's stored Closing. Left alone, the shop
+ * sees a Closing of 1250 on the 9th and an Opening of 750 on the 10th.
+ *
+ * Only commodities the register spoke for — before this change or after it —
+ * are touched, so a Receipt keyed by hand on a sheet the register has never
+ * mentioned is left exactly as it was. Total and Closing are recomputed from
+ * the row's own adjustment fields, which is the arithmetic stockGuard.ts
+ * enforces and what Daily Entry itself shows.
+ *
+ * Returns null when nothing needs changing — including for a projected sheet,
+ * which is Monthly Entry's output and states the whole month's receipt.
+ */
+export function syncSheetReceipts(
+  sheet: Sheet | undefined,
+  before: ReceiptRow[] | undefined,
+  after: ReceiptRow[] | undefined,
+  crsId: number,
+  dateIso: string,
+): Sheet | null {
+  if (!sheet || sheet.__projection) return null;
+  const was = receiptQtyForDay(before, crsId, dateIso);
+  const now = receiptQtyForDay(after, crsId, dateIso);
+  const spoken = new Set([...Object.keys(was), ...Object.keys(now)]);
+  if (!spoken.size) return null;
+
+  const n = (v: unknown) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : 0;
+  };
+  const next: Sheet = { ...sheet };
+  let changed = false;
+  for (const sec of ['a', 'b'] as const) {
+    const blk = sheet[sec];
+    if (!blk) continue;
+    let secChanged = false;
+    const copy: Record<string, SheetRow> = { ...blk };
+    for (const id of spoken) {
+      const row = blk[id];
+      if (!row) continue;
+      const receipt = now[id] ?? 0;
+      if (n(row.receipt) === receipt) continue;
+      const total = n(row.open) + receipt + n(row.excess) - n(row.shortage) - n(row.transfer);
+      copy[id] = { ...row, receipt, total, close: total - n(row.sales) };
+      secChanged = true;
+    }
+    if (secChanged) {
+      next[sec] = copy;
+      changed = true;
+    }
+  }
+  return changed ? next : null;
+}
+
 /**
  * Every day of one month that carries godown receipts, keyed by ISO date.
  * The monthly rollup walks the month day by day and needs to know which days

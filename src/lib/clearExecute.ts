@@ -30,7 +30,7 @@
  * an error otherwise.
  */
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { rebuildMonthlyFromDaily } from '@/lib/engine/monthlyRollup';
+import { resyncReceiptMonth } from '@/lib/engine/receiptSync';
 import { isProtectedStore, STORE_LABEL } from '@/lib/clearGuard';
 import { isProjectedSheet } from '@/lib/engine/monthProjection';
 import type { StoredRequest } from '@/lib/clearStore';
@@ -142,31 +142,26 @@ export function planClear(req: StoredRequest, rows: Rows): { next: Record<string
     }
   }
 
-  // Recompute what the month publishes, from what survives.
+  // Recompute what the month publishes, from what survives — and everything
+  // else that holds a copy of a receipt's figure. Shared with the Receipt
+  // page (engine/receiptSync.ts) so an approved clear and an administrator
+  // deleting the same receipt leave the data identical: the manual month's
+  // copy of a register-sourced Receipt goes with the rows it came from, and a
+  // monthly-keyed month's projected sheet is rewritten to match.
   for (const mKey of months) {
     const [crsId, m, y] = mKey.split('_').map(Number);
-    const manual = obj(take('meManualStore'))[mKey];
-    const built = rebuildMonthlyFromDaily(
+    const patch = resyncReceiptMonth(
+      {
+        entryStore: obj(take('entryStore')) as never,
+        inspectionStore: obj(take('inspectionStore')),
+        meManualStore: obj(take('meManualStore')) as never,
+        meSourceStore: obj(take('meSourceStore')) as never,
+        monthlyStore: obj(take('monthlyStore')) as never,
+        receiptStore: (take('receiptStore') as never) ?? [],
+      },
       crsId, m, y,
-      obj(take('entryStore')) as never,
-      obj(take('inspectionStore')) as never,
-      manual as never,
-      undefined,
-      (take('receiptStore') as never) ?? [],
     );
-
-    const monthly = obj(take('monthlyStore'));
-    const source = obj(take('meSourceStore'));
-    const emptied = !Object.keys(built.merged.a).length && !Object.keys(built.merged.b).length;
-    if (emptied) {
-      delete monthly[mKey];
-      delete source[mKey];
-    } else {
-      monthly[mKey] = built.merged;
-      source[mKey] = built.source;
-    }
-    next.monthlyStore = monthly;
-    next.meSourceStore = source;
+    for (const [store, value] of Object.entries(patch)) next[store] = value;
   }
 
   return { next, cleared };
