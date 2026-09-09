@@ -15,7 +15,7 @@
  * and the month republishes through the shared rollup. Bag counts prefer the
  * record's own figures (imported workbooks) over the kgs-derived ones.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
 import { bagsOf, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
@@ -33,9 +33,12 @@ import {
   type ProjectedMonth,
 } from '@/lib/engine/monthProjection';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
+import { dropMonthlyReceipt, monthlyReceiptNo, planMonthlyReceipt } from '@/lib/engine/monthlyReceipt';
 import { appAlert } from '@/components/dialog';
 import ClearRequestDialog from '@/components/ClearRequestDialog';
 import { hasData } from '@/lib/clearGuard';
+import { openingLocked } from '@/lib/stockGuard';
+import { columnKeyDown } from '@/lib/gridNav';
 import type { ClearScope } from '@/lib/clearClient';
 import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
@@ -70,6 +73,10 @@ export default function MonthlyEntryPage() {
 
   const isCrsUser = !!user?.crsId && user.role !== 'ADMIN';
   const shopIds = isCrsUser ? [user!.crsId as number] : shops.map((_, i) => i + 1);
+  // Field permissions follow the ROLE, not whether a shop is attached: the
+  // server decides on `session.role === 'ADMIN'` and the two must agree, or a
+  // box looks editable and the save comes back 403.
+  const isAdmin = user?.role === 'ADMIN';
 
   const [crsVal, setCrsVal] = useState(isCrsUser ? String(user!.crsId) : '');
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -80,6 +87,7 @@ export default function MonthlyEntryPage() {
   const [stmtOpen, setStmtOpen] = useState(false);
   const [inspOpen, setInspOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const crsId = crsVal ? Number(crsVal) : null;
   const key = crsVal ? `${crsVal}_${month}_${year}` : '';
@@ -136,6 +144,10 @@ export default function MonthlyEntryPage() {
     derived: boolean;
     /** Receipt came from the Receipt Register — that one cell is read-only. */
     rcpLocked: boolean;
+    /** Receipt is the register's to state, not this shop's to key. */
+    rcpHeld: boolean;
+    /** Opening was saved once already and is no longer this shop's to change. */
+    openHeld: boolean;
     open: number;
     receipt: number;
     sales: number;
@@ -152,12 +164,20 @@ export default function MonthlyEntryPage() {
     const rec = merged[sec][c.id] as MonthlyRec | undefined;
     const src = source[sec][c.id];
     const derived = src === 'daily';
-    // A 'receipt' row is otherwise hand-keyed: only its Receipt is fixed, so
-    // the clerk can still key that month's Opening and Sales around it.
-    const rcpLocked = derived || src === 'receipt';
+    // Shop staff never key a Receipt: it comes from the Receipt Register, here
+    // as much as on Daily Entry. An administrator may key one even on a
+    // 'receipt' row — the save pushes it back INTO the register rather than
+    // around it (engine/monthlyReceipt.ts), so locking the cell the moment the
+    // register answers would mean a month could be keyed once and never
+    // corrected.
+    const rcpHeld = !isAdmin && !derived;
+    const rcpLocked = derived || rcpHeld || (!isAdmin && src === 'receipt');
+    // Opening is the previous month's closing carried forward; re-keying it
+    // after the fact breaks that chain. src/lib/stockGuard.ts, server-side.
+    const openHeld = !derived && openingLocked(isAdmin, rec);
     const e = edits[`${sec}:${c.id}`] ?? {};
     const num = (edit: string | undefined, stored: number | undefined) => (edit !== undefined ? Number(edit) || 0 : Number(stored) || 0);
-    const open = derived ? Number(rec?.open) || 0 : num(e.open, rec?.open);
+    const open = derived || openHeld ? Number(rec?.open) || 0 : num(e.open, rec?.open);
     const receipt = rcpLocked ? Number(rec?.receipt) || 0 : num(e.receipt, rec?.receipt);
     const sales = derived ? Number(rec?.sales) || 0 : num(e.sales, rec?.sales);
     let adj = inspMonth[`${sec}:${c.id}`] ?? { excess: 0, shortage: 0, transfer: 0 };
@@ -188,7 +208,7 @@ export default function MonthlyEntryPage() {
       const staleG = src === 'receipt' && (f === 'receipt' || f === 'total' || f === 'close');
       g[f] = !derived && !staleG && storedG > 0 && storedG !== auto ? storedG : auto;
     }
-    return { c, sec, derived, rcpLocked, open, receipt, sales, total, close, amount, adj, cs, gCs, g };
+    return { c, sec, derived, rcpLocked, rcpHeld, openHeld, open, receipt, sales, total, close, amount, adj, cs, gCs, g };
   };
 
   const rows = useMemo(() => {
@@ -309,6 +329,53 @@ export default function MonthlyEntryPage() {
       d[ctx.key] = manual;
     });
 
+    /**
+     * Push the month's keyed Receipt into the Receipt Register, dated the
+     * month's last day, and let it come back through the ordinary
+     * Register → Daily → Monthly path. Monthly Entry states the month's
+     * receipt; it does not get to BE the record of it, or the register and the
+     * month become two answers to one question.
+     *
+     * Administrators only: Receipt is not keyable here by shop staff, so there
+     * is nothing of theirs to push. What is written is the residual over the
+     * receipts already keyed for the month — see engine/monthlyReceipt.ts.
+     */
+    const receiptToRegister = (): string => {
+      if (!isAdmin || !ctx) return '';
+      const wanted: Record<string, number> = {};
+      for (const r of [...rows.a, ...rows.b]) if (!r.derived && r.receipt > 0) wanted[r.c.id] = r.receipt;
+
+      const store = crsData.get<ReceiptRow[]>('receiptStore') ?? [];
+      const counters = crsData.get<Record<string, number>>('__counters') ?? {};
+      const nextId = Number(counters.rpNextId) || store.reduce((m, r) => Math.max(m, Number((r as { id?: unknown }).id) || 0), 0) + 1;
+      const plan = planMonthlyReceipt(store, ctx.crsId, ctx.month, ctx.year, wanted, nextId);
+
+      if (plan.action !== 'unchanged') {
+        crsData.set('receiptStore', plan.rows);
+        if (plan.nextId !== nextId) {
+          crsData.update<Record<string, number>>('__counters', (d) => {
+            d.rpNextId = plan.nextId;
+          });
+        }
+      }
+
+      const no = monthlyReceiptNo(ctx.crsId, ctx.month, ctx.year);
+      const said =
+        plan.action === 'created'
+          ? ` Receipt ${no} added to the Receipt Register on ${fmtDay(lastDay)}.`
+          : plan.action === 'updated'
+            ? ` Receipt ${no} updated in the Receipt Register.`
+            : plan.action === 'removed'
+              ? ` Receipt ${no} removed from the Receipt Register — the month no longer states one.`
+              : '';
+      // Not an error: the register is the record, so it wins. The month simply
+      // cannot claim less arrived than the receipts already say did.
+      const over = plan.over.length
+        ? ` ⚠ ${plan.over.map((o) => `${o.id} — the register already holds ${o.keyed.toFixed(3)}, more than the ${o.wanted.toFixed(3)} keyed here`).join('; ')}.`
+        : '';
+      return said + over;
+    };
+
     // A month is keyed by day OR by month, never both — and the store, not
     // the screen, decides which: a day sheet saved since this page loaded is
     // the truth. With none, the month-close writes the month out as its last
@@ -330,6 +397,7 @@ export default function MonthlyEntryPage() {
         `Recorded as the ${fmtDay(lastDay)} day sheet, so the DSS and the date-wise statements print the month there` +
         (carried ? ` (${carried} adjustment${carried === 1 ? '' : 's'} carried across)` : '') +
         '.';
+      note += receiptToRegister();
     } else {
       let gone = false;
       crsData.update<Record<string, DayEntry>>('entryStore', (d) => {
@@ -338,9 +406,15 @@ export default function MonthlyEntryPage() {
       crsData.update<Record<string, InspDay>>('inspectionStore', (d) => {
         dropProjectedAdjustments(d, ctx.crsId, ctx.month, ctx.year);
       });
+      // The month follows its day sheets now, and those carry their own
+      // receipts — so the row standing in for the whole month goes with the
+      // projection it was written beside, or the stock counts twice.
+      const drop = dropMonthlyReceipt(crsData.get<ReceiptRow[]>('receiptStore') ?? [], ctx.crsId, ctx.month, ctx.year);
+      if (drop.dropped) crsData.set('receiptStore', drop.rows);
       note =
         `Figures accumulate from ${byDay.length} day ${byDay.length === 1 ? 'sheet' : 'sheets'}.` +
-        (gone ? ' An earlier month-close projection was removed.' : '');
+        (gone ? ' An earlier month-close projection was removed.' : '') +
+        (drop.dropped ? ` Its ${monthlyReceiptNo(ctx.crsId, ctx.month, ctx.year)} register row went with it.` : '');
     }
 
     // Re-read after the writes above: the adjustments just carried across are
@@ -402,8 +476,12 @@ export default function MonthlyEntryPage() {
     const footBd = secA ? '2px solid #BAE6FD' : '2px solid #FED7AA';
     const s = sec === 'a' ? sumA : sumB;
     const kgsInput = (r: Row, field: 'open' | 'receipt' | 'sales', style?: React.CSSProperties) => {
-      const fromRegister = field === 'receipt' && r.rcpLocked && !r.derived;
-      const locked = field === 'receipt' ? r.rcpLocked : r.derived;
+      const fromRegister = field === 'receipt' && r.rcpLocked && !r.derived && !r.rcpHeld;
+      // Held: the figure is this shop's, but keying it here is not theirs to
+      // do. Slate, so it reads differently from "accumulated from Daily" and
+      // from "the register said so".
+      const held = (field === 'receipt' && r.rcpHeld) || (field === 'open' && r.openHeld);
+      const locked = held || (field === 'receipt' ? r.rcpLocked : r.derived);
       const e = edits[`${sec}:${r.c.id}`] ?? {};
       const stored = merged[sec][r.c.id]?.[field];
       const val = locked
@@ -421,15 +499,23 @@ export default function MonthlyEntryPage() {
           readOnly={locked}
           placeholder="0.000"
           value={val}
+          // Only a cell this viewer may type in joins the column, so the
+          // permission rules above decide the route (src/lib/gridNav.ts).
+          data-col={locked ? undefined : field}
+          onKeyDown={(e) => columnKeyDown(e, gridRef.current)}
           title={
             fromRegister
               ? 'Total of this month’s godown receipts — change them on the Receipt page'
-              : locked
-                ? 'Accumulated from Daily Entry — edit the day sheet to change this'
-                : undefined
+              : held
+                ? field === 'open'
+                  ? 'Opening was saved for this month and is locked. An administrator can correct it.'
+                  : 'Receipts are entered on the Receipt page — this column fills in from the register.'
+                : locked
+                  ? 'Accumulated from Daily Entry — edit the day sheet to change this'
+                  : undefined
           }
           onChange={(e2) => setEdit(sec, r.c.id, { [field]: e2.target.value } as Partial<GridEdit>)}
-          style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 5, padding: '4px 5px', fontSize: 11, textAlign: 'right', ...(fromRegister ? { background: '#DBEAFE', color: '#1E40AF', fontWeight: 700 } : locked ? { background: '#F0F9FF', color: '#0369A1', fontWeight: 700 } : {}), ...style }}
+          style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 5, padding: '4px 5px', fontSize: 11, textAlign: 'right', ...(fromRegister ? { background: '#DBEAFE', color: '#1E40AF', fontWeight: 700 } : held ? { background: '#F1F5F9', color: '#475569', fontWeight: 700 } : locked ? { background: '#F0F9FF', color: '#0369A1', fontWeight: 700 } : {}), ...style }}
         />
       );
     };
@@ -441,6 +527,27 @@ export default function MonthlyEntryPage() {
         return <td key={f + 'g'} style={{ padding: '3px 4px', textAlign: 'center', fontSize: 10, color: '#D1D5DB', borderBottom: bdr, borderRight: '1px solid #E2E8F0', background: '#FAFAFA' }}>—</td>;
       }
       const v = r.g[f];
+      // Total and Closing bag counts are results, not entries — the same two
+      // fields the Gunny Stock table below has always shown read-only. They
+      // follow their kgs figure, which follows Opening + Receipt − Sales, so
+      // typing over one only made the row disagree with itself. Rendered the
+      // way GunnyTable renders them: plain text, no spinner, and out of the
+      // tab order as well, since there is nothing to land on.
+      const calculated = f === 'total' || f === 'close';
+      if (calculated) {
+        return (
+          <td key={f + 'g'} style={{ padding: '2px 3px', borderBottom: bdr, borderRight: '1px solid #E2E8F0', background: isTot ? '#DBEAFE' : '#FFFBEB' }}>
+            <input
+              type="text"
+              readOnly
+              tabIndex={-1}
+              value={v || ''}
+              title={f === 'total' ? 'Opening + Receipt — calculated' : 'Total − Sales — calculated'}
+              style={{ width: 42, border: `1px solid ${isTot ? '#BAE6FD' : '#FDE047'}`, borderRadius: 4, padding: '3px 4px', fontSize: 11, fontWeight: 800, textAlign: 'center', color: isTot ? '#0369A1' : '#92400E', background: isTot ? '#EFF6FF' : '#FEFCE8', cursor: 'default' }}
+            />
+          </td>
+        );
+      }
       return (
         <td key={f + 'g'} style={{ padding: '2px 3px', borderBottom: bdr, borderRight: '1px solid #E2E8F0', background: isTot ? '#DBEAFE' : '#FFFBEB' }}>
           <input
@@ -449,6 +556,12 @@ export default function MonthlyEntryPage() {
             step={1}
             value={v || ''}
             placeholder=""
+            // Bag counts are a column of their own — one per figure — so Enter
+            // runs down the bags being counted rather than crossing into kgs.
+            // Only the three keyable ones are columns; the calculated pair
+            // above carries no `data-col`, so Enter skips straight past them.
+            data-col={`g_${f}`}
+            onKeyDown={(e2) => columnKeyDown(e2, gridRef.current)}
             onChange={(e2) => setGunnyEdit(sec, r.c.id, f, e2.target.value)}
             style={{ width: 42, border: `1px solid ${isTot ? '#BAE6FD' : '#FDE047'}`, borderRadius: 4, padding: '3px 4px', fontSize: 11, fontWeight: 800, textAlign: 'center', color: isTot ? '#0369A1' : '#92400E', background: '#fff' }}
           />
@@ -728,8 +841,12 @@ export default function MonthlyEntryPage() {
             </div>
           )}
 
-          {gridSection('a', rows.a)}
-          {gridSection('b', rows.b)}
+          {/* Both sections under one ref, so a column keyed with Enter runs
+              from Section A's first commodity through to Section B's last. */}
+          <div ref={gridRef}>
+            {gridSection('a', rows.a)}
+            {gridSection('b', rows.b)}
+          </div>
 
           <div className="card" style={{ borderRadius: '0 0 12px 12px', borderTop: 'none' }}>
             <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>

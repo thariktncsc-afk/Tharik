@@ -11,11 +11,23 @@
  * roster re-reads after every change so the screen always shows what stored.
  */
 import { useMemo, useState } from 'react';
-import { crsData, useUsers } from '@/lib/dataStore';
+import { crsData, useStore, useUsers } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
+import { appConfirm } from '@/components/dialog';
 import type { EngineUser } from '@/lib/authClient';
+import {
+  clearedMasterSlot,
+  occupant,
+  planTransfer,
+  vacantRoles,
+  withMasterSlot,
+  type MasterRec,
+  type StaffRole,
+} from '@/lib/engine/staffAssignment';
 
 type ShopRec = { name: string };
+
+const isStaffRole = (r: string): r is StaffRole => r === 'BC' || r === 'Packer';
 
 async function api(url: string, method: string, body?: unknown) {
   const r = await fetch(url, {
@@ -35,7 +47,8 @@ export default function UsersPage() {
   const [filterCrs, setFilterCrs] = useState('');
   const [filterRole, setFilterRole] = useState('');
   const [banner, setBanner] = useState<{ msg: string; error?: boolean } | null>(null);
-  const [modal, setModal] = useState<null | { editId: number | null }>(null);
+  const [modal, setModal] = useState<null | { editId: number | null; seed?: { crsId: number; role: StaffRole } }>(null);
+  const [moving, setMoving] = useState<EngineUser | null>(null);
 
   const shopLabel = (id: number) => `CRS ${id} — ${shops[id - 1]?.name ?? ''}`;
 
@@ -59,6 +72,103 @@ export default function UsersPage() {
     try {
       await api(`/api/users/${u.id}`, 'PATCH', { password: 'pds123' });
       show(`✅ Password for "${u.fullName}" reset to default: pds123`);
+    } catch (e) {
+      show(`⚠️ ${e instanceof Error ? e.message : e}`, true);
+    }
+  };
+
+  /**
+   * Keep the office's sheet (__crsMaster) in step with the roster.
+   *
+   * The users table decides who holds which post — 39-staff-roles.js settled
+   * that — but it hands back to the sheet for a shop with NO active accounts,
+   * the "never been set up" case. Remove the last person from a shop and that
+   * fallback would reprint the name just removed, on statutory paperwork. So
+   * the sheet moves with the assignment. It is also what the CRS Shops screen
+   * displays, which is the other half of "CRS Master views must update".
+   */
+  const editMaster = (fn: (m: MasterRec[]) => MasterRec[] | null) => {
+    const next = fn(crsData.get<MasterRec[]>('__crsMaster') ?? []);
+    if (next) crsData.set('__crsMaster', next);
+    return !!next;
+  };
+
+  /**
+   * Take somebody off a shop without destroying anything they did there.
+   *
+   * The assignment is one column, so clearing it is enough for the shop card,
+   * the Dashboard, the statements and the sign-in list to stop showing them.
+   * The row itself stays: every audit entry, day sheet and statement they
+   * recorded is attributed by username, and deleting the account would leave
+   * that history pointing at nobody. /api/users deactivates an unassigned shop
+   * account server-side — see canSignIn().
+   */
+  const removeFromShop = async (u: EngineUser) => {
+    if (!u.crsId) return;
+    const from = u.crsId;
+    const ok = await appConfirm({
+      title: `Remove this user from CRS ${from}?`,
+      tone: 'danger',
+      confirmLabel: 'Confirm Remove',
+      message:
+        `${u.fullName} (${u.role}) will no longer appear under ${shopLabel(from)} — not on the shop card, the Dashboard, the statements, or the shop's sign-in list.\n\n` +
+        `Everything they recorded while working there is kept. The account is kept too, unassigned, so it can be given a shop again later.`,
+    });
+    if (!ok) return;
+    try {
+      await api(`/api/users/${u.id}`, 'PATCH', { crsId: null });
+      if (isStaffRole(u.role) && editMaster((m) => clearedMasterSlot(m, from, u.role as StaffRole, u.fullName))) {
+        await crsData.save();
+      }
+      await refresh();
+      show(`✅ ${u.fullName} removed from CRS ${from}. The ${u.role} post is now vacant.`);
+    } catch (e) {
+      show(`⚠️ ${e instanceof Error ? e.message : e}`, true);
+    }
+  };
+
+  /**
+   * Move somebody to another shop, or to the other post at this one.
+   *
+   * `replaceHolder` is the person already in the destination post, and is only
+   * ever set after the admin has been shown who they are and chosen to replace
+   * them — they are removed the same way the Remove button removes anyone, so
+   * a replacement is a transfer plus a removal and never a silent overwrite.
+   *
+   * The order matters: the old post is emptied before the new one is filled,
+   * so a move between the two posts of ONE shop does not clear the slot it
+   * just wrote.
+   */
+  const doTransfer = async (u: EngineUser, toCrsId: number, toRole: StaffRole, replaceHolder: EngineUser | null) => {
+    const from = u.crsId;
+    const plan = planTransfer(users, u, toCrsId, toRole);
+    try {
+      if (replaceHolder) {
+        await api(`/api/users/${replaceHolder.id}`, 'PATCH', { crsId: null });
+        if (isStaffRole(replaceHolder.role)) {
+          editMaster((m) => clearedMasterSlot(m, toCrsId, replaceHolder.role as StaffRole, replaceHolder.fullName));
+        }
+      }
+      if (from && isStaffRole(u.role)) editMaster((m) => clearedMasterSlot(m, from, u.role as StaffRole, u.fullName));
+
+      const payload: Record<string, unknown> = { crsId: toCrsId, role: toRole };
+      // A shop-scoped username (`crs24`) is how that shop's sign-in finds its
+      // people, so it has to move too or the old shop keeps offering them. A
+      // username that is the person's own name stays theirs.
+      if (plan.username) payload.username = plan.username;
+      await api(`/api/users/${u.id}`, 'PATCH', payload);
+
+      editMaster((m) => withMasterSlot(m, toCrsId, toRole, u.fullName, u.phone));
+      await crsData.save();
+      await refresh();
+      setMoving(null);
+      show(
+        `✅ ${u.fullName} transferred to ${shopLabel(toCrsId)} as ${toRole}` +
+          (from && from !== toCrsId ? `, and removed from CRS ${from}` : '') +
+          (replaceHolder ? `. ${replaceHolder.fullName} was removed from that post` : '') +
+          (plan.username ? `. Sign-in username is now "${plan.username}"` : '') +
+          '.',
+      );
     } catch (e) {
       show(`⚠️ ${e instanceof Error ? e.message : e}`, true);
     }
@@ -172,8 +282,15 @@ export default function UsersPage() {
         ) : (
           groups.map((g) => {
             const label = g.crsId ? shopLabel(g.crsId) : 'System Users';
-            const bc = g.users.find((u) => u.role === 'BC');
-            const pk = g.users.find((u) => u.role === 'Packer');
+            // Who actually holds the post — read from the WHOLE roster, not
+            // the filtered rows below it, and only counting active accounts.
+            // A search for "BC" used to empty the Packer chip, and a disabled
+            // account went on being shown as the holder while the statements
+            // (getUsersForCRS filters on active) had already stopped printing
+            // them. The chip is a statement about the shop, so it answers the
+            // same way they do.
+            const bc = g.crsId ? occupant(users, g.crsId, 'BC') : null;
+            const pk = g.crsId ? occupant(users, g.crsId, 'Packer') : null;
             return (
               <div className="card" style={{ marginBottom: 12 }} key={label}>
                 <div
@@ -202,6 +319,22 @@ export default function UsersPage() {
                     ) : (
                       <span style={{ background: 'rgba(255,255,255,.1)', color: 'rgba(255,255,255,.5)', fontSize: 10, padding: '2px 8px', borderRadius: 4 }}>No Packer</span>
                     )}
+                    {/* A post nobody fills is offered here rather than left for
+                        the admin to find: the vacancy is the reason they came
+                        to this card, and the modal opens on the right shop and
+                        the right role. */}
+                    {g.crsId
+                      ? vacantRoles(users, g.crsId).map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => setModal({ editId: null, seed: { crsId: g.crsId as number, role: r } })}
+                            title={`Add a ${r} to ${label}`}
+                            style={{ background: 'rgba(255,255,255,.9)', border: 'none', color: '#0369A1', fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 4, cursor: 'pointer' }}
+                          >
+                            + Add {r}
+                          </button>
+                        ))
+                      : null}
                   </div>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
@@ -275,6 +408,27 @@ export default function UsersPage() {
                                 >
                                   {u.active ? 'Disable' : 'Enable'}
                                 </button>
+                                {/* Transfer and Remove are only meaningful for
+                                    somebody who holds a post at a shop — an
+                                    administrator has no shop to be removed from. */}
+                                {u.crsId ? (
+                                  <>
+                                    <button
+                                      onClick={() => setMoving(u)}
+                                      title="Move this person to another shop or post"
+                                      style={{ background: '#fff', border: '1px solid var(--border)', color: '#7C3AED', padding: '5px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}
+                                    >
+                                      ⇄ Transfer
+                                    </button>
+                                    <button
+                                      onClick={() => void removeFromShop(u)}
+                                      title={`Remove from CRS ${u.crsId} — the account and its history are kept`}
+                                      style={{ background: '#fff', border: '1px solid #FCA5A5', color: '#B91C1C', padding: '5px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </>
+                                ) : null}
                               </div>
                             </td>
                           </tr>
@@ -292,23 +446,174 @@ export default function UsersPage() {
       {modal ? (
         <UserModal
           editUser={modal.editId != null ? users.find((u) => u.id === modal.editId) ?? null : null}
+          seed={modal.seed}
           users={users}
           shops={shops}
           onClose={() => setModal(null)}
-          onSaved={(msg) => {
+          onSaved={(msg, filled) => {
             setModal(null);
+            // A new hire is the shop's current holder of that post, so the
+            // office's sheet records them too — the same slot a Remove empties.
+            if (filled && isStaffRole(filled.role)) {
+              if (editMaster((m) => withMasterSlot(m, filled.crsId, filled.role as StaffRole, filled.fullName, filled.phone))) {
+                void crsData.save();
+              }
+            }
             show(`✅ ${msg}`);
             void refresh();
           }}
           onError={(msg) => show(`⚠️ ${msg}`, true)}
         />
       ) : null}
+
+      {moving ? (
+        <TransferModal
+          user={moving}
+          users={users}
+          shops={shops}
+          onClose={() => setMoving(null)}
+          onConfirm={(toCrsId, toRole, replaceHolder) => void doTransfer(moving, toCrsId, toRole, replaceHolder)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Move one person to a shop and a post.
+ *
+ * The destination post being taken is not an error — staff replace each other
+ * — but it is never resolved silently: the holder is named, and the confirm
+ * button changes to say what will happen to them. Cancelling is the other
+ * option the spec asks for, and it is the dialog's own close.
+ */
+function TransferModal({
+  user,
+  users,
+  shops,
+  onClose,
+  onConfirm,
+}: {
+  user: EngineUser;
+  users: EngineUser[];
+  shops: ShopRec[];
+  onClose: () => void;
+  onConfirm: (toCrsId: number, toRole: StaffRole, replaceHolder: EngineUser | null) => void;
+}) {
+  const [crsVal, setCrsVal] = useState('');
+  const [role, setRole] = useState<StaffRole | ''>(isStaffRole(user.role) ? user.role : '');
+  const toCrsId = crsVal ? Number(crsVal) : null;
+  const plan = toCrsId && role ? planTransfer(users, user, toCrsId, role) : null;
+  const holder = plan?.blocked?.holder ?? null;
+  const ready = !!toCrsId && !!role && !plan?.noop;
+
+  const label = (id: number) => `CRS ${id} — ${shops[id - 1]?.name ?? ''}`;
+  const box = { border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 13, width: '100%' } as const;
+
+  return (
+    <div className="modal-bg" style={{ display: 'flex' }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 460 }}>
+        <div className="modal-head" style={{ background: 'linear-gradient(135deg,#6D28D9,#8B5CF6)' }}>
+          <div style={{ fontWeight: 800 }}>⇄ Transfer staff</div>
+        </div>
+        <div style={{ padding: 18, display: 'grid', gap: 14 }}>
+          <div style={{ background: '#F8FAFC', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>{user.fullName}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+              Currently {user.role}
+              {user.crsId ? ` at ${label(user.crsId)}` : ' — no shop'} · @{user.username}
+            </div>
+          </div>
+
+          <label style={{ display: 'grid', gap: 5 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>NEW CRS SHOP</span>
+            <select value={crsVal} onChange={(e) => setCrsVal(e.target.value)} style={box}>
+              <option value="">Select a shop…</option>
+              {shops.map((_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {label(i + 1)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div style={{ display: 'grid', gap: 5 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)' }}>ROLE</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['BC', 'Packer'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRole(r)}
+                  style={{
+                    flex: 1,
+                    border: `2px solid ${role === r ? (r === 'BC' ? '#0369A1' : '#C2410C') : 'var(--border)'}`,
+                    background: role === r ? (r === 'BC' ? '#E0F2FE' : '#FFF3E8') : '#fff',
+                    color: r === 'BC' ? '#0369A1' : '#C2410C',
+                    borderRadius: 9,
+                    padding: '10px 12px',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {r === 'BC' ? 'Bill Clerk (BC)' : 'Packer'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {plan?.noop ? (
+            <div style={{ background: '#F1F5F9', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 12, color: 'var(--muted)' }}>
+              That is the post {user.fullName} already holds — nothing to transfer.
+            </div>
+          ) : null}
+
+          {holder ? (
+            <div style={{ background: '#FEF3C7', border: '1px solid #FDE047', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#92400E' }}>
+              <strong>{label(toCrsId!)} already has a {role}: {holder.fullName}.</strong>
+              <div style={{ marginTop: 4 }}>
+                Transferring {user.fullName} into that post removes {holder.fullName} from it. They keep their account and everything they
+                recorded, and can be given another shop. Cancel if that is not what you meant.
+              </div>
+            </div>
+          ) : null}
+
+          {plan && !holder && !plan.noop && plan.username ? (
+            <div style={{ background: '#EFF6FF', border: '1px solid #BAE6FD', borderRadius: 8, padding: '9px 12px', fontSize: 12, color: '#0369A1' }}>
+              Sign-in username changes from <strong>@{user.username}</strong> to <strong>@{plan.username}</strong>, so the old shop&apos;s
+              sign-in list stops offering them.
+            </div>
+          ) : null}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '0 18px 18px' }}>
+          <button onClick={onClose} style={{ background: '#fff', border: '1px solid var(--border)', padding: '9px 18px', borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button
+            disabled={!ready}
+            onClick={() => ready && onConfirm(toCrsId!, role as StaffRole, holder)}
+            style={{
+              background: ready ? (holder ? 'linear-gradient(135deg,#B45309,#D97706)' : 'linear-gradient(135deg,#6D28D9,#8B5CF6)') : '#E2E8F0',
+              color: ready ? '#fff' : '#94A3B8',
+              border: 'none',
+              padding: '9px 20px',
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: ready ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {holder ? `Replace ${holder.fullName}` : 'Confirm Transfer'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 function UserModal({
   editUser,
+  seed,
   users,
   shops,
   onClose,
@@ -316,17 +621,20 @@ function UserModal({
   onError,
 }: {
   editUser: EngineUser | null;
+  /** Opened from a shop card's vacancy — that shop and post are filled in. */
+  seed?: { crsId: number; role: StaffRole };
   users: EngineUser[];
   shops: ShopRec[];
   onClose: () => void;
-  onSaved: (msg: string) => void;
+  /** `filled` is the post this save now holds, so the sheet can record it. */
+  onSaved: (msg: string, filled: { crsId: number; role: string; fullName: string; phone: string } | null) => void;
   onError: (msg: string) => void;
 }) {
   const [name, setName] = useState(editUser?.fullName ?? '');
   const [phone, setPhone] = useState(editUser?.phone ?? '');
   const [email, setEmail] = useState(editUser?.email ?? '');
-  const [role, setRole] = useState(editUser?.role ?? '');
-  const [crsVal, setCrsVal] = useState(editUser?.crsId ? String(editUser.crsId) : '');
+  const [role, setRole] = useState(editUser?.role ?? seed?.role ?? '');
+  const [crsVal, setCrsVal] = useState(editUser?.crsId ? String(editUser.crsId) : seed ? String(seed.crsId) : '');
   const [errs, setErrs] = useState<{ name?: boolean; phone?: boolean; role?: boolean; crs?: boolean }>({});
   const [busy, setBusy] = useState(false);
 
@@ -353,13 +661,14 @@ function UserModal({
     };
     setBusy(true);
     try {
+      const filled = { crsId, role, fullName: name.trim(), phone: phone.trim() };
       if (editUser) {
         await api(`/api/users/${editUser.id}`, 'PATCH', payload);
-        onSaved(`User "${name.trim()}" updated successfully.`);
+        onSaved(`User "${name.trim()}" updated successfully.`, filled);
       } else {
         payload.password = 'pds123';
         await api('/api/users', 'POST', payload);
-        onSaved(`User "${name.trim()}" added successfully to CRS ${crsId} — ${shops[crsId - 1]?.name ?? ''} as ${role}.`);
+        onSaved(`User "${name.trim()}" added successfully to CRS ${crsId} — ${shops[crsId - 1]?.name ?? ''} as ${role}.`, filled);
       }
     } catch (err) {
       onError(err instanceof Error ? err.message : String(err));

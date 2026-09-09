@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { requireSession, toEngineUser } from '../route';
+import { canSignIn } from '@/lib/engine/staffAssignment';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,30 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // An admin who deactivates their own account cannot undo it.
   if (patch.active === false && g.id === g.session!.userId) {
     return NextResponse.json({ error: 'You cannot deactivate your own account.' }, { status: 400 });
+  }
+
+  // Removing someone from their shop ends their login, and the server decides
+  // that rather than trusting the screen to send `active: false` alongside.
+  // A Bill Clerk or Packer with no shop is not just idle: the scope guard on
+  // /api/state reads a null crsId as "administrator", so leaving one active
+  // would hand out write access to every shop in the region. The role is read
+  // from the patch when it is being changed too, so a demotion in the same
+  // call is judged on what the row will actually say.
+  if (patch.crs_id === null) {
+    const { data: cur } = await db.from('users').select('role').eq('id', g.id).maybeSingle();
+    const role = String(patch.role ?? cur?.role ?? '');
+    if (!canSignIn(role, null)) patch.active = false;
+  } else if (patch.active === true && patch.crs_id === undefined) {
+    // Enabling an account that has no shop would produce a login that the
+    // session route then refuses — an Enable button that appears to work and
+    // does not. Say so instead, and name the fix.
+    const { data: cur } = await db.from('users').select('role, crs_id').eq('id', g.id).maybeSingle();
+    if (cur && !canSignIn(String(patch.role ?? cur.role ?? ''), cur.crs_id as number | null)) {
+      return NextResponse.json(
+        { error: 'This account is not assigned to a CRS shop. Give it a shop first — then it can be enabled.' },
+        { status: 400 },
+      );
+    }
   }
 
   const { data, error } = await db

@@ -182,6 +182,19 @@ class CrsDataStore {
         await this.load();
         return false;
       }
+      if (r.status === 403) {
+        // A REFUSAL, not a race — a clear needing approval, or a locked field.
+        // This write will never be accepted, so holding on to it leaves the
+        // screen showing something the database does not have (a receipt that
+        // looks deleted but is not) and re-sends it on every autosave, filling
+        // the audit trail with the same rejection. Take the server's copy back
+        // and keep the reason: load() clears lastError on the way through.
+        const why = body?.error || 'That change was refused.';
+        await this.load();
+        this.lastError = why;
+        this.emit();
+        return false;
+      }
       if (!r.ok) throw new Error(body?.error || `server returned ${r.status}`);
 
       const vs = (body?.versions ?? {}) as Record<string, number>;

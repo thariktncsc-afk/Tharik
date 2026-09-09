@@ -198,7 +198,7 @@ export function dailyRollupForMonth(
  * move with the receipt are re-derived, since the stored ones describe the
  * figure that was just replaced.
  */
-function withRegisterReceipt(m: MonthlyRec, receipt: number, id: string): MonthlyRec {
+export function withRegisterReceipt(m: MonthlyRec, receipt: number, id: string): MonthlyRec {
   const open = Number(m.open) || 0;
   const sales = Number(m.sales) || 0;
   const cs = Number(m.cs) || 0;

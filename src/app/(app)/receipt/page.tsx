@@ -17,14 +17,15 @@
  * read every input in DOM order, so a cleared pack-qty could silently store
  * the bag COUNT as the received quantity.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { crsData, useStore } from '@/lib/dataStore';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { commodityListsFor, useCommodityLists, useCommodityMaster, useShops } from '@/lib/masters';
 import { useAuth } from '@/lib/authClient';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
-import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import { type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
+import { resyncReceiptMonth } from '@/lib/engine/receiptSync';
 
 type ShopRec = { name: string };
 type ReceiptRec = {
@@ -120,26 +121,78 @@ export default function ReceiptPage() {
    * Stores are re-read rather than closed over: this runs after a confirm
    * dialog and after crsData.set, so the snapshot in render is already old.
    */
-  const republishMonth = (rCrsId: number, dateIso: string) => {
+  const republishMonth = (rCrsId: number, dateIso: string, before?: ReceiptRow[]) => {
     const [y, m] = dateIso.split('-').map(Number);
     if (!rCrsId || !y || !m) return;
-    const moKey = `${rCrsId}_${m}_${y}`;
-    const next = rebuildMonthlyFromDaily(
+
+    // Everything downstream of the register — the day sheet, the manual
+    // month's copy of the figure, the published month and a monthly-keyed
+    // month's projected sheet — is brought back in step in one place, shared
+    // with the approved-clear path so both leave the data identical.
+    const patch = resyncReceiptMonth(
+      {
+        entryStore: crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
+        inspectionStore: crsData.get('inspectionStore') ?? {},
+        meManualStore: crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {},
+        meSourceStore: crsData.get<Record<string, SourceBlock>>('meSourceStore') ?? {},
+        monthlyStore: crsData.get<Record<string, MonthlyBlock>>('monthlyStore') ?? {},
+        receiptStore: crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+      },
       rCrsId,
       m,
       y,
-      crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
-      crsData.get('inspectionStore') ?? {},
-      (crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {})[moKey],
-      commodityListsFor(commodityMaster, rCrsId),
-      crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+      { dateIso, before, lists: commodityListsFor(commodityMaster, rCrsId) },
     );
-    crsData.update<Record<string, MonthlyBlock>>('monthlyStore', (d) => {
-      d[moKey] = next.merged;
-    });
-    crsData.update<Record<string, SourceBlock>>('meSourceStore', (d) => {
-      d[moKey] = next.source;
-    });
+    for (const [store, value] of Object.entries(patch)) crsData.set(store as never, value as never);
+  };
+
+  /**
+   * What to say when the server refused the write.
+   *
+   * The data layer has already taken the stored copy back, so the register on
+   * screen is the truth again — which is the point: a shop user's delete needs
+   * an administrator's approval, and before this the row simply vanished from
+   * the page while staying in the database. Daily and Monthly went on showing
+   * the receipt, which looked like a sync bug and was the opposite.
+   *
+   * No auto-dismiss: a refusal the reader missed is a refusal they will act on
+   * as though it were a success.
+   */
+  const refusal = (what: string) => `⚠ ${what}. ${crsData.lastError || 'The server refused the change.'}`;
+
+  /**
+   * Enter walks down the QTY RECEIVED column — type, Enter, type, Enter — so a
+   * whole godown receipt can be keyed without reaching for the mouse. Same
+   * handling Daily Entry has had (`data-nav` there), and the reason is the
+   * same: most rows on a receipt are left blank, so the run down the column is
+   * the fast path.
+   *
+   * ONLY the quantity boxes carry the marker. The packing counts beside them
+   * are auto-calculated from the quantity, and stopping at each one would put
+   * four keystrokes between one commodity and the next. Tab is untouched and
+   * still walks everything in the ordinary browser order, so the packing boxes
+   * remain reachable for the rows that need hand-correcting.
+   *
+   * On the last commodity there is nowhere further down, so focus moves to
+   * Save — the next thing the clerk was going to do. It is focused, not
+   * pressed; saving still takes a deliberate keystroke.
+   */
+  const qtyRef = useRef<HTMLTableSectionElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  const qtyKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const boxes = Array.from(
+      qtyRef.current?.querySelectorAll<HTMLInputElement>('input[data-qty]:not([disabled]):not([readonly])') ?? [],
+    );
+    const at = boxes.indexOf(e.currentTarget);
+    const next = at === -1 ? undefined : boxes[at + 1];
+    if (next) {
+      next.focus();
+      next.select();
+    } else {
+      saveRef.current?.focus();
+    }
   };
 
   const setRow = (id: string, patch: Partial<RowState>) =>
@@ -222,12 +275,16 @@ export default function ReceiptPage() {
       savedAt: new Date().toLocaleString('en-IN'),
       type: rcpType,
     };
+    const beforeSave = receiptStore;
     crsData.set('receiptStore', [...receiptStore, rec]);
     crsData.update<Record<string, number>>('__counters', (d) => {
       d.rpNextId = nextId + 1;
     });
-    republishMonth(crsId, date);
-    await crsData.save();
+    republishMonth(crsId, date, beforeSave);
+    if (!(await crsData.save())) {
+      setBanner(refusal('Receipt not saved'));
+      return;
+    }
     setFormOpen(false);
     setBanner('✓ Receipt saved — Daily and Monthly Entry updated.');
     setTimeout(() => setBanner(''), 4000);
@@ -280,8 +337,11 @@ export default function ReceiptPage() {
       );
       setBanner(`✓ ${commName(commId)} removed from receipt ${rec.receiptNo}.`);
     }
-    republishMonth(Number(rec.crsId), rec.date);
-    await crsData.save();
+    republishMonth(Number(rec.crsId), rec.date, store);
+    if (!(await crsData.save())) {
+      setBanner(refusal('Nothing was removed'));
+      return;
+    }
     setTimeout(() => setBanner(''), 4000);
   };
 
@@ -296,10 +356,14 @@ export default function ReceiptPage() {
         'Its quantities stop counting in Daily Entry, Monthly Entry, the statements and the COLL report. This cannot be undone.',
     });
     if (!ok) return;
-    crsData.set('receiptStore', (crsData.get<ReceiptRec[]>('receiptStore') ?? []).filter((x) => x.id !== rec.id));
-    republishMonth(Number(rec.crsId), rec.date);
-    await crsData.save();
-    setBanner(`✓ Receipt ${rec.receiptNo} deleted.`);
+    const beforeDelete = crsData.get<ReceiptRec[]>('receiptStore') ?? [];
+    crsData.set('receiptStore', beforeDelete.filter((x) => x.id !== rec.id));
+    republishMonth(Number(rec.crsId), rec.date, beforeDelete);
+    if (!(await crsData.save())) {
+      setBanner(refusal(`Receipt ${rec.receiptNo} was NOT deleted`));
+      return;
+    }
+    setBanner(`✓ Receipt ${rec.receiptNo} deleted — Daily and Monthly Entry updated.`);
     setTimeout(() => setBanner(''), 4000);
   };
 
@@ -415,7 +479,7 @@ export default function ReceiptPage() {
                       <th style={{ ...th, width: 44 }}>Clear</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody ref={qtyRef}>
                     {comms.map((c, i) => {
                       const rule = PACK_RULES[c.id];
                       const r = rows[c.id] ?? emptyRow(c.id);
@@ -436,7 +500,9 @@ export default function ReceiptPage() {
                               step={0.001}
                               placeholder="0.000"
                               value={r.qty}
+                              data-qty="1"
                               onChange={(e) => onQty(c, e.target.value)}
+                              onKeyDown={qtyKey}
                               style={{ width: 100, border: '1px solid #BAE6FD', borderRadius: 6, padding: '5px 8px', fontSize: 12, textAlign: 'right', fontWeight: 600 }}
                             />
                           </td>
@@ -510,6 +576,7 @@ export default function ReceiptPage() {
                   Cancel
                 </button>
                 <button
+                  ref={saveRef}
                   onClick={() => void save()}
                   style={{ background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
                 >
@@ -521,8 +588,18 @@ export default function ReceiptPage() {
         </div>
       ) : null}
 
+      {/* A refusal reads amber, not green — "was NOT deleted" on a success
+          background is the sentence a reader skims straight past. */}
       {banner ? (
-        <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 14px', color: '#15803D', fontSize: 13, fontWeight: 600, marginBottom: 14 }}>{banner}</div>
+        <div
+          style={
+            banner.startsWith('⚠')
+              ? { background: '#FEF3C7', border: '1px solid #FDE047', borderRadius: 8, padding: '10px 14px', color: '#92400E', fontSize: 13, fontWeight: 600, marginBottom: 14 }
+              : { background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: '10px 14px', color: '#15803D', fontSize: 13, fontWeight: 600, marginBottom: 14 }
+          }
+        >
+          {banner}
+        </div>
       ) : null}
 
       <div className="card">
