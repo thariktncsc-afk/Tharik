@@ -20,6 +20,24 @@ import { useStore, useUsers } from '@/lib/dataStore';
 import { dashboardEntryView, type DayEntry } from '@/lib/engine/commodities';
 import { useShops, useStockLists } from '@/lib/masters';
 import { govtHolidayName, isWeeklyHoliday, weeklyHolidayName, type GovtHolidayMap } from '@/lib/engine/holidays';
+import { describeActivity, type ActivityItem } from '@/lib/activity';
+
+/**
+ * "Today, 10:42 AM" for today, otherwise a dated line. Times are rendered from
+ * the stored UTC timestamp in the viewer's own zone, so a shop in Tamil Nadu
+ * reads IST without the server having to know that.
+ */
+function fmtWhen(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const t = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  const yesterday = new Date(today.getTime() - 86400000).toDateString() === d.toDateString();
+  if (sameDay) return `Today, ${t}`;
+  if (yesterday) return `Yesterday, ${t}`;
+  return `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}, ${t}`;
+}
 
 type MasterRec = { id: number; code: string; coll: boolean; police: boolean; status: string };
 type ShopRec = { name: string };
@@ -55,6 +73,23 @@ export default function DashboardPage() {
   const [selected, setSelected] = useState<Date>(() => new Date());
   const [clock, setClock] = useState({ time: '--:--:--', ampm: '--' });
   const [calOpen, setCalOpen] = useState(false);
+  /** Real activity, scoped by the server to what this account may see. */
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const [activityErr, setActivityErr] = useState('');
+
+  // Re-fetched when the signed-in account changes, because what may be seen
+  // changes with it — an admin sees every shop, a shop only its own.
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/activity?limit=12`, { headers: { Accept: 'application/json' } })
+      .then(async (r) => {
+        const b = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(b?.error || 'Could not load recent activity.');
+        if (alive) setActivity(b.items ?? []);
+      })
+      .catch((e) => alive && setActivityErr(e instanceof Error ? e.message : String(e)));
+    return () => { alive = false; };
+  }, [user?.username, user?.role]);
 
   useEffect(() => {
     const tick = () => {
@@ -142,38 +177,98 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selEntry, crsId]);
 
-  // ── Closing stock: latest entry on or before the selected date ────────────
-  const latestKey = useMemo(() => {
-    const scope = `${scopeId}_`;
-    let bestKey: string | null = null;
+  // ── Closing stock ─────────────────────────────────────────────────────────
+  /**
+   * The stock card is its own view. A shop user is pinned to their own shop; an
+   * administrator picks one here — or every shop at once — WITHOUT moving the
+   * rest of the dashboard, which stays on their own scope. Before this, an
+   * admin was hard-wired to CRS 1 (`crsId || 1`) with no way to look elsewhere.
+   */
+  const [stockCrs, setStockCrs] = useState<number | 'all'>(crsId ?? 1);
+  // The signed-in account arrives after the first render.
+  useEffect(() => {
+    if (crsId) setStockCrs(crsId);
+  }, [crsId]);
+  const stockLists = useStockLists(stockCrs === 'all' ? null : stockCrs);
+
+  /**
+   * The newest day sheet on or before the selected date for one shop. The date
+   * shape is checked because a bare `1_` prefix also matches CRS 1's monthly
+   * keys, and a month key is not a stock position.
+   */
+  const latestKeyFor = (id: number): string | null => {
+    const prefix = `${id}_`;
+    let best: string | null = null;
     let bestDate = '';
     for (const k of Object.keys(entryStore)) {
-      if (!k.startsWith(scope)) continue;
-      const dt = k.slice(scope.length);
+      if (!k.startsWith(prefix)) continue;
+      const dt = k.slice(prefix.length);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) continue;
       if (dt <= selStr && dt > bestDate) {
         bestDate = dt;
-        bestKey = k;
+        best = k;
       }
     }
-    return bestKey;
-  }, [entryStore, scopeId, selStr]);
-  const stockEntry = latestKey ? dashboardEntryView(crsId, entryStore[latestKey]) : undefined;
+    return best;
+  };
+
+  const latestKey = useMemo(
+    () => (stockCrs === 'all' ? null : latestKeyFor(stockCrs)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entryStore, stockCrs, selStr],
+  );
+
+  /**
+   * Each commodity's closing from the LATEST sheet — never the sum of every
+   * day's closing, because closing is a balance, not a flow. Across all shops
+   * it is the sum of each shop's own latest closing, which is a regional
+   * position rather than one shop's.
+   *
+   * Derived from entryStore, so it follows a save with no refresh, and an old
+   * sheet being edited or cleared re-points it automatically.
+   */
   const stock = useMemo(() => {
+    const closingFor = (id: number): Record<string, number> => {
+      const key = latestKeyFor(id);
+      // dashboardEntryView keeps CRS 29 to its own commodities, per shop.
+      const e = key ? dashboardEntryView(id, entryStore[key]) : undefined;
+      const out: Record<string, number> = {};
+      if (!e) return out;
+      for (const sec of ['a', 'b'] as const) {
+        for (const [cid, rec] of Object.entries(e[sec] ?? {})) {
+          out[cid] = (out[cid] ?? 0) + (Number(rec.close) || 0);
+        }
+      }
+      return out;
+    };
+
+    const totals: Record<string, number> = {};
+    let shopsWithData = 0;
+    if (stockCrs === 'all') {
+      for (let id = 1; id <= shops.length; id++) {
+        const c = closingFor(id);
+        if (Object.keys(c).length) shopsWithData++;
+        for (const [cid, v] of Object.entries(c)) totals[cid] = (totals[cid] ?? 0) + v;
+      }
+    } else {
+      Object.assign(totals, closingFor(stockCrs));
+      if (Object.keys(totals).length) shopsWithData = 1;
+    }
+
     let inStock = 0;
     let outStock = 0;
-    const rows = (comms: typeof lists.a) =>
+    const rows = (comms: typeof stockLists.a) =>
       comms.map((c) => {
-        const rec = stockEntry ? stockEntry.a?.[c.id] ?? stockEntry.b?.[c.id] : undefined;
-        const closing = rec ? Number(rec.close) || 0 : 0;
+        const closing = totals[c.id] ?? 0;
         if (closing <= 0) outStock++;
         else inStock++;
         return { c, closing };
       });
-    const a = rows(lists.a);
-    const b = rows(lists.b);
-    return { a, b, inStock, outStock, total: a.length + b.length };
+    const a = rows(stockLists.a);
+    const b = rows(stockLists.b);
+    return { a, b, inStock, outStock, total: a.length + b.length, shopsWithData };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stockEntry, crsId]);
+  }, [entryStore, stockCrs, selStr, stockLists, shops.length]);
 
   // ── Shop card ─────────────────────────────────────────────────────────────
   const m = crsId ? master.find((r) => r.id === crsId) : null;
@@ -569,10 +664,33 @@ export default function DashboardPage() {
             {sectionTitle('linear-gradient(180deg,#F59E0B,#FBBF24)', 'Closing Stock')}
             <span style={{ fontSize: 20 }}>📦</span>
           </div>
+          {/* Only an administrator chooses; a shop user is pinned to their own
+              shop and never offered another. */}
+          {isAdmin ? (
+            <div style={{ padding: '12px 18px 0' }}>
+              <label className="form-label" style={{ display: 'block', marginBottom: 5 }}>CRS SHOP</label>
+              <select
+                value={String(stockCrs)}
+                onChange={(e) => setStockCrs(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px', fontSize: 12 }}
+              >
+                {shops.map((s, i) => (
+                  <option key={i + 1} value={String(i + 1)}>
+                    CRS {i + 1} — {s.name}
+                  </option>
+                ))}
+                <option value="all">All CRS Shops — combined position</option>
+              </select>
+            </div>
+          ) : null}
           <div style={{ fontSize: 10, color: '#94A3B8', padding: '8px 18px 0', fontStyle: 'italic' }}>
-            {latestKey
-              ? `Latest stock — as of ${latestKey.split('_')[1].split('-').reverse().join('/')}`
-              : `No entry on or before ${selStr.split('-').reverse().join('/')} — values default to 0`}
+            {stockCrs === 'all'
+              ? stock.shopsWithData
+                ? `Combined latest stock across ${stock.shopsWithData} shop${stock.shopsWithData === 1 ? '' : 's'} with entries, on or before ${selStr.split('-').reverse().join('-')}`
+                : `No stock entry available yet for any shop on or before ${selStr.split('-').reverse().join('-')}`
+              : latestKey
+                ? `Stock as of: ${latestKey.split('_')[1].split('-').reverse().join('-')}`
+                : `No stock entry available yet — nothing keyed on or before ${selStr.split('-').reverse().join('-')}, values default to 0`}
           </div>
           <div style={{ padding: '10px 18px 16px' }}>
             <div style={{ maxHeight: 430, overflowY: 'auto', border: '1px solid #F1F5F9', borderRadius: 10 }}>
@@ -615,24 +733,29 @@ export default function DashboardPage() {
           <span style={{ fontSize: 20 }}>🕐</span>
         </div>
         <div style={{ padding: '12px 18px' }}>
-          <div className="activity-item">
-            <div className="activity-dot" />
-            <div>
-              <div className="activity-text">
-                <strong>admin</strong> — BULK_ENTRY · DAILY_SALES
-              </div>
-              <div className="activity-time">Today, 10:42 AM</div>
+          {activityErr ? (
+            <div style={{ fontSize: 12, color: '#B91C1C' }}>{activityErr}</div>
+          ) : activity === null ? (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading recent activity…</div>
+          ) : activity.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              {isAdmin
+                ? 'Nothing saved yet. Activity from every shop appears here.'
+                : 'Nothing recorded for this shop yet. Saving a day sheet or a receipt will show up here.'}
             </div>
-          </div>
-          <div className="activity-item">
-            <div className="activity-dot" />
-            <div>
-              <div className="activity-text">
-                <strong>crs_user_9</strong> — Daily entry saved
+          ) : (
+            activity.map((a) => (
+              <div className="activity-item" key={a.id}>
+                <div className="activity-dot" />
+                <div>
+                  <div className="activity-text">
+                    <strong>{a.actor}</strong> — {describeActivity(a)}
+                  </div>
+                  <div className="activity-time">{fmtWhen(a.at)}</div>
+                </div>
               </div>
-              <div className="activity-time">Today, 09:15 AM</div>
-            </div>
-          </div>
+            ))
+          )}
         </div>
       </div>
 
