@@ -396,11 +396,11 @@ export default function ReceiptPage() {
               </div>
 
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
+                <table id="receipt-comm-table" className="frz-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
                   <thead>
                     <tr style={{ background: '#F8FAFC' }}>
                       <th style={th}>#</th>
-                      <th style={{ ...th, textAlign: 'left', padding: '8px 12px' }}>Commodity</th>
+                      <th className="frz-comm" style={{ ...th, textAlign: 'left', padding: '8px 12px' }}>Commodity</th>
                       <th style={th}>Unit</th>
                       <th style={{ ...th, color: '#0369A1', background: '#EFF6FF' }}>Qty Received</th>
                       <th style={th}>
@@ -424,7 +424,7 @@ export default function ReceiptPage() {
                       return (
                         <tr key={c.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFCFF' }}>
                           <td style={{ padding: '7px 10px', textAlign: 'center', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid #F0F9FF' }}>{i + 1}</td>
-                          <td style={{ padding: '7px 12px', borderBottom: '1px solid #F0F9FF' }}>
+                          <td className="frz-comm" style={{ padding: '7px 12px', borderBottom: '1px solid #F0F9FF' }}>
                             <div style={{ fontWeight: 600, fontSize: 12 }}>{c.ta}</div>
                             <div style={{ fontSize: 10, color: 'var(--muted)' }}>{c.en}</div>
                           </td>

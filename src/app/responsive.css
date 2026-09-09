@@ -237,6 +237,16 @@
     background: #fff7ed;
   }
 
+  /* Receipt's commodity table stripes its rows (#fff / #FAFCFF) and its header
+     carries its own fill, so the fixed white above would sit as a pale stripe
+     over every other row. Taking the row's OWN background keeps the frozen
+     column indistinguishable from the row it belongs to, and covers the header
+     without naming its colour here. Two ids out-specify the shared .frz-comm
+     fill; Daily and Monthly keep their three tones. */
+  #content .page #receipt-comm-table .frz-comm {
+    background: inherit;
+  }
+
   /* Touch targets. Fingers, not cursors: action buttons and nav rows come up
      to ~44px effective height. Scoped away from table-row micro-buttons
      (.btn-sm) and the modal close ✕, whose rows would double in height. */
