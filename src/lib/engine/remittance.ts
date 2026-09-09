@@ -24,6 +24,15 @@
  * statutory Cereal A/C total stays a total of money.
  */
 
+/**
+ * Which account a deposit went into.
+ *
+ * Daily Entry no longer offers the choice — every deposit keyed there is 'nc'.
+ * The Cereal A/C column on Monthly Remittance is where an additional deposit's
+ * REASON is shown, not a second account to pay into, and offering it as a
+ * destination put money into a column that is not a money column. 'ce' remains
+ * only so sheets saved before that still read back correctly.
+ */
 export type RemitAcct = 'nc' | 'ce';
 
 /** Why a second or later deposit was made against the same sales date. */

@@ -14,7 +14,10 @@
     "prebuild": "npm run build:stmt",
     "build": "next build",
     "start": "next start",
-    "verify:remittance": "node tools/verify-remittance.mjs"
+    "verify:remittance": "node tools/verify-remittance.mjs",
+    "verify:pv-period": "node tools/verify-pv-period.mjs",
+    "verify:pv-excel": "node tools/verify-pv-excel.mjs",
+    "verify:pv-officer": "node tools/verify-pv-officer.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
