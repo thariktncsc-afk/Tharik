@@ -29,6 +29,7 @@ import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import { receiptQtyForDay, receiptRefsForDay, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { dropMonthlyReceipt } from '@/lib/engine/monthlyReceipt';
+import { buildChainIndex, openingFor, unsheetedMoves } from '@/lib/engine/stockChain';
 import PaymentDialog from '@/components/PaymentDialog';
 import { createOrder, fetchAccess, type Order, type Upi } from '@/lib/payments/client';
 import InspectionModal from './InspectionModal';
@@ -95,30 +96,6 @@ function entryDatesDesc(entryStore: Record<string, SavedSheet>, crsId: string): 
     if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) dates.push(ds);
   }
   return dates.sort().reverse();
-}
-
-/**
- * The most recent sheet BEFORE dateStr holding a figure for this commodity.
- *
- * Stock does not move on a day the shop did not trade, so the opening after a
- * gap is the closing of the last day that was actually keyed — however far
- * back that is. The engine used to look only at the immediately preceding day
- * (see 42-opening-carry.js), so one skipped day silently dropped the carry.
- */
-function carrySource(
-  dates: string[],
-  entryStore: Record<string, SavedSheet>,
-  crsId: string,
-  dateStr: string,
-  commId: string,
-  sec: 'a' | 'b',
-): { date: string; close: number } | null {
-  for (const ds of dates) {
-    if (ds >= dateStr) continue; // strictly earlier days only
-    const rec = entryStore[`${crsId}_${ds}`];
-    if (rec?.[sec]?.[commId] !== undefined) return { date: ds, close: Number(rec[sec]![commId].close) || 0 };
-  }
-  return null;
 }
 
 /** Whole days between two ISO dates with no sheet; consecutive days give 0. */
@@ -235,12 +212,26 @@ export default function DailyEntryPage() {
   // Sorted once per shop rather than per commodity — derive() runs it 30+ times.
   const priorDates = useMemo(() => (crsVal ? entryDatesDesc(entryStore, crsVal) : []), [entryStore, crsVal]);
 
+  /**
+   * The stock chain for this shop, indexed once and asked per commodity.
+   * It knows the saved sheets AND the days that moved stock without one —
+   * see src/lib/engine/stockChain.ts.
+   */
+  const chain = useMemo(
+    () => (crsId ? buildChainIndex(entryStore, inspectionStore, receiptStore, crsId) : null),
+    [entryStore, inspectionStore, receiptStore, crsId],
+  );
+
   /** Where this sheet's openings carry from, for the banner. */
   const carryFrom = useMemo(() => {
     if (!crsVal || !date) return null;
     const from = priorDates.find((ds) => ds < date);
-    return from ? { date: from, gap: gapDays(from, date) } : null;
-  }, [priorDates, crsVal, date]);
+    if (!from) return null;
+    // Days between the carry and this one that a receipt or an inspection
+    // moved stock on — the ones the old carry stepped over.
+    const moved = chain ? unsheetedMoves(chain, from, date) : [];
+    return { date: from, gap: gapDays(from, date), moved };
+  }, [priorDates, crsVal, date, chain]);
 
   /**
    * Godown receipts keyed on the Receipt Register for this shop-day.
@@ -270,7 +261,10 @@ export default function DailyEntryPage() {
   };
   const derive = (sec: 'a' | 'b', c: Commodity): Derived => {
     const r = rows[`${sec}:${c.id}`] ?? {};
-    const auto = crsVal ? (carrySource(priorDates, entryStore, crsVal, date, c.id, sec)?.close ?? null) : null;
+    // The carried balance: the last sheet's closing PLUS anything that moved
+    // stock on the sheet-less days since — a godown delivery on a day nobody
+    // keyed does not wait for a sheet before it arrives.
+    const auto = chain ? openingFor(chain, date, c.id, sec).value : null;
     const savedRow = saved?.[sec]?.[c.id];
     const savedOpen = savedRow?.open;
     const openAuto = auto !== null && !savedOpen && r.open === undefined;
@@ -924,7 +918,15 @@ export default function DailyEntryPage() {
             </div>
           ) : (
             <div style={{ background: carryFrom.gap >= GAP_WARN_DAYS ? '#FEF3C7' : '#EFF6FF', border: `1px solid ${carryFrom.gap >= GAP_WARN_DAYS ? '#F59E0B' : '#BFDBFE'}`, borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: carryFrom.gap >= GAP_WARN_DAYS ? '#92400E' : '#0369A1', fontSize: 12 }}>
-              Opening carried from the closing of <strong>{fmtDay(carryFrom.date)}</strong> — {carryFrom.gap} {carryFrom.gap === 1 ? 'day' : 'days'} with no sheet in between.
+              Opening carried from the closing of <strong>{fmtDay(carryFrom.date)}</strong> — {carryFrom.gap} {carryFrom.gap === 1 ? 'day' : 'days'} with no sheet in between
+              {carryFrom.moved.length ? (
+                <>
+                  , including <strong>{carryFrom.moved.map(fmtDay).join(', ')}</strong>, where stock moved without one. Those receipts and
+                  adjustments are in the Opening below.
+                </>
+              ) : (
+                '.'
+              )}
             </div>
           )}
 
