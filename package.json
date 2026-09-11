@@ -20,7 +20,8 @@
     "verify:pv-officer": "node tools/verify-pv-officer.mjs",
     "verify:activity": "node tools/verify-activity.mjs",
     "verify:stock-lock": "node tools/verify-stock-lock.mjs",
-    "verify:staff": "node tools/verify-staff-assignment.mjs"
+    "verify:staff": "node tools/verify-staff-assignment.mjs",
+    "verify:stock-chain": "node tools/verify-stock-chain.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
