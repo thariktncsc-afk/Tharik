@@ -21,6 +21,7 @@ import { dashboardEntryView, type DayEntry } from '@/lib/engine/commodities';
 import { useShops, useStockLists } from '@/lib/masters';
 import { govtHolidayName, isWeeklyHoliday, weeklyHolidayName, type GovtHolidayMap } from '@/lib/engine/holidays';
 import { describeActivity, type ActivityItem } from '@/lib/activity';
+import { buildChainIndex, closingAsAt } from '@/lib/engine/stockChain';
 
 /**
  * "Today, 10:42 AM" for today, otherwise a dated line. Times are rendered from
@@ -66,6 +67,7 @@ export default function DashboardPage() {
   const users = useUsers();
   const entryStore = useStore<Record<string, DayEntry>>('entryStore') ?? {};
   const receiptStore = useStore<ReceiptRec[]>('receiptStore') ?? [];
+  const inspectionStore = useStore<Record<string, unknown>>('inspectionStore') ?? {};
   const master = useStore<MasterRec[]>('__crsMaster') ?? [];
   const shops: ShopRec[] = useShops();
   const holidays = useStore<GovtHolidayMap>('__holidays');
@@ -219,6 +221,23 @@ export default function DashboardPage() {
   );
 
   /**
+   * The date this position actually speaks for: the last day sheet, or a later
+   * day a godown delivery landed on. Naming the sheet alone would date the
+   * figure earlier than the movements now folded into it.
+   */
+  const stockAsOf = useMemo(() => {
+    const sheetDate = latestKey?.split('_')[1] ?? '';
+    if (stockCrs === 'all' || !sheetDate) return sheetDate;
+    let latest = sheetDate;
+    for (const r of receiptStore) {
+      if (Number(r.crsId) !== stockCrs) continue;
+      const d = String(r.date ?? '');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d > latest && d <= selStr) latest = d;
+    }
+    return latest;
+  }, [latestKey, receiptStore, stockCrs, selStr]);
+
+  /**
    * Each commodity's closing from the LATEST sheet — never the sum of every
    * day's closing, because closing is a balance, not a flow. Across all shops
    * it is the sum of each shop's own latest closing, which is a regional
@@ -234,9 +253,16 @@ export default function DashboardPage() {
       const e = key ? dashboardEntryView(id, entryStore[key]) : undefined;
       const out: Record<string, number> = {};
       if (!e) return out;
+      // The latest sheet states the position AS OF ITS OWN DATE. A godown
+      // delivery on a later day with no sheet moved stock since, and the
+      // shop's Daily Entry already opens at the higher figure — so this walks
+      // the same chain rather than showing a balance the entry screen
+      // disagrees with. src/lib/engine/stockChain.ts.
+      const ix = buildChainIndex(entryStore, inspectionStore, receiptStore, id);
       for (const sec of ['a', 'b'] as const) {
         for (const [cid, rec] of Object.entries(e[sec] ?? {})) {
-          out[cid] = (out[cid] ?? 0) + (Number(rec.close) || 0);
+          const carried = closingAsAt(ix, selStr, cid, sec).value;
+          out[cid] = (out[cid] ?? 0) + (carried ?? (Number(rec.close) || 0));
         }
       }
       return out;
@@ -689,7 +715,11 @@ export default function DashboardPage() {
                 ? `Combined latest stock across ${stock.shopsWithData} shop${stock.shopsWithData === 1 ? '' : 's'} with entries, on or before ${selStr.split('-').reverse().join('-')}`
                 : `No stock entry available yet for any shop on or before ${selStr.split('-').reverse().join('-')}`
               : latestKey
-                ? `Stock as of: ${latestKey.split('_')[1].split('-').reverse().join('-')}`
+                ? `Stock as of: ${stockAsOf.split('-').reverse().join('-')}${
+                    stockAsOf !== latestKey.split('_')[1]
+                      ? ` — last day sheet ${latestKey.split('_')[1].split('-').reverse().join('-')}, plus godown receipts since`
+                      : ''
+                  }`
                 : `No stock entry available yet — nothing keyed on or before ${selStr.split('-').reverse().join('-')}, values default to 0`}
           </div>
           <div style={{ padding: '10px 18px 16px' }}>
