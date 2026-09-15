@@ -251,6 +251,30 @@ pair there; no schema change.
 `npm run verify:notifications` covers who a message reaches, the read-time
 rules and the approval wording.
 
+## CRS 29 — Free Rice and Cost Rice
+
+CRS 29 (Refugee Camp) keys two extra figures per day on Daily Entry: the kilos
+of rice issued **free** and sold at **cost**. Both are required to complete the
+day, and `0` is an answer where blank is not. No other shop has these fields.
+
+- Stored on the day sheet as `freeRice` / `costRice`. A month keyed by month
+  types them on Monthly Entry and carries them on its projected last-day
+  sheet; `receiptSync` keeps them there when it rebuilds that projection.
+- Printed by `src/legacy/40-crs29-rice.js`, which overrides `c29CRice`:
+  FREE RICE (KG'S) → TOTAL, COST RICE BRA, and TOTAL RICE as the two
+  together. A sheet without them prints what it always did — which is why the
+  goldens still match, and why `verify:crs29-rice` covers the other case.
+- `/api/state` refuses a new CRS 29 sheet without both and a save that strips
+  them from one that had them, for admins too (`src/lib/engine/crs29Rice.ts`).
+- Not written to `monthlyStore`: the statement's TOTAL row is the month's
+  figure, so the roll-up is untouched.
+- The **Sales Report** is the office's own sheet, reproduced in
+  `src/legacy/41-crs29-sales-report.js` from `CRS 29-REFUGEE CAMP AUG'26 -
+  SALES REPORT.pdf`: BRA FREE is B.RICE sales, BRA COST is the day's Cost
+  Rice. Its geometry is the PDF's, in points, on a named `@page c29-sales`, so
+  the A3-landscape `@page` another builder carries cannot reach it.
+  `verify:crs29-sales` checks it against the PDF's own figures.
+
 ## Tools
 
 ```
@@ -258,6 +282,8 @@ npm run dev                 regenerates the statement modules, then next dev
 npm run build:stmt          regenerate src/generated/*-legacy.js from src/legacy
 npm run verify:statements    306 golden statements, byte-for-byte
 npm run verify:rollup        roll-up at dev vs working tree, every live month + two-mode rules
+npm run verify:crs29-rice    CRS 29 Free/Cost Rice: entry rules, server guard, C RICE mapping
+npm run verify:crs29-sales   CRS 29 Sales Report against the office's own PDF: figures, headings, geometry
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
 node tools/seed-masters.mjs

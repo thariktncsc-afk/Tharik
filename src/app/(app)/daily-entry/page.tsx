@@ -41,6 +41,7 @@ import { hasData } from '@/lib/clearGuard';
 import { openingLocked, receiptLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
 import type { ClearScope } from '@/lib/clearClient';
+import { RICE_DAILY_REQUIRED, RICE_INVALID, checkRiceBoxes, hasRiceFields, riceBox, withRice, type RiceBoxError } from '@/lib/engine/crs29Rice';
 
 type ShopRec = { name: string };
 
@@ -60,6 +61,9 @@ type SavedSheet = DayEntry & {
   remitDate?: string;
   remitNonCereal?: number;
   remitCereal?: number;
+  /** CRS 29 only — kilos of rice issued free and sold at cost (engine/crs29Rice.ts). */
+  freeRice?: number;
+  costRice?: number;
 };
 type InspDay = { a?: Record<string, { excess?: number; shortage?: number; transfer?: number }>; b?: Record<string, { excess?: number; shortage?: number; transfer?: number }> };
 type SalesClose = { date: string; gunny: number; poly: number; cbox: number; updatedAt: string };
@@ -142,6 +146,16 @@ export default function DailyEntryPage() {
   const insp = key ? inspectionStore[key] : undefined;
   const lists = useCommodityLists(crsId);
 
+  // CRS 29 only — the day's Free Rice and Cost Rice, required to complete the
+  // day and printed on the camp's C RICE statement (engine/crs29Rice.ts).
+  const riceShop = hasRiceFields(crsId);
+  const [riceFree, setRiceFree] = useState('');
+  const [riceCost, setRiceCost] = useState('');
+  const [riceErr, setRiceErr] = useState<{ free?: RiceBoxError; cost?: RiceBoxError }>({});
+  const riceFreeRef = useRef<HTMLInputElement>(null);
+  const riceCostRef = useRef<HTMLInputElement>(null);
+  const remitAmtRef = useRef<HTMLInputElement>(null);
+
   // Field permissions follow the ROLE, not whether a shop is attached: the
   // server decides on `session.role === 'ADMIN'` and the two must agree, or a
   // box looks editable and the save comes back 403.
@@ -191,14 +205,20 @@ export default function DailyEntryPage() {
       // existed (a bare remits array, or only remitAmount) still come back as
       // deposits with stable ids rather than vanishing from the month.
       setRemits(txnsOf(sheet, date).map(({ salesDate: _s, additional: _a, ...t }) => t));
+      // A saved 0 comes back as 0 — it was an answer, not a blank.
+      setRiceFree(riceBox(sheet.freeRice));
+      setRiceCost(riceBox(sheet.costRice));
     } else {
       setRemits([]);
+      setRiceFree('');
+      setRiceCost('');
     }
     setRows(next);
     setRemitDate(date);
     if (changedDay) {
       setRemitAmt('');
       setRemitErr({});
+      setRiceErr({});
       setSavedMsg('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -395,8 +415,18 @@ export default function DailyEntryPage() {
   /** Save the sheet; returns true when written. */
   const save = async (): Promise<boolean> => {
     if (!crsVal || !date) return false;
+    // Rice first — it sits above Remittance — but both are checked, so one
+    // press marks every box still to fill. Blank is refused; 0 is an answer.
+    const riceChk = riceShop ? checkRiceBoxes(riceFree, riceCost) : null;
+    if (riceChk) setRiceErr({ free: riceChk.free, cost: riceChk.cost });
     const list = remitCollect();
+    if (riceChk && !riceChk.rice) {
+      const box = riceChk.free ? riceFreeRef.current : riceCostRef.current;
+      void appAlert({ title: 'Rice sales details required', tone: 'warning', icon: '🌾', message: riceChk.invalid ? RICE_INVALID : RICE_DAILY_REQUIRED }).then(() => box?.focus());
+      return false;
+    }
     if (!list) return false;
+    const rice = riceChk?.rice ?? null;
 
     const wasProjected = isProjectedSheet(saved);
     if (saved) {
@@ -448,7 +478,9 @@ export default function DailyEntryPage() {
     const [y, m] = date.split('-').map(Number);
     let tookOver = false;
     crsData.update<Record<string, SavedSheet>>('entryStore', (d) => {
-      d[key] = snap;
+      // CRS 29 carries its Free Rice / Cost Rice on the sheet; every other
+      // shop's sheet is written exactly as before.
+      d[key] = withRice(snap, rice);
       tookOver = dropProjectedSheet(d, Number(crsVal), m, y);
     });
     crsData.update<Record<string, InspDay>>('inspectionStore', (d) => {
@@ -534,6 +566,9 @@ export default function DailyEntryPage() {
     setRemits([]);
     setRemitAmt('');
     setRemitErr({});
+    setRiceFree('');
+    setRiceCost('');
+    setRiceErr({});
   };
 
   /**
@@ -984,6 +1019,76 @@ export default function DailyEntryPage() {
                 ))}
               </div>
 
+              {/* Rice sales — CRS 29 only, between the totals and Remittance.
+                  Both boxes are required to complete the day; 0 is an answer. */}
+              {riceShop ? (
+                <div style={{ width: '100%', borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                    🌾 Rice Sales Details – CRS 29 Only <span style={{ color: '#DC2626' }}>*</span>
+                    <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--muted)', marginLeft: 6 }}>(required — kilos of rice issued today; enter 0 if none)</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
+                    {(
+                      [
+                        ['free', 'FREE RICE', 'Free Rice', riceFree, setRiceFree, riceFreeRef, riceCostRef],
+                        ['cost', 'COST RICE', 'Cost Rice', riceCost, setRiceCost, riceCostRef, remitAmtRef],
+                      ] as const
+                    ).map(([f, label, name, val, set, ref, next]) => (
+                      <div key={f}>
+                        <label htmlFor={`de-rice-${f}`} style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+                          {label} <span style={{ color: '#DC2626' }}>*</span>
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            id={`de-rice-${f}`}
+                            ref={ref}
+                            type="number"
+                            min={0}
+                            step={0.001}
+                            inputMode="decimal"
+                            enterKeyHint="next"
+                            placeholder="0.000"
+                            value={val}
+                            onChange={(e) => {
+                              set(e.target.value);
+                              setRiceErr((p) => ({ ...p, [f]: undefined }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                next.current?.focus();
+                              }
+                            }}
+                            style={{ width: '100%', border: `2px solid ${riceErr[f] ? '#DC2626' : '#86EFAC'}`, borderRadius: 8, padding: '9px 42px 9px 12px', fontSize: 14, fontWeight: 700, color: '#15803D', background: '#F0FDF4', outline: 'none' }}
+                          />
+                          <span style={{ position: 'absolute', right: 12, top: 19, transform: 'translateY(-50%)', fontSize: 11, fontWeight: 800, color: '#15803D', pointerEvents: 'none' }}>KG</span>
+                        </div>
+                        {riceErr[f] ? (
+                          <div style={{ fontSize: 10, marginTop: 3, color: '#DC2626', fontWeight: 600 }}>
+                            {riceErr[f] === 'invalid' ? `${name} must be 0 or more.` : `Please enter ${name}.`}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  {(() => {
+                    // The C RICE sheet's RBA and BRA columns are the day's R.R.A
+                    // and B.RICE sales, so show them beside the Free Rice being
+                    // keyed — a pointer, not a rule: the figure keyed is the one
+                    // that prints.
+                    const riceSales = lists.a.filter((c) => c.id === 'BRA' || c.id === 'RRA').reduce((s, c) => s + derive('a', c).sales, 0);
+                    const free = Number(riceFree);
+                    const differs = riceFree.trim() !== '' && Number.isFinite(free) && Math.abs(free - riceSales) > 0.0005;
+                    return (
+                      <div style={{ fontSize: 10, marginTop: 6, color: differs ? '#B45309' : 'var(--muted)' }}>
+                        B.RICE + R.R.A sales on this sheet: <strong>{riceSales.toFixed(3)} kg</strong>
+                        {differs ? ' — not the same as the Free Rice entered' : ''}. On the C RICE statement Free Rice prints under FREE RICE (KG’S) TOTAL and Cost Rice under COST RICE BRA.
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : null}
+
               {/* Remittance */}
               <div style={{ width: '100%', borderTop: '1px solid var(--border)', margin: '14px 0 10px', paddingTop: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
@@ -1004,6 +1109,7 @@ export default function DailyEntryPage() {
                     <div style={{ position: 'relative' }}>
                       <span style={{ position: 'absolute', left: 10, top: 19, transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: ACCT.nc.fg }}>₹</span>
                       <input
+                        ref={remitAmtRef}
                         type="number"
                         min={0}
                         step={0.01}

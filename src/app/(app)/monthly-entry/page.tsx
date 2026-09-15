@@ -39,6 +39,18 @@ import ClearRequestDialog from '@/components/ClearRequestDialog';
 import { hasData } from '@/lib/clearGuard';
 import { openingLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
+import {
+  RICE_INVALID,
+  RICE_MONTHLY_REQUIRED,
+  checkRiceBoxes,
+  hasRiceFields,
+  riceBox,
+  riceForMonth,
+  riceOf,
+  withRice,
+  type Rice,
+  type RiceBoxError,
+} from '@/lib/engine/crs29Rice';
 import type { ClearScope } from '@/lib/clearClient';
 import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
@@ -111,6 +123,31 @@ export default function MonthlyEntryPage() {
   const dayDates = useMemo(() => (crsId ? realSheetDates(entryStore, crsId, month, year) : []), [entryStore, crsId, month, year]);
   const projection = crsId ? entryStore[projectionKey(crsId, month, year)] : undefined;
   const projectedAt = isProjectedSheet(projection) ? projection.__projection.at : '';
+
+  // CRS 29 only — the month's Free Rice and Cost Rice (engine/crs29Rice.ts).
+  // Keyed by month, they are typed here and ride on the projected last-day
+  // sheet with the rest of the month; keyed by day, they are the day sheets'
+  // own, totalled read-only.
+  const riceShop = hasRiceFields(crsId);
+  const [riceFree, setRiceFree] = useState('');
+  const [riceCost, setRiceCost] = useState('');
+  const [riceErr, setRiceErr] = useState<{ free?: RiceBoxError; cost?: RiceBoxError }>({});
+  const riceFreeRef = useRef<HTMLInputElement>(null);
+  const riceCostRef = useRef<HTMLInputElement>(null);
+  const projRice = riceShop && isProjectedSheet(projection) ? riceOf(projection) : null;
+  const projRiceStamp = `${key}|${projRice ? `${projRice.freeRice}|${projRice.costRice}` : ''}`;
+  useEffect(() => {
+    // Refilled when the month changes or its saved figures do — never while
+    // the clerk types, which leaves the stamp where it was.
+    setRiceFree(riceBox(projRice?.freeRice));
+    setRiceCost(riceBox(projRice?.costRice));
+    setRiceErr({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projRiceStamp]);
+  const dayRice = useMemo(
+    () => (riceShop && crsId && dayDates.length ? riceForMonth(entryStore, crsId, month, year) : null),
+    [riceShop, crsId, dayDates.length, entryStore, month, year],
+  );
 
   // Merge the daily roll-up with the saved manual values (rule: daily wins).
   const { merged, source } = useMemo(() => {
@@ -306,6 +343,20 @@ export default function MonthlyEntryPage() {
 
   const save = () => {
     if (!ctx) return;
+    // CRS 29 keyed by month: the month-close writes the last-day sheet, and a
+    // CRS 29 day sheet is not complete without its rice. Keyed by day, the day
+    // sheets carry their own. The store decides which, as it does below.
+    let rice: Rice | null = null;
+    if (hasRiceFields(ctx.crsId) && realSheetDates(crsData.get<Record<string, DayEntry>>('entryStore') ?? {}, ctx.crsId, ctx.month, ctx.year).length === 0) {
+      const chk = checkRiceBoxes(riceFree, riceCost);
+      setRiceErr({ free: chk.free, cost: chk.cost });
+      if (!chk.rice) {
+        const box = chk.free ? riceFreeRef.current : riceCostRef.current;
+        void appAlert({ title: 'Rice sales details required', tone: 'warning', icon: '🌾', message: chk.invalid ? RICE_INVALID : RICE_MONTHLY_REQUIRED }).then(() => box?.focus());
+        return;
+      }
+      rice = chk.rice;
+    }
     const manual: Partial<MonthlyBlock> = { a: {}, b: {} };
     const whole: ProjectedMonth = { a: {}, b: {} };
     for (const [sec, list] of [['a', rows.a], ['b', rows.b]] as const) {
@@ -387,7 +438,9 @@ export default function MonthlyEntryPage() {
     if (byDay.length === 0) {
       const at = new Date().toISOString();
       crsData.update<Record<string, DayEntry>>('entryStore', (d) => {
-        d[projectionKey(ctx.crsId, ctx.month, ctx.year)] = buildProjectedSheet(whole, at);
+        // CRS 29's Free Rice / Cost Rice ride on this sheet, the one day the
+        // C RICE statement has for a month keyed by month.
+        d[projectionKey(ctx.crsId, ctx.month, ctx.year)] = withRice(buildProjectedSheet(whole, at), rice);
       });
       let carried = 0;
       crsData.update<Record<string, InspDay>>('inspectionStore', (d) => {
@@ -861,6 +914,94 @@ export default function MonthlyEntryPage() {
                   </div>
                 ))}
               </div>
+
+              {/* CRS 29 only — the month's Free Rice / Cost Rice. Keyed by
+                  month they are typed here and required for the month-close;
+                  keyed by day they are the day sheets' own, shown totalled. */}
+              {riceShop && !dayDates.length ? (
+                <div style={{ width: '100%', borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                    🌾 Rice Sales Details – CRS 29 Only <span style={{ color: '#DC2626' }}>*</span>
+                    <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--muted)', marginLeft: 6 }}>
+                      (required — the month&apos;s rice in kilos, recorded on the {fmtDay(lastDay)} day sheet; enter 0 if none)
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
+                    {(
+                      [
+                        ['free', 'FREE RICE', 'Free Rice', riceFree, setRiceFree, riceFreeRef, riceCostRef],
+                        ['cost', 'COST RICE', 'Cost Rice', riceCost, setRiceCost, riceCostRef, null],
+                      ] as const
+                    ).map(([f, label, name, val, set, ref, next]) => (
+                      <div key={f}>
+                        <label htmlFor={`me-rice-${f}`} style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
+                          {label} <span style={{ color: '#DC2626' }}>*</span>
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            id={`me-rice-${f}`}
+                            ref={ref}
+                            type="number"
+                            min={0}
+                            step={0.001}
+                            inputMode="decimal"
+                            enterKeyHint={next ? 'next' : 'done'}
+                            placeholder="0.000"
+                            value={val}
+                            onChange={(e) => {
+                              set(e.target.value);
+                              setRiceErr((p) => ({ ...p, [f]: undefined }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                if (next) next.current?.focus();
+                                else e.currentTarget.blur();
+                              }
+                            }}
+                            style={{ width: '100%', border: `2px solid ${riceErr[f] ? '#DC2626' : '#86EFAC'}`, borderRadius: 8, padding: '9px 42px 9px 12px', fontSize: 14, fontWeight: 700, color: '#15803D', background: '#F0FDF4', outline: 'none' }}
+                          />
+                          <span style={{ position: 'absolute', right: 12, top: 19, transform: 'translateY(-50%)', fontSize: 11, fontWeight: 800, color: '#15803D', pointerEvents: 'none' }}>KG</span>
+                        </div>
+                        {riceErr[f] ? (
+                          <div style={{ fontSize: 10, marginTop: 3, color: '#DC2626', fontWeight: 600 }}>
+                            {riceErr[f] === 'invalid' ? `${name} must be 0 or more.` : `Please enter ${name}.`}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {riceShop && dayRice ? (
+                <div style={{ width: '100%', borderTop: '1px solid var(--border)', marginTop: 14, paddingTop: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                    🌾 Rice Sales Details – CRS 29 Only
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14 }}>
+                    {(
+                      [
+                        ['FREE RICE', dayRice.freeRice],
+                        ['COST RICE', dayRice.costRice],
+                      ] as const
+                    ).map(([label, kg]) => (
+                      <div key={label} style={{ border: '1px solid #E2E8F0', background: '#F1F5F9', borderRadius: 8, padding: '8px 12px' }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)' }}>{label}</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#334155' }}>{kg.toFixed(3)} kg</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 10, marginTop: 6, color: 'var(--muted)' }}>
+                    Totalled from {dayRice.sheets} day {dayRice.sheets === 1 ? 'sheet' : 'sheets'} — correct them on the Daily Entry page.
+                    {dayRice.missing.length ? (
+                      <span style={{ color: '#B45309' }}>
+                        {' '}
+                        {dayRice.missing.length} saved before these fields existed {dayRice.missing.length === 1 ? 'carries' : 'carry'} none ({dayRice.missing.map((d) => Number(d.slice(8))).join(', ')}).
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, width: '100%' }}>
                 <button className="btn btn-outline btn-sm" onClick={clearMonth}>🗑 Clear</button>

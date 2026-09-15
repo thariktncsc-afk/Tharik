@@ -22,7 +22,9 @@
     "verify:stock-lock": "node tools/verify-stock-lock.mjs",
     "verify:staff": "node tools/verify-staff-assignment.mjs",
     "verify:stock-chain": "node tools/verify-stock-chain.mjs",
-    "verify:notifications": "node tools/verify-notifications.mjs"
+    "verify:notifications": "node tools/verify-notifications.mjs",
+    "verify:crs29-rice": "node tools/verify-crs29-rice.mjs",
+    "verify:crs29-sales": "node tools/verify-crs29-sales-report.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
