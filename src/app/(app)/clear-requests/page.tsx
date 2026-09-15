@@ -79,6 +79,19 @@ export default function ClearRequestsPage() {
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(true);
 
+  /**
+   * A notification links here as /clear-requests?id=245 — open on that
+   * request, expanded, whatever its status is by now.
+   */
+  const [focusId, setFocusId] = useState<number | null>(null);
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('id'));
+    if (!Number.isInteger(id) || id <= 0) return;
+    setFocusId(id);
+    setStatus('all');
+    setOpen((o) => ({ ...o, [id]: true }));
+  }, []);
+
   const load = useCallback(() => {
     setLoading(true);
     listRequests(status)
@@ -150,7 +163,25 @@ export default function ClearRequestsPage() {
           const canDecide = isAdmin && (r.status === 'pending' || r.status === 'approved');
           const canCancel = !isAdmin && r.status === 'pending' && r.requestedBy === user?.username;
           return (
-            <div key={r.id} className="card mb-4">
+            <div
+              key={r.id}
+              id={`clear-request-${r.id}`}
+              className="card mb-4"
+              // The request a notification opened this page on: marked, and
+              // scrolled to once — the dataset flag stops a later re-render
+              // pulling the page back.
+              ref={
+                r.id === focusId
+                  ? (el) => {
+                      if (el && !el.dataset.focused) {
+                        el.dataset.focused = '1';
+                        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                      }
+                    }
+                  : undefined
+              }
+              style={r.id === focusId ? { boxShadow: '0 0 0 3px #F59E0B' } : undefined}
+            >
               <div style={{ padding: '14px 18px', display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 260 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

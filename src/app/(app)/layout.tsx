@@ -15,6 +15,9 @@ import { useEffect, useState } from 'react';
 import NavToggle from '@/components/NavToggle';
 import { useAuth } from '@/lib/authClient';
 import { crsData } from '@/lib/dataStore';
+import NotificationBell from '@/components/NotificationBell';
+import MessagePopup from '@/components/MessagePopup';
+import { inbox } from '@/lib/notify/client';
 
 const MENU = [
   { href: '/dashboard', icon: '📊', label: 'Dashboard' },
@@ -31,15 +34,18 @@ const MENU = [
   // Not admin-only: an admin decides clear requests here, a shop user watches
   // its own and can withdraw one raised by mistake.
   { href: '/clear-requests', icon: '🔒', label: 'Clear Approvals' },
+  // Everyone: an admin's approval traffic, a shop's messages and results.
+  { href: '/notifications', icon: '🔔', label: 'Notifications' },
 ];
 const ADMIN = [
+  { href: '/messages', icon: '📣', label: 'Messages' },
   { href: '/pv-officers', icon: '🧑‍💼', label: 'PV Officers' },
   { href: '/users', icon: '👥', label: 'Users' },
   { href: '/settings', icon: '⚙️', label: 'Settings' },
   { href: '/audit', icon: '📜', label: 'Audit Logs' },
 ];
 // Mirrors adminNavLabels in 07-auth.js — hidden from non-admin roles.
-const ADMIN_ONLY = new Set(['CRS Shops', 'Commodities', 'Users', 'Settings', 'Audit Logs', 'Reports', 'PV Officers']);
+const ADMIN_ONLY = new Set(['CRS Shops', 'Commodities', 'Users', 'Settings', 'Audit Logs', 'Reports', 'PV Officers', 'Messages']);
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
@@ -67,6 +73,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return () => {
       void crsData.save({ keepalive: true });
       crsData.stop();
+    };
+  }, [status]);
+
+  // Notifications poll for as long as someone is signed in — one timer for
+  // the bell, the popup and the history page together. On the way out the
+  // last person's inbox is forgotten, so whoever signs in next on the same
+  // browser never sees somebody else's unread count for a moment.
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    inbox.start();
+    return () => {
+      inbox.stop();
+      inbox.reset();
     };
   }, [status]);
 
@@ -171,12 +190,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               CRS Statement Management System · Madurai Region
             </div>
           </div>
-          <div className="topbar-right">
+          <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <NotificationBell />
             <div className="tb-date">{today}</div>
           </div>
         </div>
         <div id="content">{children}</div>
       </div>
+      {/* Important and urgent messages, in front of everything until acknowledged. */}
+      <MessagePopup />
     </>
   );
 }
