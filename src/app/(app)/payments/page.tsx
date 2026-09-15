@@ -50,6 +50,20 @@ export default function PaymentsPage() {
   /** Order id currently being rejected, and the reason being typed for it. */
   const [rejecting, setRejecting] = useState<{ id: number; reason: string } | null>(null);
 
+  /**
+   * A notification links here as /payments?id=12 — open on that order.
+   * Read after mount rather than in the initial state, so the server-rendered
+   * filter and the browser's agree. The queue widens to All because the order
+   * a result points at may already be approved or rejected.
+   */
+  const [focusId, setFocusId] = useState<number | null>(null);
+  useEffect(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('id'));
+    if (!Number.isInteger(id) || id <= 0) return;
+    setFocusId(id);
+    if (isAdmin) setFilter('all');
+  }, [isAdmin]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -190,7 +204,25 @@ export default function PaymentsPage() {
                 orders.map((o) => {
                   const tone = STATUS_COLOR[o.status];
                   return (
-                    <tr key={o.id} style={{ borderTop: '1px solid #F1F5F9' }}>
+                    <tr
+                      key={o.id}
+                      id={`order-${o.id}`}
+                      // The order a notification opened this page on: marked,
+                      // and scrolled to once. The dataset flag keeps a later
+                      // re-render from yanking the page back while the admin
+                      // scrolls on.
+                      ref={
+                        o.id === focusId
+                          ? (el) => {
+                              if (el && !el.dataset.focused) {
+                                el.dataset.focused = '1';
+                                el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                              }
+                            }
+                          : undefined
+                      }
+                      style={{ borderTop: '1px solid #F1F5F9', ...(o.id === focusId ? { background: '#FEF9C3', boxShadow: 'inset 4px 0 0 #F59E0B' } : {}) }}
+                    >
                       <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
                         <div style={{ fontWeight: 700 }}>{o.orderNo}</div>
                         <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>{when(o.createdAt)}</div>

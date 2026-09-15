@@ -13,6 +13,7 @@ import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { crsOfKey, isProtectedStore, periodOfKey, STORE_LABEL } from '@/lib/clearGuard';
 import { mutateClearDb, readClearDb, type StoredRequest } from '@/lib/clearStore';
+import { onClearRequested } from '@/lib/notify/approvals';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -157,6 +158,9 @@ export async function POST(req: Request) {
     if (created.duplicate) {
       return NextResponse.json({ error: 'A request for this entry is already waiting for the administrator.', request: created.request }, { status: 409 });
     }
+    // A duplicate returned above never reaches here, so the administrators are
+    // told once per request, not once per click.
+    await onClearRequested(created.request, s);
     return NextResponse.json({ request: created.request });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not create the request.' }, { status: 500 });

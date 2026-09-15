@@ -217,6 +217,40 @@ touching `monthlyRollup.ts` or `monthProjection.ts`.
 32 of the 35 live months are keyed by month (the imported workbooks). They
 are projected only when someone presses save on them — never on open.
 
+## Notifications
+
+`notifications` + `notification_recipients` (migration `0005`). One mechanism
+for every approval: a module words its request (`src/lib/notify/core.ts`) and
+calls `notifyApprovalRequested` / `notifyApprovalDecided`
+(`src/lib/notify/server.ts`). `src/lib/notify/approvals.ts` holds the two that
+exist — payments and clear requests. A future approval module adds a wording
+pair there; no schema change.
+
+- **It never breaks an approval.** Both approval calls swallow their own
+  failures, the tables not existing included. Only `sendMessage` throws.
+- **The requester is the sender of the request notification.** That is how a
+  decision finds who to tell, for any module, without each one carrying its own
+  requester column.
+- **Payments notify on submit, not on create** — an unpaid `pending` order is
+  nobody's to approve. **A clear tells its requester only once `cleared`**:
+  approval can still fail back to pending.
+- **Scoping is by query** (`recipient_user_id = session.userId`), never
+  load-then-filter. No notification route takes a user id.
+- **Read times are first-write-wins.** `markPatch` never moves a timestamp, and
+  only the person's own action — open, mark read, acknowledge — sets `read_at`.
+  A poll sets `delivered_at` and nothing else; a popup appearing sets nothing.
+- **Polling, not Supabase Realtime, on purpose.** RLS is on with no policy
+  (there is no `auth.uid()`), so a subscribed browser receives nothing. Making
+  it receive would mean a policy exposing every shop's notifications to the
+  public key, or a guessable broadcast channel — and either breaks "the browser
+  never talks to Supabase". The bell polls its own route every 15 s while
+  visible, on focus, and straight after the person's own actions.
+- Recipients are denormalised at send time, so a Packer transferred next month
+  still appears under their old shop in an old message's read report.
+
+`npm run verify:notifications` covers who a message reaches, the read-time
+rules and the approval wording.
+
 ## Tools
 
 ```
@@ -271,6 +305,9 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 - Run any new migration against the live database as an explicit step —
   `0004_payments.sql` included, or the Payments screen 503s and every download
   silently stays free
+- `0005_notifications.sql` too. Unlike 0004 nothing breaks without it — every
+  approval proceeds and notifications are silently skipped — which is exactly
+  why it is easy to forget: the bell just stays at zero forever
 - Supabase free tier **pauses after 7 days idle and has no backups** — upgrade
   before real users depend on it
 

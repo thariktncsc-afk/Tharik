@@ -17,6 +17,7 @@ import { supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { mutateClearDb, type StoredRequest } from '@/lib/clearStore';
 import { executeClear } from '@/lib/clearExecute';
+import { onClearDecided } from '@/lib/notify/approvals';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,6 +69,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         return { ok: true, request: r };
       });
       if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+      await onClearDecided(outcome.request, s, outcome.request.status === 'rejected' ? 'rejected' : 'cancelled', note);
       return NextResponse.json({ request: outcome.request });
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not record the decision.' }, { status: 500 });
@@ -124,6 +126,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
       return { ...r };
     });
+    // Told only now that the records are actually gone — never on approval
+    // alone, which can still fail and put the request back to pending.
+    await onClearDecided(final, s, 'cleared', note);
     return NextResponse.json({ request: final, cleared });
   } catch (e) {
     // The data is untouched (executeClear rolls its own writes back), so the
