@@ -15,6 +15,7 @@ import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { cookies } from 'next/headers';
 import { describe, inspectWrite, isProtectedStore } from '@/lib/clearGuard';
 import { describeStock, inspectStockWrite } from '@/lib/stockGuard';
+import { describeRice, inspectRiceWrite } from '@/lib/engine/crs29Rice';
 import { logEvent } from '@/lib/clearServer';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 
@@ -218,6 +219,19 @@ export async function POST(req: Request) {
       await logEvent(null, 'blocked', session, `Stock field guard refused: ${describeStock(broken)}`);
       return NextResponse.json(
         { error: describeStock(broken.slice(0, 3)) + (broken.length > 3 ? ` (+${broken.length - 3} more)` : ''), stockViolations: broken },
+        { status: 403 },
+      );
+    }
+
+    // ── CRS 29 rice guard ───────────────────────────────────────────────────
+    // A CRS 29 day is not complete without its Free Rice and Cost Rice, whoever
+    // saves it — they print on the camp's C RICE statement. Every other shop
+    // passes straight through. See src/lib/engine/crs29Rice.ts.
+    const riceBroken = inspectRiceWrite(stored, stores);
+    if (riceBroken.length) {
+      await logEvent(null, 'blocked', session, `CRS 29 rice guard refused: ${describeRice(riceBroken)}`);
+      return NextResponse.json(
+        { error: describeRice(riceBroken.slice(0, 3)) + (riceBroken.length > 3 ? ` (+${riceBroken.length - 3} more)` : ''), riceViolations: riceBroken },
         { status: 403 },
       );
     }

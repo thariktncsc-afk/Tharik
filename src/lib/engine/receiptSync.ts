@@ -41,6 +41,7 @@ import {
 } from '@/lib/engine/monthlyRollup';
 import { receiptQtyForMonth, syncSheetReceipts, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { buildProjectedSheet, isProjectedSheet, projectionKey, realSheetDates, type ProjectedMonth } from '@/lib/engine/monthProjection';
+import { riceOf, withRice } from '@/lib/engine/crs29Rice';
 
 type InspStore = Record<string, unknown>;
 
@@ -197,7 +198,9 @@ export function resyncReceiptMonth(
     // — so the recorded time stays as it was.
     const at = projection.__projection.at;
     const next = { ...entryStore };
-    if (published(built.merged)) next[pKey] = buildProjectedSheet(asProjectedMonth(built.merged), at);
+    // CRS 29's Free Rice and Cost Rice were keyed at the month-close, not
+    // taken from the register, so they carry across as they were.
+    if (published(built.merged)) next[pKey] = withRice(buildProjectedSheet(asProjectedMonth(built.merged), at), riceOf(projection));
     else delete next[pKey];
     out.entryStore = next;
   }

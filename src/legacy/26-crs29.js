@@ -361,6 +361,8 @@ function c29DaySales(rec, id){
   return s ? (parseFloat(s.sales) || 0) : 0;
 }
 
+// Overridden by 40-crs29-rice.js, which prints the day's keyed Free Rice and
+// Cost Rice where a sheet carries them. Change C RICE there, not here.
 function c29CRice(d){
   var tot = {rba:0, bra:0, sum:0, cost:0, all:0};
   var rows = c29DayRows(d).map(function(x, i){
@@ -387,6 +389,8 @@ function c29CRice(d){
     '</tbody></table>' + c29sign(d));
 }
 
+// Overridden by 41-crs29-sales-report.js, the office's own date-wise sheet.
+// Change the Sales Report there, not here.
 function c29SalesReport(d){
   var grand = 0, qty = 0;
   var rows = c29DayRows(d).map(function(x, i){
