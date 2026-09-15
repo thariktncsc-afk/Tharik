@@ -16,6 +16,7 @@ import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { isAdmin, readSettings, requireSession } from '@/lib/payments/server';
 import { upiUri } from '@/lib/payments/upi';
 import { toOrder } from '../route';
+import { onPaymentDecided, onPaymentSubmitted } from '@/lib/notify/approvals';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -146,7 +147,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       console.error('[api/payments/:id] submit failed:', error?.code, error?.message);
       return NextResponse.json({ error: 'Could not record the payment reference.' }, { status: 500 });
     }
-    return NextResponse.json({ order: toOrder(data) });
+    const submitted = toOrder(data);
+    // Now there is something for an administrator to do. Awaited so the
+    // notification is written before a serverless function can be frozen,
+    // but it cannot fail this request — see src/lib/notify/approvals.ts.
+    await onPaymentSubmitted(submitted, session);
+    return NextResponse.json({ order: submitted });
   }
 
   // ── Admin: approve or reject ──────────────────────────────────────────────
@@ -188,7 +194,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!data) {
       return NextResponse.json({ error: 'Someone else decided this order first — reload the queue.' }, { status: 409 });
     }
-    return NextResponse.json({ order: toOrder(data) });
+    const decided = toOrder(data);
+    // Only the administrator who actually won the status guard reaches here,
+    // so the requester is told exactly once. It cannot fail the decision —
+    // see src/lib/notify/approvals.ts.
+    await onPaymentDecided(decided, session, action === 'approve' ? 'approved' : 'rejected', reason);
+    return NextResponse.json({ order: decided });
   }
 
   return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
