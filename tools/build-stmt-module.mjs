@@ -35,6 +35,8 @@ const FILES = [
   '29-dss-total.js',      // DSS total-row tweak
   '31-stmt-heading.js',   // statement heading rewrite (DOM-only, inert here)
   '39-staff-roles.js',    // staff post resolution from the users table
+  '40-crs29-rice.js',     // CRS 29 C RICE: the day's keyed Free Rice / Cost Rice
+  '41-crs29-sales-report.js', // CRS 29 SALES REPORT: the office's own date-wise sheet
 ];
 
 const PRELUDE = `
