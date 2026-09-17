@@ -84,16 +84,15 @@ export function createStatementEngine(ctx) {
   }
   function isHoliday(dateObj){                                       // 08-dashboard.js
     var d=dateObj.getDay(),dt=dateObj.getDate();
-    var firstDay=new Date(dateObj.getFullYear(),dateObj.getMonth(),1).getDay();
-    var weekNum=Math.ceil((dt+firstDay)/7);
+    // The nth Friday/Sunday IN the month, as src/lib/engine/holidays.ts.
+    var weekNum=Math.ceil(dt/7);
     if(d===5&&(weekNum===1||weekNum===2)) return true;
     if(d===0&&(weekNum===3||weekNum===4)) return true;
     return false;
   }
   function getHolidayName(dateObj){                                  // 08-dashboard.js
     var d=dateObj.getDay(),dt=dateObj.getDate();
-    var f=new Date(dateObj.getFullYear(),dateObj.getMonth(),1).getDay();
-    var w=Math.ceil((dt+f)/7);
+    var w=Math.ceil(dt/7);
     if(d===5&&w===1) return '1st Friday Holiday';
     if(d===5&&w===2) return '2nd Friday Holiday';
     if(d===0&&w===3) return '3rd Sunday Holiday';
@@ -534,7 +533,7 @@ var TN_GOVT_HOLIDAYS = {
     {d:'2026-07-17', name:'Muharram'},
     {d:'2026-08-15', name:'Independence Day'},
     {d:'2026-08-25', name:'Krishna Jayanthi'},
-    {d:'2026-09-17', name:'Vinayagar Chaturthi'},
+    {d:'2026-09-14', name:'Vinayagar Chaturthi'},
     {d:'2026-10-02', name:'Gandhi Jayanthi'},
     {d:'2026-10-08', name:'Ayutha Pooja'},
     {d:'2026-10-09', name:'Vijaya Dasami'},
@@ -617,8 +616,8 @@ function renderHolidayCal(){
       var dateObj=new Date(yr,mo,d2);
       var dow=dateObj.getDay();
       var dt=dateObj.getDate();
-      var f=new Date(yr,mo,1).getDay();
-      var weekNum=Math.ceil((dt+f)/7);
+      // The nth Friday/Sunday IN the month (src/lib/engine/holidays.ts), not the calendar row.
+      var weekNum=Math.ceil(dt/7);
 
       var isFri12 = dow===5&&(weekNum===1||weekNum===2);
       var isSun34 = dow===0&&(weekNum===3||weekNum===4);

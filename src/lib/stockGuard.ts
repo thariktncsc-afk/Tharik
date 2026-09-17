@@ -10,12 +10,28 @@
  *
  * THE FOUR RULES
  *
- *   1. OPENING LOCKS ONCE SAVED (shop staff). Opening is a carried balance —
- *      the previous day's or the previous month's closing. Re-keying it after
- *      the fact silently breaks the chain: the day before still closes at the
- *      old figure, so stock appears from nowhere or vanishes, and every
- *      statement from that point on is wrong with nothing on screen to show
- *      it. An administrator may still correct one.
+ *   1. SHOP STAFF TYPE AN OPENING ONCE, EVER. Opening is a carried balance —
+ *      the previous day's or the previous month's closing. Re-keying it
+ *      silently breaks the chain: the day before still closes at the old
+ *      figure, so stock appears from nowhere or vanishes, and every statement
+ *      from that point on is wrong with nothing on screen to show it.
+ *
+ *      A shop that has never started its stock chain (engine/stockInit.ts)
+ *      may type its Initial Opening Balance. Once it has started — recorded
+ *      persistently, never reset by Active/Inactive — every Opening a shop
+ *      user saves must be the carried balance, or the figure already stored
+ *      where nothing carries into it, and no shop user may key a day earlier
+ *      than the shop's first day (that would re-carry the Initial Opening
+ *      away). A row marked `openFixed` keeps its stored Opening; only an
+ *      administrator sets or removes that mark, except the shop's own
+ *      one-time Initial Opening.
+ *
+ *      An ADMINISTRATOR may correct any Opening. A correction is saved as a
+ *      fixed Opening, and the chain carries on from it (stockChain.ts).
+ *
+ *   1b. A SAVED REMITTANCE IS NOT RE-KEYED BY SHOP STAFF. They add deposits
+ *      and remove them as before; changing the amount, date, account or reason
+ *      of one already saved is an administrator's correction.
  *
  *   2. RECEIPT IS NOT KEYABLE FROM THE ENTRY SCREENS (shop staff). The
  *      Receipt Register is the record of what the godown actually delivered,
@@ -42,12 +58,20 @@
  */
 import { receiptQtyForDay, receiptQtyForMonth, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { isProjectedSheet } from '@/lib/engine/monthProjection';
-import { buildChainIndex, openingFor, type ChainIndex } from '@/lib/engine/stockChain';
+import { buildChainIndex, isOpenFixed, openingFor, type ChainIndex } from '@/lib/engine/stockChain';
+import { initialDate, isInitialized, readStockInit, STOCK_INIT_KEY, type StockInit } from '@/lib/engine/stockInit';
+import { txnsOf } from '@/lib/engine/remittance';
 
 /** Kilos carry three decimals; anything under half a gram is float noise. */
 export const TOLERANCE = 0.005;
 
-export type StockViolationKind = 'opening-locked' | 'receipt-not-keyable' | 'total-mismatch' | 'closing-mismatch';
+export type StockViolationKind =
+  | 'opening-locked'
+  | 'before-initial-date'
+  | 'remittance-locked'
+  | 'receipt-not-keyable'
+  | 'total-mismatch'
+  | 'closing-mismatch';
 
 export type StockViolation = {
   store: string;
@@ -86,16 +110,14 @@ export function expectedClose(row: Row): number {
 }
 
 /**
- * Is Opening locked for this viewer? True once a figure has been saved.
+ * Is Opening closed to this viewer's typing? The screens' half of rule 1.
  *
- * A saved sheet writes a row for every commodity, so a stored zero is "not
- * keyed yet", not "keyed as nothing" — locking on zero would strand a shop
- * that saved before it knew its opening. The lock closes on the first real
- * figure, which is what "once the user enters Opening and saves" means.
+ * An administrator: never. Shop staff: once the shop has started its stock
+ * chain (`started`), always — the one-time Initial Opening has been used.
+ * Before that, the Initial Opening is theirs to type.
  */
-export function openingLocked(isAdmin: boolean, storedRow: unknown): boolean {
-  if (isAdmin) return false;
-  return isObj(storedRow) && num(storedRow.open) !== 0;
+export function openingLocked(isAdmin: boolean, started: boolean): boolean {
+  return !isAdmin && started;
 }
 
 /** Receipt is never keyable on Daily or Monthly Entry by shop staff. */
@@ -129,9 +151,13 @@ type Ctx = {
   /**
    * A day sheet's carried Opening for one commodity, from the data as it will
    * stand after this write — or null where nothing earlier carries into it.
-   * Null for month stores.
+   * For a manual month, the balance at its 1st. Null for the roll-up's output.
    */
   carried: ((sec: 'a' | 'b', id: string) => number | null) | null;
+  /** The shop has started its stock chain — its one-time Initial Opening is used. */
+  started: boolean;
+  /** Rule 1 applies: a keyed day sheet or a manual month, not the roll-up's output or a projection. */
+  openRule: boolean;
 };
 
 /** Judge one commodity row of one record. */
@@ -143,20 +169,45 @@ function checkRow(ctx: Ctx, sec: 'a' | 'b', id: string, before: unknown, after: 
   const note = (kind: StockViolationKind, detail: string) =>
     out.push({ store: ctx.store, key: ctx.key, crsId: ctx.crsId, section: sec, commodity: id, kind, detail });
 
-  if (ctx.lockFields && !ctx.isAdmin) {
-    // A re-carried Opening is not a re-keyed one. When an earlier day changes,
-    // every later sheet's Opening is rebuilt from the chain in date order
-    // (engine/rechain.ts), and that may move a saved figure — to the carried
-    // balance, and to nothing else. The start of the chain has no carry, so its
-    // saved Opening stays locked.
+  if (ctx.openRule && !ctx.isAdmin) {
+    // Rule 1. `carried` is the balance the chain carries into this row once the
+    // write lands — the previous applicable Closing — or null at the start of
+    // the chain. When an earlier day changes, every later Opening is rebuilt to
+    // it (engine/rechain.ts), so moving a saved Opening TO it is not a re-key.
     const carry = ctx.carried ? ctx.carried(sec, id) : null;
-    const recarried = carry !== null && near(carry, num(after.open));
-    if (openingLocked(false, before) && !near(num((before as Row).open), num(after.open)) && !recarried) {
+    const wasFixed = isOpenFixed(before);
+    const nowFixed = isOpenFixed(after);
+    const wasOpen = isObj(before) ? num(before.open) : null;
+    const nowOpen = num(after.open);
+
+    if (wasFixed !== nowFixed) {
+      // The one exception: a shop that has not started marks its own Initial
+      // Opening fixed, at the start of its chain.
+      const initialAnchor = !ctx.started && nowFixed && carry === null;
+      if (!initialAnchor) {
+        note('opening-locked', `Opening ${nowFixed ? 'is marked as a correction' : 'correction is removed'} by this save. Only an administrator can correct an Opening.`);
+      }
+    }
+
+    // What a shop user may save as this Opening; null = anything (the Initial Opening).
+    let allowed: number | null;
+    if (wasFixed) allowed = wasOpen;
+    else if (carry !== null && !nowFixed) allowed = carry;
+    else if (!ctx.started) allowed = null;
+    else allowed = wasOpen ?? 0;
+
+    // Leaving an Opening exactly as stored is never a re-key, even where the
+    // stored figure predates the chain being rebuilt.
+    const unchanged = wasOpen !== null && near(wasOpen, nowOpen);
+    if (allowed !== null && !near(nowOpen, allowed) && !unchanged) {
       note(
         'opening-locked',
-        `Opening is ${fmt(num((before as Row).open))} and was already saved; this save sets it to ${fmt(num(after.open))}. Only an administrator can change a saved Opening.`,
+        `Opening is set to ${fmt(nowOpen)} but must be ${fmt(allowed)}${carry !== null && !wasFixed ? " — the previous day's Closing carried forward" : ''}. The Opening Balance is entered only once, when the shop starts; after that only an administrator can correct it.`,
       );
     }
+  }
+
+  if (ctx.lockFields && !ctx.isAdmin) {
     if (ctx.register) {
       const wasReceipt = isObj(before) ? num(before.receipt) : 0;
       const nowReceipt = num(after.receipt);
@@ -180,6 +231,28 @@ function checkRow(ctx: Ctx, sec: 'a' | 'b', id: string, before: unknown, after: 
     const wantClose = expectedClose(after);
     if (!near(num(after.close), wantClose)) {
       note('closing-mismatch', `Closing is ${fmt(num(after.close))} but Total − Sales comes to ${fmt(wantClose)}.`);
+    }
+  }
+}
+
+/**
+ * Rule 1b. A deposit already saved on a day sheet keeps its amount, date,
+ * account and reason when a shop user saves. Adding and removing deposits are
+ * the existing workflow and pass; compared by id through the same reader the
+ * screens use, so sheets saved before deposits had ids compare too.
+ */
+function remittanceCheck(store: string, key: string, crsId: number, dateIso: string, prev: unknown, rec: unknown, out: StockViolation[]) {
+  if (!isObj(prev) || !isObj(rec)) return;
+  const now = new Map(txnsOf(rec, dateIso).map((t) => [t.id, t]));
+  for (const was of txnsOf(prev, dateIso)) {
+    const t = now.get(was.id);
+    if (!t) continue;
+    const moved = !near(was.amount, t.amount) || was.date !== t.date || was.account !== t.account || (was.reason ?? '') !== (t.reason ?? '');
+    if (moved) {
+      out.push({
+        store, key, crsId, section: 'a', commodity: 'Remittance', kind: 'remittance-locked',
+        detail: `A saved remittance of ₹${was.amount.toFixed(2)} dated ${was.date.split('-').reverse().join('-')} was changed. Only an administrator can correct a saved remittance.`,
+      });
     }
   }
 }
@@ -211,6 +284,24 @@ export function inspectStockWrite(
 ): StockViolation[] {
   const out: StockViolation[] = [];
   const receipts = (incoming.receiptStore ?? stored.receiptStore) as ReceiptRow[] | undefined;
+
+  // Has the shop started? The persistent record when it exists
+  // (engine/stockInit.ts; /api/state reads it alongside the stores). Before it
+  // exists at all, a shop with any stored sheet or manual month counts as
+  // started, and its earliest sheet as its first day — the safe reading.
+  const initRow = stored[STOCK_INIT_KEY];
+  const init: StockInit | null = initRow !== undefined ? readStockInit(initRow) : null;
+  const storedShopDates = (crsId: number) =>
+    Object.keys(isObj(stored.entryStore) ? stored.entryStore : {})
+      .map((k) => DAY_KEY.exec(k))
+      .filter((m): m is RegExpExecArray => !!m && Number(m[1]) === crsId)
+      .map((m) => m[2])
+      .sort();
+  const started = (crsId: number): boolean =>
+    init
+      ? isInitialized(init, crsId)
+      : storedShopDates(crsId).length > 0 || Object.keys(isObj(stored.meManualStore) ? stored.meManualStore : {}).some((k) => Number(k.split('_')[0]) === crsId);
+  const firstDay = (crsId: number): string | null => (init ? initialDate(init, crsId) : storedShopDates(crsId)[0] ?? null);
 
   // The stock chain as it will stand once this write lands, one index per shop,
   // built the first time a shop's carried Opening is asked for.
@@ -244,6 +335,18 @@ export function inspectStockWrite(
         // not something keyed here, and its Closing carries the month's C.S,
         // which a day sheet has no column for — so only its Total is checked.
         const projected = isProjectedSheet(rec);
+        if (!isAdmin && !projected) {
+          // A shop user keying a day before the shop's first day would carry
+          // the chain into that day, and re-carry the Initial Opening away.
+          const first = started(crsId) ? firstDay(crsId) : null;
+          if (prev === undefined && first && m[2] < first) {
+            out.push({
+              store, key, crsId, section: 'a', commodity: '—', kind: 'before-initial-date',
+              detail: `CRS ${crsId} started its stock on ${first.split('-').reverse().join('-')}. Days before that can only be entered by an administrator.`,
+            });
+          }
+          remittanceCheck(store, key, crsId, m[2], prev, rec, out);
+        }
         checkRecord(
           {
             store,
@@ -254,6 +357,8 @@ export function inspectStockWrite(
             totalOnly: projected,
             lockFields: !projected && !isProjectedSheet(prev),
             carried: projected ? null : (sec, id) => openingFor(chainFor(crsId), m[2], id, sec).value,
+            started: started(crsId),
+            openRule: !projected,
           },
           prev,
           rec,
@@ -279,7 +384,11 @@ export function inspectStockWrite(
           register: keyed ? registerMonth(receipts, crsId, Number(m[2]), Number(m[3])) : null,
           totalOnly: false,
           lockFields: keyed,
-          carried: null,
+          // A manual month opens with the chain's balance at its 1st — the
+          // previous month's Closing — wherever one exists.
+          carried: keyed ? (sec, id) => openingFor(chainFor(crsId), `${m[3]}-${String(m[2]).padStart(2, '0')}-01`, id, sec).value : null,
+          started: started(crsId),
+          openRule: keyed,
         },
         prev,
         rec,

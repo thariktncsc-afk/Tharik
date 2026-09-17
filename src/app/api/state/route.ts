@@ -20,6 +20,8 @@ import { logEvent } from '@/lib/clearServer';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 import { diffStateWrite, readHints, refusedDraft } from '@/lib/activityLog/core';
 import { recordActivity } from '@/lib/activityLog/server';
+import { STOCK_INIT_KEY, readStockInit, shopsStartedBy } from '@/lib/engine/stockInit';
+import { markStarted } from '@/lib/stockInitServer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -155,7 +157,13 @@ export async function POST(req: Request) {
     const needsRegister = 'entryStore' in stores || 'meManualStore' in stores;
     // A day sheet's Opening may move to its carried balance (engine/rechain.ts),
     // and the carry counts inspection on sheet-less days — so that is read too.
-    const alsoRead = [...(needsRegister ? ['receiptStore'] : []), ...('entryStore' in stores ? ['inspectionStore'] : [])];
+    // Whether a shop has used its one-time Initial Opening decides what its
+    // staff may save as an Opening (engine/stockInit.ts) — never sent by a
+    // client, always read here.
+    const alsoRead = [
+      ...(needsRegister ? ['receiptStore', STOCK_INIT_KEY] : []),
+      ...('entryStore' in stores ? ['inspectionStore'] : []),
+    ];
     const read = [...new Set([...touched, ...alsoRead])];
 
     const { data: current } = await db
@@ -308,6 +316,14 @@ export async function POST(req: Request) {
   const landed = Object.fromEntries(Object.entries(stores).filter(([k]) => k in savedVersions));
   if (Object.keys(landed).length) {
     await recordActivity(session, diffStateWrite(stored, landed, readHints((body as { activity?: unknown }).activity)));
+  }
+
+  // A day sheet landed for a shop that had never saved stock: its Initial
+  // Opening is now used, permanently (engine/stockInit.ts). Recorded after the
+  // write, so a refused or conflicting save never uses it up.
+  if ('entryStore' in landed) {
+    const started = shopsStartedBy(readStockInit(stored[STOCK_INIT_KEY]), stored.entryStore, landed.entryStore);
+    if (started.length) await markStarted(started, session.username, 'save');
   }
 
   if (conflicts.length) {

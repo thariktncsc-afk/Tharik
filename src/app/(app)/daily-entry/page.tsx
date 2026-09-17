@@ -25,18 +25,19 @@ import { crsData, useStore } from '@/lib/dataStore';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
-import { isWeeklyHoliday, weeklyHolidayName } from '@/lib/engine/holidays';
+import { holidayOn, type GovtHolidayMap } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import { receiptQtyForDay, receiptRefsForDay, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { dropMonthlyReceipt } from '@/lib/engine/monthlyReceipt';
-import { buildChainIndex, openingFor, unsheetedMoves } from '@/lib/engine/stockChain';
+import { buildChainIndex, isOpenFixed, openingFor, unsheetedMoves } from '@/lib/engine/stockChain';
+import { initialDate, isInitialized, readStockInit } from '@/lib/engine/stockInit';
 import PaymentDialog from '@/components/PaymentDialog';
 import { createOrder, fetchAccess, type Order, type Upi } from '@/lib/payments/client';
 import InspectionModal from './InspectionModal';
 import { dropProjectedAdjustments, dropProjectedSheet, isProjectedSheet } from '@/lib/engine/monthProjection';
 import ClearRequestDialog from '@/components/ClearRequestDialog';
 import AdditionalRemitDialog from '@/components/AdditionalRemitDialog';
-import { newRemitId, sheetTotals, txnsOf, type RemitAcct, type RemitReason, type RemitTxn } from '@/lib/engine/remittance';
+import { REMIT_REASONS, newRemitId, sheetTotals, txnsOf, type RemitAcct, type RemitReason, type RemitTxn } from '@/lib/engine/remittance';
 import { hasData } from '@/lib/clearGuard';
 import { openingLocked, receiptLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
@@ -71,6 +72,8 @@ type InspDay = { a?: Record<string, { excess?: number; shortage?: number; transf
 type SalesClose = { date: string; gunny: number; poly: number; cbox: number; updatedAt: string };
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
+/** Equal to the gram — the stock guard's tolerance. */
+const near3 = (a: number, b: number) => Math.abs(a - b) <= 0.005;
 const todayIso = () => new Date().toISOString().split('T')[0];
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -87,7 +90,11 @@ const SC_PACK: Record<'GUNNY' | 'POLY' | 'CBOX', Record<string, number>> = {
   CBOX: { PALM: 10, OOTY: 50, TAN: 50, PB_PALM: 10 },
 };
 
-type RowInput = { open?: string; receipt?: string; sales?: string };
+/**
+ * `fixed` — the Opening is kept as typed instead of carried: an administrator's
+ * correction, or the shop's one-time Initial Opening (engine/stockInit.ts).
+ */
+type RowInput = { open?: string; receipt?: string; sales?: string; fixed?: boolean };
 
 /** A carry crossing more than this many blank days is flagged for a check. */
 const GAP_WARN_DAYS = 7;
@@ -126,6 +133,7 @@ function formOf(sheet: SavedSheet | undefined, date: string): FormFill {
         open: r.open ? Number(r.open).toFixed(3) : '',
         receipt: r.receipt ? Number(r.receipt).toFixed(3) : '',
         sales: r.sales ? Number(r.sales).toFixed(3) : '',
+        ...(isOpenFixed(r) ? { fixed: true } : {}),
       };
     }
   }
@@ -149,6 +157,7 @@ export default function DailyEntryPage() {
   const meManualStore = useStore<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {};
   const salesCloseStore = useStore<Record<string, SalesClose>>('salesCloseStore') ?? {};
   const receiptStore = useStore<ReceiptRow[]>('receiptStore') ?? [];
+  const holidays = useStore<GovtHolidayMap>('__holidays');
 
   const isCrsUser = !!user?.crsId && user.role !== 'ADMIN';
   const shopIds = isCrsUser ? [user!.crsId as number] : shops.map((_, i) => i + 1);
@@ -190,6 +199,26 @@ export default function DailyEntryPage() {
   // box looks editable and the save comes back 403.
   const isAdmin = user?.role === 'ADMIN';
   const sheetProjected = isProjectedSheet(saved);
+
+  /**
+   * Has this shop used its one-time Initial Opening Balance? The server's
+   * record (engine/stockInit.ts) — persistent, and never reset by the shop
+   * being made inactive and active again. Before that record exists at all, a
+   * shop with any saved sheet counts as started, as the server reads it.
+   * `justStarted` covers the few seconds between this screen's own first save
+   * and the record arriving by live sync, so the boxes lock at once.
+   */
+  const stockInitRaw = useStore<unknown>('__stockInit');
+  const [justStarted, setJustStarted] = useState<number[]>([]);
+  const shopStarted =
+    !!crsId &&
+    (justStarted.includes(crsId) ||
+      (stockInitRaw !== undefined
+        ? isInitialized(readStockInit(stockInitRaw), crsId)
+        : Object.keys(entryStore).some((k) => Number(k.split('_')[0]) === crsId)));
+  const firstDay = crsId && stockInitRaw !== undefined ? initialDate(readStockInit(stockInitRaw), crsId) : null;
+  /** A shop user may not key a day before the shop's first day — it would re-carry the Initial Opening away. */
+  const beforeFirstDay = !isAdmin && shopStarted && !!firstDay && !!date && date < firstDay && !saved;
 
   /**
    * Re-open the sheet whenever the shop or date changes — and once more when
@@ -294,9 +323,18 @@ export default function DailyEntryPage() {
 
   type Derived = {
     open: number;
+    /** The carried balance, shown read-only (shop staff). */
     openAuto: boolean;
-    /** Saved once already — the shop may no longer re-key it. */
+    /** Closed to this shop user: the Initial Opening is used, or an administrator fixed it. */
     openHeld: boolean;
+    /** Shop staff typing the one-time Initial Opening Balance. */
+    openInitial: boolean;
+    /** An administrator may type it — a correction. */
+    openAdmin: boolean;
+    /** Saved as a fixed Opening that later days carry from. */
+    openFixed: boolean;
+    /** What the chain would carry in, or null at the start of the chain. */
+    carry: number | null;
     receipt: number;
     receiptAuto: boolean;
     /** Read-only because Receipt belongs to the Receipt Register. */
@@ -321,12 +359,41 @@ export default function DailyEntryPage() {
     // break the chain the day before closes into, and every save rebuilds that
     // chain in date order anyway (engine/rechain.ts). Only the start of the
     // chain, a day with nothing earlier, takes a typed Opening.
-    const openAuto = auto !== null;
-    // Once that starting figure is saved, only an administrator re-keys it. A
-    // projected sheet is exempt: converting the month into a real day sheet is
-    // meant to replace it. src/lib/stockGuard.ts is the same rule, server-side.
-    const openHeld = !openAuto && !sheetProjected && openingLocked(isAdmin, savedRow);
-    const open = openAuto ? auto! : openHeld ? Number(savedOpen) || 0 : Number(r.open) || 0;
+    //
+    // Shop staff type an Opening once, ever: the Initial Opening Balance, at the
+    // start of the chain, before the shop has started (engine/stockInit.ts).
+    // After that every Opening is carried, or held at what is stored.
+    //
+    // An administrator may type any Opening. Typed where a balance carries in,
+    // it is a correction: saved fixed, and the days after carry from it.
+    // Emptying the box goes back to the carry. src/lib/stockGuard.ts is the
+    // same rule, server-side.
+    let open: number;
+    let openAuto = false;
+    let openHeld = false;
+    let openInitial = false;
+    let openFixed = false;
+    const openAdmin = isAdmin;
+    if (isAdmin) {
+      open = auto === null || r.fixed ? Number(r.open) || 0 : auto;
+      // Typed back to exactly the carry is no correction at all. A fixed start
+      // of the chain stays marked, so a day keyed before it cannot carry it away.
+      openFixed = !!r.fixed && (auto === null || !near3(open, auto));
+    } else if (isOpenFixed(savedRow)) {
+      openHeld = true;
+      openFixed = true;
+      open = Number(savedOpen) || 0;
+    } else if (auto !== null) {
+      openAuto = true;
+      open = auto;
+    } else if (!openingLocked(false, shopStarted)) {
+      openInitial = true;
+      openFixed = true;
+      open = Number(r.open) || 0;
+    } else {
+      openHeld = true;
+      open = Number(savedOpen) || 0;
+    }
     // A register quantity is never stored as 0, so its presence alone decides.
     const godown = dayReceipts[c.id] || 0;
     const receiptAuto = godown > 0;
@@ -340,7 +407,40 @@ export default function DailyEntryPage() {
     const total = open + receipt + adj.excess - adj.shortage - adj.transfer;
     const close = total - sales;
     const amount = c.free ? 0 : sales * c.rate;
-    return { open, openAuto, openHeld, receipt, receiptAuto, receiptHeld, sales, total, close, amount, adj };
+    return { open, openAuto, openHeld, openInitial, openAdmin, openFixed, carry: auto, receipt, receiptAuto, receiptHeld, sales, total, close, amount, adj };
+  };
+
+  /**
+   * An administrator's correction to Opening, Total or Closing. Total and
+   * Closing are arithmetic, so a corrected Total or Closing is saved as the
+   * Opening that produces it — Sales, the money the shop banked, stays as
+   * keyed:
+   *
+   *     Opening = Total − Receipt ∓ adjustments
+   *     Opening = Closing + Sales − Receipt ∓ adjustments
+   *
+   * Empty goes back to the carried balance.
+   */
+  const adminSet = (sec: 'a' | 'b', c: Commodity, field: 'open' | 'total' | 'close', raw: string) => {
+    const k = `${sec}:${c.id}`;
+    if (raw.trim() === '') {
+      setRows((prev) => ({ ...prev, [k]: { ...prev[k], open: '', fixed: false } }));
+      return;
+    }
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < 0) return;
+    const d2 = derive(sec, c);
+    const net = d2.receipt + d2.adj.excess - d2.adj.shortage - d2.adj.transfer;
+    const open = field === 'open' ? v : field === 'total' ? v - net : v + d2.sales - net;
+    if (open < -0.0005) {
+      void appAlert({
+        title: 'That would need a negative Opening',
+        tone: 'warning',
+        message: `${c.en}: a ${field === 'total' ? 'Total' : 'Closing'} of ${v.toFixed(3)} would need an Opening of ${open.toFixed(3)}. Correct the Sales or the Receipt instead.`,
+      });
+      return;
+    }
+    setRows((prev) => ({ ...prev, [k]: { ...prev[k], open: String(Math.round(open * 1000) / 1000), fixed: true } }));
   };
 
   const totals = useMemo(() => {
@@ -362,7 +462,7 @@ export default function DailyEntryPage() {
     }
     return sum;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, insp, entryStore, crsVal, date, lists, dayReceipts]);
+  }, [rows, insp, entryStore, crsVal, date, lists, dayReceipts, shopStarted, isAdmin]);
   const grand = totals.a.amt + totals.b.amt;
   const remitNC = remits.reduce((t, r) => (r.account === 'ce' ? t : t + r.amount), 0);
   const remitCE = remits.reduce((t, r) => (r.account === 'ce' ? t + r.amount : t), 0);
@@ -435,6 +535,31 @@ export default function DailyEntryPage() {
   };
 
   /** Second-or-later deposit, once its reason has been chosen. */
+  /**
+   * An administrator's correction to a deposit already on the list: the same
+   * row, by id, with its amount, date or reason changed — never a second row.
+   * It is saved with the day, and Monthly Remittance and the statements read
+   * the day sheets, so they follow on save. /api/state refuses the same change
+   * from shop staff (stockGuard.ts, rule 1b).
+   */
+  const [remitEdit, setRemitEdit] = useState<{ id: string; amount: string; date: string; reason: string } | null>(null);
+  const applyRemitEdit = () => {
+    if (!remitEdit) return;
+    const amount = parseFloat(remitEdit.amount);
+    if (!(amount > 0) || !remitEdit.date) {
+      void appAlert('Enter an amount above zero and a remittance date.');
+      return;
+    }
+    setRemits((list) =>
+      list.map((t) =>
+        t.id !== remitEdit.id
+          ? t
+          : { ...t, amount, date: remitEdit.date, ...(remitEdit.reason ? { reason: remitEdit.reason as RemitReason } : {}) },
+      ),
+    );
+    setRemitEdit(null);
+  };
+
   const commitAdditional = (reason: RemitReason) => {
     if (!pendingRemit) return;
     setRemits((r) => [
@@ -460,6 +585,31 @@ export default function DailyEntryPage() {
     }
     if (!list) return false;
     const rice = riceChk?.rice ?? null;
+
+    if (beforeFirstDay) {
+      void appAlert({
+        title: 'Before this shop’s first day',
+        tone: 'warning',
+        message: `CRS ${crsVal} started its stock on ${fmtDay(firstDay!)}. Days before that can only be entered by an administrator.`,
+      });
+      return false;
+    }
+
+    // The shop's one-time Initial Opening Balance: said plainly before it is used.
+    const initialSave = !isAdmin && !shopStarted;
+    if (initialSave) {
+      const ok = await appConfirm({
+        title: 'Confirm Initial Opening Balance',
+        tone: 'warning',
+        icon: '🔐',
+        message:
+          'Once confirmed, you cannot manually edit the Opening Balance again. Future OB values will be automatically calculated from the previous Closing Balance.',
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Confirm & Save',
+        defaultCancel: true,
+      });
+      if (!ok) return false;
+    }
 
     const wasProjected = isProjectedSheet(saved);
     if (saved) {
@@ -494,6 +644,8 @@ export default function DailyEntryPage() {
         snap[sec]![c.id] = {
           open: d.open, receipt: d.receipt, total: d.total, sales: d.sales, close: d.close, amount: d.amount,
           ...d.adj,
+          // Kept, not carried: an administrator's correction or the Initial Opening.
+          ...(d.openFixed ? { openFixed: true } : {}),
         } as never;
       }
     }
@@ -579,6 +731,8 @@ export default function DailyEntryPage() {
     );
     setTimeout(() => setSavedMsg(''), 5000);
     void crsData.save();
+    // The Initial Opening is used: lock it on this screen now, not a sync beat later.
+    if (initialSave) setJustStarted((s) => [...s, Number(crsVal)]);
     return true;
   };
 
@@ -720,11 +874,11 @@ export default function DailyEntryPage() {
   };
 
   const scRec = crsVal && date ? salesCloseStore[`${crsVal}_${Number(date.split('-')[1])}_${Number(date.split('-')[0])}`] : undefined;
-  const holName = date ? weeklyHolidayName(new Date(date + 'T00:00:00')) : null;
+  const holName = date ? (holidayOn(new Date(date + 'T00:00:00'), holidays)?.name ?? null) : null;
   const d = date ? new Date(date + 'T00:00:00') : null;
   const dateLabel = d
     ? `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()]}, ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}` +
-      (holName ? ` · ${holName}` : isWeeklyHoliday(d) ? ' · Holiday' : '')
+      (holName ? ` · ${holName}` : '')
     : '';
 
   const inspParts: string[] = [];
@@ -773,7 +927,67 @@ export default function DailyEntryPage() {
     );
   };
 
+  /**
+   * An administrator's Opening, Total or Closing box. Typed text is kept while
+   * the box has focus and applied on leaving it (or Enter) — Total and Closing
+   * are worked back into an Opening, and re-deriving on every keystroke would
+   * rewrite the figure under the cursor. Dashed violet marks what only an
+   * administrator can change; a filled violet box is a saved correction.
+   */
+  const [adminDraft, setAdminDraft] = useState<{ key: string; text: string } | null>(null);
+  const adminInput = (sec: 'a' | 'b', c: Commodity, field: 'open' | 'total' | 'close', d2: Derived, extra?: React.CSSProperties) => {
+    const k = `${sec}:${c.id}:${field}`;
+    const shown = field === 'open' ? d2.open : field === 'total' ? d2.total : d2.close;
+    const editing = adminDraft?.key === k;
+    const commit = () => {
+      if (!editing) return;
+      const text = adminDraft!.text;
+      setAdminDraft(null);
+      if (text.trim() === '' ? field === 'open' : Math.abs(Number(text) - shown) > 0.0005) adminSet(sec, c, field, text);
+    };
+    const corrected = d2.openFixed && d2.carry !== null;
+    return (
+      <input
+        type="number"
+        min={0}
+        step={0.001}
+        placeholder={field === 'open' && d2.carry !== null ? d2.carry.toFixed(3) : '0.000'}
+        data-col={field}
+        value={editing ? adminDraft!.text : shown ? shown.toFixed(3) : ''}
+        onFocus={() => setAdminDraft({ key: k, text: shown ? shown.toFixed(3) : '' })}
+        onChange={(e) => setAdminDraft({ key: k, text: e.target.value })}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          gridKey(e);
+        }}
+        title={
+          field === 'open'
+            ? corrected
+              ? `Opening corrected by an administrator (carried balance would be ${d2.carry!.toFixed(3)}). Later days carry from this. Clear the box to go back to the carried balance.`
+              : 'Administrator: type to correct the Opening. Later days recalculate from it.'
+            : `Administrator: type a ${field === 'total' ? 'Total' : 'Closing'} to correct it — the Opening is worked back so the formula still holds; Sales stay as keyed.`
+        }
+        style={{
+          width: '100%',
+          borderWidth: 1,
+          borderStyle: corrected && field === 'open' ? 'solid' : 'dashed',
+          borderColor: '#A78BFA',
+          borderRadius: 6,
+          padding: '5px 7px',
+          fontSize: 12,
+          textAlign: 'right',
+          background: corrected && field === 'open' ? '#EDE9FE' : field === 'total' ? '#EFF6FF' : '#FAF5FF',
+          color: corrected && field === 'open' ? '#5B21B6' : field === 'total' ? '#0284C7' : 'inherit',
+          fontWeight: 700,
+          ...extra,
+        }}
+      />
+    );
+  };
+
   const numInput = (sec: 'a' | 'b', c: Commodity, field: 'open' | 'receipt' | 'sales', d2: Derived, extra?: React.CSSProperties) => {
+    if (field === 'open' && d2.openAdmin && !sheetProjected) return adminInput(sec, c, 'open', d2, extra);
     const r = rows[`${sec}:${c.id}`] ?? {};
     const isCarry = field === 'open' && d2.openAuto;
     // Receipts filled from the Receipt Register read blue rather than amber:
@@ -788,13 +1002,16 @@ export default function DailyEntryPage() {
     const shown = field === 'open' ? d2.open : d2.receipt;
     const val = ro ? (shown ? shown.toFixed(3) : '') : '';
     const refs = isGodown && crsId ? receiptRefsForDay(receiptStore, crsId, date, c.id) : [];
+    const isInitial = field === 'open' && d2.openInitial;
     const tone = isGodown
       ? { background: '#DBEAFE', color: '#1E40AF', fontWeight: 700 }
       : isCarry
         ? { background: '#FEF3C7', color: '#92400E', fontWeight: 700 }
         : isHeld
           ? { background: '#F1F5F9', color: '#475569', fontWeight: 700 }
-          : {};
+          : isInitial
+            ? { background: '#F0FDF4', borderColor: '#4ADE80', color: '#166534', fontWeight: 700 }
+            : {};
     return (
       <input
         type="number"
@@ -813,9 +1030,13 @@ export default function DailyEntryPage() {
               ? "Auto-carried from the previous day's closing"
               : isHeld
                 ? field === 'open'
-                  ? 'Opening was saved for this day and is locked. An administrator can correct it.'
+                  ? d2.openFixed
+                    ? 'Opening set by an administrator or as the Initial Opening Balance — locked. An administrator can correct it.'
+                    : 'The Opening Balance is entered only once, when the shop starts. It is locked — an administrator can correct it.'
                   : 'Receipts are entered on the Receipt page — this column fills in from the register.'
-                : undefined
+                : isInitial
+                  ? 'Initial Opening Balance — one-time entry. After saving, Openings are carried from the previous Closing.'
+                  : undefined
         }
         style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', ...tone, ...extra }}
       />
@@ -887,10 +1108,14 @@ export default function DailyEntryPage() {
                     {adjCell(d2.adj.excess, 'excess', bdr)}
                     {adjCell(d2.adj.shortage, 'shortage', bdr)}
                     {adjCell(d2.adj.transfer, 'transfer', bdr)}
-                    <td style={{ padding: '4px 5px', borderBottom: bdr, background: '#EFF6FF' }}>{roCell(d2.total, { background: '#EFF6FF', color: '#0284C7', fontWeight: 700 })}</td>
+                    <td style={{ padding: '4px 5px', borderBottom: bdr, background: '#EFF6FF' }}>
+                      {isAdmin && !sheetProjected ? adminInput(sec, c, 'total', d2) : roCell(d2.total, { background: '#EFF6FF', color: '#0284C7', fontWeight: 700 })}
+                    </td>
                     <td style={{ padding: '4px 5px', borderBottom: bdr }}>{numInput(sec, c, 'sales', d2, { fontWeight: 700 })}</td>
                     <td style={{ padding: '4px 5px', borderBottom: bdr }}>
-                      {roCell(d2.close, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5', fontWeight: 800 } : undefined)}
+                      {isAdmin && !sheetProjected
+                        ? adminInput(sec, c, 'close', d2, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5' } : undefined)
+                        : roCell(d2.close, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5', fontWeight: 800 } : undefined)}
                     </td>
                     <td style={{ padding: '4px 5px', borderBottom: bdr }}>
                       {c.free ? (
@@ -1034,7 +1259,38 @@ export default function DailyEntryPage() {
             </div>
           ) : null}
 
-          {carryFrom === null ? (
+          {isAdmin && !sheetProjected ? (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#FAF5FF', border: '1px dashed #A78BFA', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#5B21B6', fontSize: 12 }}>
+              <span style={{ fontSize: 16, lineHeight: 1.2 }}>🛡️</span>
+              <div>
+                <strong>Administrator correction</strong> — boxes with a dashed violet border are editable only by an administrator. A corrected
+                Opening, Total or Closing is saved as the Opening that gives it (Sales stay as keyed), and every later day recalculates from it on save.
+                Remittance rows can be corrected with ✎.
+              </div>
+            </div>
+          ) : null}
+
+          {beforeFirstDay ? (
+            <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#B91C1C', fontSize: 12 }}>
+              <strong>Before this shop’s first day.</strong> CRS {crsVal} started its stock on {fmtDay(firstDay!)} with its Initial Opening Balance. Days before
+              that can only be entered by an administrator.
+            </div>
+          ) : carryFrom === null && !isAdmin && !sheetProjected && !shopStarted ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: '#F0FDF4', border: '2px solid #4ADE80', borderRadius: 10, padding: '11px 16px', marginBottom: 14, color: '#166534', fontSize: 12 }}>
+              <span style={{ fontSize: 18, lineHeight: 1.2 }}>🔐</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 13 }}>Initial Opening Balance — One-time entry</div>
+                <div style={{ marginTop: 4, color: '#B45309', fontWeight: 600 }}>
+                  ⚠ Opening Balance can be entered only once. After saving, future Opening Balances will be automatically carried forward from the previous Closing Balance.
+                </div>
+              </div>
+            </div>
+          ) : carryFrom === null && !isAdmin && !sheetProjected ? (
+            <div style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#475569', fontSize: 12 }}>
+              🔒 <strong>Opening Balance locked.</strong> This shop’s Initial Opening Balance was already entered
+              {firstDay ? <> ({fmtDay(firstDay)})</> : null}; Openings now carry from the previous Closing. An administrator can correct it.
+            </div>
+          ) : carryFrom === null ? (
             <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#15803D', fontSize: 12 }}>
               No earlier sheet for this shop — enter the opening stock by hand.
             </div>
@@ -1290,7 +1546,52 @@ export default function DailyEntryPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {remits.map((r, i) => (
+                          {remits.map((r, i) =>
+                            remitEdit?.id === r.id ? (
+                              <tr key={i} style={{ background: '#FAF5FF' }}>
+                                <td style={{ padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'center', borderBottom: '1px solid #F1F5F9' }}>{i + 1}</td>
+                                <td style={{ padding: '4px 6px', textAlign: 'center', borderBottom: '1px solid #F1F5F9' }}>
+                                  {i > 0 || r.reason ? (
+                                    <select
+                                      value={remitEdit.reason}
+                                      onChange={(e) => setRemitEdit({ ...remitEdit, reason: e.target.value })}
+                                      aria-label="Reason"
+                                      style={{ border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 6px', fontSize: 12, background: '#fff' }}
+                                    >
+                                      {REMIT_REASONS.map((x) => (
+                                        <option key={x} value={x}>{x}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span style={{ fontSize: 10, fontWeight: 800, color: ACCT[r.account].fg }}>{ACCT[r.account].label}</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }}>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={0.01}
+                                    aria-label="Amount"
+                                    value={remitEdit.amount}
+                                    onChange={(e) => setRemitEdit({ ...remitEdit, amount: e.target.value })}
+                                    style={{ width: '100%', minWidth: 90, border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 6px', fontSize: 12, textAlign: 'right', fontWeight: 700 }}
+                                  />
+                                </td>
+                                <td style={{ padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }}>
+                                  <input
+                                    type="date"
+                                    aria-label="Remittance date"
+                                    value={remitEdit.date}
+                                    onChange={(e) => setRemitEdit({ ...remitEdit, date: e.target.value })}
+                                    style={{ border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 6px', fontSize: 12 }}
+                                  />
+                                </td>
+                                <td style={{ padding: '4px 10px', textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>
+                                  <button type="button" onClick={applyRemitEdit} title="Apply this correction — then save the day" style={{ background: '#EDE9FE', color: '#5B21B6', border: '1px solid #A78BFA', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 800, cursor: 'pointer', marginRight: 4 }}>✓</button>
+                                  <button type="button" onClick={() => setRemitEdit(null)} title="Cancel" style={{ background: '#fff', color: '#475569', border: '1px solid #CBD5E1', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>↺</button>
+                                </td>
+                              </tr>
+                            ) : (
                             <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#F8FAFC' }}>
                               <td style={{ padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'center', borderBottom: '1px solid #F1F5F9' }}>{i + 1}</td>
                               <td style={{ padding: '6px 10px', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>
@@ -1306,11 +1607,22 @@ export default function DailyEntryPage() {
                               </td>
                               <td style={{ padding: '6px 10px', fontSize: 13, fontWeight: 800, color: ACCT[r.account].fg, textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{inr(r.amount)}</td>
                               <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, color: '#334155', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{r.date.split('-').reverse().join('/')}</td>
-                              <td style={{ padding: '4px 10px', textAlign: 'right', borderBottom: '1px solid #F1F5F9' }}>
+                              <td style={{ padding: '4px 10px', textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>
+                                {isAdmin ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRemitEdit({ id: r.id, amount: String(r.amount), date: r.date, reason: r.reason ?? (i > 0 ? REMIT_REASONS[0] : '') })}
+                                    title="Administrator: correct this remittance's amount, date or reason"
+                                    style={{ background: '#FAF5FF', color: '#5B21B6', border: '1px dashed #A78BFA', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 800, cursor: 'pointer', marginRight: 4 }}
+                                  >
+                                    ✎
+                                  </button>
+                                ) : null}
                                 <button type="button" onClick={() => setRemits((list) => list.filter((_, j) => j !== i))} title="Remove this remittance" style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>✕</button>
                               </td>
                             </tr>
-                          ))}
+                            ),
+                          )}
                         </tbody>
                         <tfoot>
                           <tr style={{ background: '#F0F9FF' }}>

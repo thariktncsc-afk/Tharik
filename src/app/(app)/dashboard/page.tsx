@@ -12,14 +12,14 @@
  * The monkey-patch layering collapses here: the same rules, expressed once.
  * Same layout, colours and copy as the legacy dashboard.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import HolidayCalendar from '@/components/HolidayCalendar';
 import { useAuth } from '@/lib/authClient';
 import { useLiveRevision, useStore, useUsers } from '@/lib/dataStore';
 import { dashboardEntryView, type DayEntry } from '@/lib/engine/commodities';
 import { useShops, useStockLists } from '@/lib/masters';
-import { govtHolidayName, isWeeklyHoliday, weeklyHolidayName, type GovtHolidayMap } from '@/lib/engine/holidays';
+import { holidayOn, isHoliday, workingDayCounts, type GovtHolidayMap } from '@/lib/engine/holidays';
 import { feedLine, roleLabel, type FeedItem } from '@/lib/activityLog/core';
 import { buildChainIndex, closingAsAt } from '@/lib/engine/stockChain';
 
@@ -95,9 +95,20 @@ export default function DashboardPage() {
     return () => { alive = false; };
   }, [user?.username, user?.role, activityRev]);
 
+  // The day this screen last ticked on. When the clock passes midnight the
+  // next render works everything out for the new date — the holiday status and
+  // the working-day counts are computed from `new Date()` on every render, never
+  // stored — and a selected date that was "today" moves on to the new today.
+  const dayRef = useRef(dateStr(new Date()));
   useEffect(() => {
     const tick = () => {
       const now = new Date();
+      const ds = dateStr(now);
+      if (ds !== dayRef.current) {
+        const was = dayRef.current;
+        dayRef.current = ds;
+        setSelected((sel) => (dateStr(sel) === was ? now : sel));
+      }
       let h = now.getHours();
       const ampm = h >= 12 ? 'PM' : 'AM';
       h = h % 12 || 12;
@@ -122,17 +133,11 @@ export default function DashboardPage() {
   const yr = now.getFullYear();
   const mo = now.getMonth() + 1;
   const toDay = now.getDate();
-  const kpi = useMemo(() => {
-    let withEntry = 0;
-    let withoutEntry = 0;
-    for (let d = 1; d <= toDay; d++) {
-      const dd = new Date(yr, mo - 1, d);
-      if (isWeeklyHoliday(dd)) continue;
-      if (entryStore[`${scopeId}_${yr}-${pad2(mo)}-${pad2(d)}`]) withEntry++;
-      else withoutEntry++;
-    }
-    return { withEntry, withoutEntry };
-  }, [entryStore, scopeId, yr, mo, toDay]);
+  // Holidays — government, 1st/2nd Friday, 3rd/4th Sunday — are not missed days.
+  const kpi = useMemo(
+    () => workingDayCounts((ds) => !!entryStore[`${scopeId}_${ds}`], yr, mo, toDay, holidays),
+    [entryStore, scopeId, yr, mo, toDay, holidays],
+  );
 
   const myReceipts = receiptStore.filter((r) => !crsId || r.crsId === crsId);
   const lastReceipt = myReceipts[myReceipts.length - 1];
@@ -148,11 +153,11 @@ export default function DashboardPage() {
         for (const rec of Object.values(entry.a ?? {})) sales += rec.sales || 0;
         for (const rec of Object.values(entry.b ?? {})) sales += rec.sales || 0;
       }
-      rows.push({ day: d, holiday: isWeeklyHoliday(dd), sales, hasEntry: !!entry });
+      rows.push({ day: d, holiday: isHoliday(dd, holidays), sales, hasEntry: !!entry });
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryStore, scopeId, yr, mo, toDay, crsId]);
+  }, [entryStore, scopeId, yr, mo, toDay, crsId, holidays]);
   const maxSales = Math.max(1, ...dayData.map((d) => d.sales));
   const barW = Math.max(12, Math.floor(555 / Math.max(dayData.length, 1)) - 3);
 
@@ -305,7 +310,8 @@ export default function DashboardPage() {
   const isMe = (holder: typeof staffBC) =>
     !!holder && !!user && (holder.id === user.id || (!!holder.phone && !!user.phone && String(holder.phone) === String(user.phone)));
 
-  const holToday = weeklyHolidayName(now) ?? govtHolidayName(now, holidays);
+  // Today's status, from today's date on every render (engine/holidays.ts).
+  const holToday = holidayOn(now, holidays);
 
   const chip = (text: string, bg: string, fg: string) => (
     <span key={text} style={{ background: bg, color: fg, fontSize: 10, fontWeight: 800, padding: '3px 9px', borderRadius: 20, letterSpacing: '.03em' }}>
@@ -412,9 +418,9 @@ export default function DashboardPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
               <div onClick={() => setCalOpen(true)} style={{ cursor: 'pointer', fontSize: 11 }}>
                 {holToday ? (
-                  <span style={{ color: '#FDBA74', fontSize: 11, fontWeight: 700 }}>🏕 Holiday</span>
+                  <span style={{ color: '#FDBA74', fontSize: 11, fontWeight: 700 }}>🏖 Holiday</span>
                 ) : (
-                  <span style={{ color: '#4ADE80', fontSize: 11, fontWeight: 700 }}>✓ Working Day</span>
+                  <span style={{ color: '#4ADE80', fontSize: 11, fontWeight: 700 }}>💼 Working Day</span>
                 )}
               </div>
             </div>
@@ -474,7 +480,7 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', marginBottom: 16, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '12px 18px', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 22 }}>🏪</span>
           <div>
-            <div style={{ fontWeight: 700, color: '#C2410C', fontSize: 13 }}>Today is a {holToday}</div>
+            <div style={{ fontWeight: 700, color: '#C2410C', fontSize: 13 }}>🏖 {holToday.headline}</div>
             <div style={{ fontSize: 11, color: '#9A3412' }}>1st &amp; 2nd Fridays holiday · 3rd &amp; 4th Sundays holiday</div>
           </div>
         </div>
@@ -652,7 +658,7 @@ export default function DashboardPage() {
             <div style={{ maxHeight: 200, overflowY: 'auto' }}>
               {!selEntry ? (
                 <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: 14 }}>
-                  {isWeeklyHoliday(selected) ? '🏕 Holiday — no entry' : `No entry for ${selLabel}`}
+                  {isHoliday(selected, holidays) ? '🏖 Holiday — no entry' : `No entry for ${selLabel}`}
                 </div>
               ) : breakdown.rows.length === 0 ? (
                 <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: 14 }}>No sales data for {selLabel}</div>

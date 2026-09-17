@@ -13,7 +13,8 @@
  * to a notification must not turn a completed approval into an error screen.
  */
 import type { Session } from '@/lib/session';
-import type { StoredRequest } from '@/lib/clearStore';
+import { CLEAR_STORE_KEY, type StoredRequest } from '@/lib/clearStore';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { clearRequestText, clearResultText, paymentRequestText, paymentResultText, type ClearFacts, type PaymentFacts } from './core';
 import { notifyApprovalDecided, notifyApprovalRequested, personFor, shopName, type Person } from './server';
 
@@ -135,6 +136,82 @@ export async function onClearRequested(r: StoredRequest, s: Session): Promise<vo
       link: clearLink(r.id),
     });
   });
+}
+
+// ── Requests that are waiting but were never announced ────────────────────
+
+let backfilled: Promise<number> | null = null;
+
+/**
+ * Every request still waiting for an administrator gets its notification, if
+ * it does not have one yet.
+ *
+ * A request raised while notifications were not installed (0005 not run), or
+ * whose notification failed to write, is otherwise invisible in the bell for
+ * good. This only READS the requests — payment_orders and the clear-request
+ * record are never written — and notifyApprovalRequested skips any request
+ * already notified, so running it again adds nothing.
+ *
+ * Waiting means: a payment `awaiting_approval` (paid, UTR typed — an unpaid
+ * `pending` order is nobody's to approve), a clear request `pending`.
+ *
+ * Once per server process, the first time an administrator's bell asks; a
+ * failure lets the next ask try again. Returns how many were created.
+ */
+export function backfillPendingApprovals(): Promise<number> {
+  if (!backfilled) {
+    backfilled = runBackfill().catch((e) => {
+      backfilled = null;
+      console.error('[notify] backfill:', e instanceof Error ? e.message : e);
+      return 0;
+    });
+  }
+  return backfilled;
+}
+
+async function runBackfill(): Promise<number> {
+  const db = supabaseAdmin();
+  let created = 0;
+
+  const { data: orders, error } = await db
+    .from('payment_orders')
+    .select('id, order_no, user_id, username, full_name, crs_id, kind, month, year, sheet_count, day_count, total_paise, utr, submitted_at, created_at')
+    .eq('status', 'awaiting_approval')
+    .order('id', { ascending: true });
+  if (error && !['PGRST205', '42P01'].includes(String(error.code))) throw error;
+  for (const r of orders ?? []) {
+    const o: OrderLike = {
+      id: Number(r.id),
+      orderNo: String(r.order_no ?? ''),
+      userId: Number(r.user_id),
+      username: String(r.username ?? ''),
+      fullName: String(r.full_name ?? ''),
+      crsId: Number(r.crs_id),
+      kind: r.kind === 'dss' ? 'dss' : 'statement',
+      month: Number(r.month),
+      year: Number(r.year),
+      sheetCount: Number(r.sheet_count) || 0,
+      dayCount: Number(r.day_count) || 0,
+      totalPaise: Number(r.total_paise) || 0,
+      utr: String(r.utr ?? ''),
+      submittedAt: (r.submitted_at as string) ?? null,
+      createdAt: String(r.created_at),
+    };
+    const requester = await personFor(o.userId, o.fullName || o.username, '', o.crsId);
+    const w = paymentRequestText(await paymentFacts(o, requester));
+    if (await notifyApprovalRequested({ type: 'PAYMENT_REQUEST', module: 'payments', requestId: o.id, crsId: o.crsId, requester, ...w, link: paymentLink(o.id) })) created++;
+  }
+
+  const { data: row } = await db.from('crs_state').select('data').eq('scope', 'global').eq('store_key', CLEAR_STORE_KEY).maybeSingle();
+  const requests = ((row?.data as { requests?: StoredRequest[] } | null)?.requests ?? []).filter((r) => r.status === 'pending');
+  for (const r of requests) {
+    const requester = await personFor(r.requestedById ?? null, r.requestedBy, r.requestedRole, r.crsId);
+    const w = clearRequestText(await clearFacts(r, requester));
+    if (await notifyApprovalRequested({ type: 'CLEAR_REQUEST', module: 'clear-requests', requestId: r.id, crsId: r.crsId, requester, ...w, link: clearLink(r.id) })) created++;
+  }
+
+  if (created) console.log(`[notify] backfill: ${created} waiting request(s) announced to administrators`);
+  return created;
 }
 
 /**

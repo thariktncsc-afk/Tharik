@@ -5,6 +5,11 @@
  * The one thing a poll records is DELIVERY — this person's screen has now
  * received what is waiting for them. It never records a read.
  *
+ * An administrator's first ask also announces any request that is waiting but
+ * was never notified (notify/approvals.ts backfillPendingApprovals) — only once
+ * the tables are known to exist, so a run before 0005 cannot mark the backfill
+ * done with nothing to write into.
+ *
  * Before 0005_notifications.sql is run this answers `installed: false` with an
  * empty inbox rather than an error, so the bell stays quiet and every page
  * carries on working.
@@ -14,6 +19,7 @@ import { cookies } from 'next/headers';
 import { supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { summaryForUser, tablesMissing } from '@/lib/notify/server';
+import { backfillPendingApprovals } from '@/lib/notify/approvals';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +30,8 @@ export async function GET() {
   if (!s || !Number.isInteger(s.userId)) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
 
   try {
-    const summary = await summaryForUser(s.userId);
+    let summary = await summaryForUser(s.userId);
+    if (s.role === 'ADMIN' && (await backfillPendingApprovals()) > 0) summary = await summaryForUser(s.userId);
     return NextResponse.json({ installed: true, ...summary });
   } catch (e) {
     if (tablesMissing(e as { code?: string })) {

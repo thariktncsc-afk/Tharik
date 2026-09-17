@@ -34,7 +34,9 @@ import {
 } from '@/lib/engine/monthProjection';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { dropMonthlyReceipt, monthlyReceiptNo, planMonthlyReceipt } from '@/lib/engine/monthlyReceipt';
-import { appAlert } from '@/components/dialog';
+import { appAlert, appConfirm } from '@/components/dialog';
+import { buildChainIndex, openingFor } from '@/lib/engine/stockChain';
+import { isInitialized, readStockInit } from '@/lib/engine/stockInit';
 import ClearRequestDialog from '@/components/ClearRequestDialog';
 import { hasData } from '@/lib/clearGuard';
 import { openingLocked } from '@/lib/stockGuard';
@@ -107,6 +109,47 @@ export default function MonthlyEntryPage() {
   const key = crsVal ? `${crsVal}_${month}_${year}` : '';
   const ctx = crsId ? { crsId, month, year, key } : null;
   const lists = useCommodityLists(crsId);
+
+  // The one-time Initial Opening Balance, as on Daily Entry (engine/stockInit.ts):
+  // shop staff type a month's Opening only before the shop has started; after
+  // that it is the balance the chain carries into the 1st — the previous
+  // month's Closing — or the figure already stored.
+  const stockInitRaw = useStore<unknown>('__stockInit');
+  const [justStarted, setJustStarted] = useState<number[]>([]);
+  const shopStarted =
+    !!crsId &&
+    (justStarted.includes(crsId) ||
+      (stockInitRaw !== undefined
+        ? isInitialized(readStockInit(stockInitRaw), crsId)
+        : Object.keys(entryStore).some((k) => Number(k.split('_')[0]) === crsId) || Object.keys(meManualStore).some((k) => Number(k.split('_')[0]) === crsId)));
+  const chain = useMemo(
+    () => (crsId ? buildChainIndex(entryStore, inspectionStore, receiptStore, crsId) : null),
+    [entryStore, inspectionStore, receiptStore, crsId],
+  );
+
+  /** Month-close, with the Initial Opening confirmation the first time a shop user saves stock. */
+  const closeMonth = async () => {
+    if (!(await confirmMonthlySalesClose())) return;
+    const initial = !isAdmin && !shopStarted && !!crsId;
+    if (initial) {
+      const ok = await appConfirm({
+        title: 'Confirm Initial Opening Balance',
+        tone: 'warning',
+        icon: '🔐',
+        message:
+          'Once confirmed, you cannot manually edit the Opening Balance again. Future OB values will be automatically calculated from the previous Closing Balance.',
+        cancelLabel: 'Cancel',
+        confirmLabel: 'Confirm & Save',
+        defaultCancel: true,
+      });
+      if (!ok) return;
+    }
+    save();
+    // Saved when the month-close wrote its sheet for this shop.
+    if (initial && Object.keys(crsData.get<Record<string, unknown>>('entryStore') ?? {}).some((k) => Number(k.split('_')[0]) === crsId)) {
+      setJustStarted((s) => [...s, crsId!]);
+    }
+  };
 
   useEffect(() => {
     setEdits({});
@@ -220,11 +263,14 @@ export default function MonthlyEntryPage() {
     const rcpHeld = !isAdmin && !derived;
     const rcpLocked = derived || rcpHeld || (!isAdmin && src === 'receipt');
     // Opening is the previous month's closing carried forward; re-keying it
-    // after the fact breaks that chain. src/lib/stockGuard.ts, server-side.
-    const openHeld = !derived && openingLocked(isAdmin, rec);
+    // after the fact breaks that chain. Shop staff type it once — the shop's
+    // Initial Opening — and an administrator may correct it.
+    // src/lib/stockGuard.ts, server-side.
+    const openHeld = !derived && openingLocked(isAdmin, shopStarted);
     const e = edits[`${sec}:${c.id}`] ?? {};
     const num = (edit: string | undefined, stored: number | undefined) => (edit !== undefined ? Number(edit) || 0 : Number(stored) || 0);
-    const open = derived || openHeld ? Number(rec?.open) || 0 : num(e.open, rec?.open);
+    const carried = openHeld && chain ? openingFor(chain, `${year}-${pad2(month)}-01`, c.id, sec).value : null;
+    const open = derived ? Number(rec?.open) || 0 : openHeld ? (carried ?? (Number(rec?.open) || 0)) : num(e.open, rec?.open);
     const receipt = rcpLocked ? Number(rec?.receipt) || 0 : num(e.receipt, rec?.receipt);
     const sales = derived ? Number(rec?.sales) || 0 : num(e.sales, rec?.sales);
     let adj = inspMonth[`${sec}:${c.id}`] ?? { excess: 0, shortage: 0, transfer: 0 };
@@ -263,7 +309,7 @@ export default function MonthlyEntryPage() {
     const b = lists.b.map((c) => rowFor('b', c));
     return { a, b };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lists, merged, source, inspMonth, edits]);
+  }, [lists, merged, source, inspMonth, edits, shopStarted, chain]);
 
   const showAdj = {
     excess: [...rows.a, ...rows.b].some((r) => r.adj.excess !== 0),
@@ -572,8 +618,10 @@ export default function MonthlyEntryPage() {
       const locked = held || (field === 'receipt' ? r.rcpLocked : r.derived);
       const e = edits[`${sec}:${r.c.id}`] ?? {};
       const stored = merged[sec][r.c.id]?.[field];
+      // A held Opening shows what will be saved: the carried balance where there is one.
+      const lockedVal = field === 'open' && r.openHeld ? r.open : Number(stored) || 0;
       const val = locked
-        ? (Number(stored) || 0) ? Number(stored).toFixed(3) : ''
+        ? lockedVal ? lockedVal.toFixed(3) : ''
         : e[field] !== undefined
           ? e[field]
           : stored !== undefined && Number(stored) !== 0
@@ -596,7 +644,7 @@ export default function MonthlyEntryPage() {
               ? 'Total of this month’s godown receipts — change them on the Receipt page'
               : held
                 ? field === 'open'
-                  ? 'Opening was saved for this month and is locked. An administrator can correct it.'
+                  ? 'The Opening Balance is entered only once, when the shop starts — it is carried from the previous Closing and locked. An administrator can correct it.'
                   : 'Receipts are entered on the Receipt page — this column fills in from the register.'
                 : locked
                   ? 'Accumulated from Daily Entry — edit the day sheet to change this'
@@ -1042,7 +1090,7 @@ export default function MonthlyEntryPage() {
                 <button className="btn btn-outline btn-sm" onClick={clearMonth}>🗑 Clear</button>
                 <button
                   // Asks first (monthCloseConfirm.ts); only a yes runs the save.
-                  onClick={() => void confirmMonthlySalesClose().then((ok) => ok && save())}
+                  onClick={() => void closeMonth()}
                   title="மாத விற்பனை நிறைவு — store this month's entry, remittance, gunny stock and card details"
                   style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}
                 >

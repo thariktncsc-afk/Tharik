@@ -8,9 +8,7 @@
 import { useState } from 'react';
 import {
   MONTH_NAMES_FULL,
-  govtHolidayName,
-  isWeeklyHoliday,
-  weeklyHolidayName,
+  holidayOn,
   type GovtHolidayMap,
 } from '@/lib/engine/holidays';
 
@@ -83,20 +81,22 @@ export default function HolidayCalendar({
               for (let d = 1; d <= daysInMonth; d++) {
                 const date = new Date(yr, mo, d);
                 const dow = date.getDay();
-                const weekly = weeklyHolidayName(date);
-                const govt = govtHolidayName(date, holidays);
-                const isFri = weekly?.includes('Friday') ?? false;
-                const isSun = weekly?.includes('Sunday') ?? false;
-                const isHol = isWeeklyHoliday(date) || !!govt;
+                // One engine (engine/holidays.ts): a government holiday first, then
+                // the 1st/2nd Friday and 3rd/4th Sunday.
+                const hol = holidayOn(date, holidays);
+                const govt = hol?.kind === 'govt' ? hol.name : null;
+                const isFri = hol?.kind === 'friday';
+                const isSun = hol?.kind === 'sunday';
+                const isHol = !!hol;
 
                 let bg = 'transparent';
                 let color = '#1A2332';
                 let fw = 400;
                 let radius = 4;
                 let title = '';
-                if (isFri) { bg = '#FED7AA'; color = '#C2410C'; fw = 700; title = weekly!; }
-                else if (isSun) { bg = '#E9D5FF'; color = '#7C3AED'; fw = 700; title = weekly!; }
-                else if (govt) { bg = '#FEE2E2'; color = '#B91C1C'; fw = 700; title = govt; }
+                if (govt) { bg = '#FEE2E2'; color = '#B91C1C'; fw = 700; title = govt; }
+                else if (isFri) { bg = '#FED7AA'; color = '#C2410C'; fw = 700; title = hol!.name; }
+                else if (isSun) { bg = '#E9D5FF'; color = '#7C3AED'; fw = 700; title = hol!.name; }
                 else if (dow === 0) color = '#9333EA';
                 else if (dow === 6) color = '#0369A1';
 
@@ -119,7 +119,7 @@ export default function HolidayCalendar({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        outline: govt && !isFri && !isSun ? '1px solid #EF4444' : undefined,
+                        outline: govt ? '1px solid #EF4444' : undefined,
                       }}
                     >
                       {d}

@@ -311,9 +311,30 @@ export const rupees = (paise: number) =>
 const shopLine = (crsId: number, shopName: string) => (shopName ? `CRS ${crsId} — ${shopName}` : `CRS ${crsId}`);
 const who = (name: string, role: string) => (role && role !== 'ADMIN' ? `${name} (${role})` : name);
 
-/** An ISO date becomes the DD-MM-YYYY the office writes; anything else is left alone. */
+const MON3 = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * A date becomes the DD-MM-YYYY the office writes — from ISO, or from the
+ * "16 Sept 2026" a clear request's scope label carries. Anything else (a month
+ * name, a receipt number) is left alone.
+ */
 export function dayLabel(s: string): string {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.split('-').reverse().join('-') : s;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.split('-').reverse().join('-');
+  const m = /^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{4})$/.exec(String(s).trim());
+  const mon = m ? MON3.indexOf(m[2].slice(0, 3).toLowerCase()) : -1;
+  return m && mon >= 0 ? `${m[1].padStart(2, '0')}-${String(mon + 1).padStart(2, '0')}-${m[3]}` : s;
+}
+
+/** "10:35 AM" in India time — when a request was raised, written into its line. */
+export function clockIST(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+}
+
+/** "16-09-2026 | Requested by Divya (BC) | 10:35 AM" — the second line of every request. */
+export function requestLine(what: string, name: string, role: string, at: string): string {
+  return [what, `Requested by ${who(name, role)}`, clockIST(at)].filter(Boolean).join(' | ');
 }
 
 export type Wording = { title: string; message: string; details: Detail[] };
@@ -345,8 +366,8 @@ export function paymentSubject(p: Pick<PaymentFacts, 'kind' | 'month' | 'year' |
 export function paymentRequestText(p: PaymentFacts): Wording {
   const subject = paymentSubject(p);
   return {
-    title: 'Payment Approval Request',
-    message: `${shopLine(p.crsId, p.shopName)} · ${subject} · ${rupees(p.totalPaise)}`,
+    title: `CRS ${p.crsId} – ${p.kind === 'dss' ? 'DSS' : 'Statement'} Download Payment Approval`,
+    message: requestLine(`${subject} · ${rupees(p.totalPaise)}`, p.requesterName, p.requesterRole, p.submittedAt),
     details: [
       { label: 'CRS', value: shopLine(p.crsId, p.shopName) },
       { label: 'Requested By', value: who(p.requesterName, p.requesterRole) },
@@ -371,14 +392,14 @@ export function paymentResultText(p: PaymentFacts, decision: 'approved' | 'rejec
   ];
   if (decision === 'approved') {
     return {
-      title: 'Payment Request Approved',
-      message: `Your ${what} payment has been approved. You can now download the ${p.kind === 'dss' ? 'DSS' : 'statement'}.`,
+      title: `CRS ${p.crsId} – Payment Request Approved`,
+      message: `Your ${what} payment for ${subject} has been approved. You can now download the ${p.kind === 'dss' ? 'DSS' : 'statement'}.`,
       details: [...base, { label: 'Status', value: 'Approved' }],
     };
   }
   return {
-    title: 'Payment Request Rejected',
-    message: `Your ${what} payment was not approved${reason ? `: ${reason}` : '.'} Check the UPI reference and submit it again.`,
+    title: `CRS ${p.crsId} – Payment Request Rejected`,
+    message: `Your ${what} payment for ${subject} has been rejected${reason ? `: ${reason}` : '.'} Check the UPI reference and submit it again.`,
     details: [...base, ...(reason ? [{ label: 'Reason', value: reason }] : []), { label: 'Status', value: 'Rejected' }],
   };
 }
@@ -399,11 +420,19 @@ export type ClearFacts = {
 const scopeField = (kind: string) => (kind === 'month' ? 'Month' : kind === 'receipt' ? 'Receipt' : 'Entry Date');
 const moduleWords = (m: string[]) => (m.length ? m.join(', ') : 'the entry');
 
+/** "Daily Sales" / "Monthly Sales" / "Receipt" — what kind of clear this is, by its scope. */
+export function clearKind(c: Pick<ClearFacts, 'scopeKind' | 'modules'>): string {
+  if (c.scopeKind === 'day') return 'Daily Sales';
+  if (c.scopeKind === 'month') return 'Monthly Sales';
+  if (c.scopeKind === 'receipt') return 'Receipt';
+  return c.modules.length ? c.modules.join(' & ') : 'Entry';
+}
+
 export function clearRequestText(c: ClearFacts): Wording {
   const scope = dayLabel(c.scopeLabel);
   return {
-    title: 'Clear Approval Request',
-    message: `${shopLine(c.crsId, c.shopName)} · ${moduleWords(c.modules)} · ${scope}`,
+    title: `CRS ${c.crsId} – ${clearKind(c)} Clear Request`,
+    message: requestLine(scope, c.requesterName, c.requesterRole, c.createdAt),
     details: [
       { label: 'CRS', value: shopLine(c.crsId, c.shopName) },
       { label: 'Module', value: moduleWords(c.modules) },
@@ -418,7 +447,7 @@ export function clearRequestText(c: ClearFacts): Wording {
 
 export function clearResultText(c: ClearFacts, decision: 'cleared' | 'rejected', note = ''): Wording {
   const scope = dayLabel(c.scopeLabel);
-  const subject = `${moduleWords(c.modules)} for ${scope}`;
+  const request = `${clearKind(c)} Clear Request for ${scope}`;
   const base: Detail[] = [
     { label: 'CRS', value: shopLine(c.crsId, c.shopName) },
     { label: 'Module', value: moduleWords(c.modules) },
@@ -426,14 +455,14 @@ export function clearResultText(c: ClearFacts, decision: 'cleared' | 'rejected',
   ];
   if (decision === 'cleared') {
     return {
-      title: 'Clear Request Approved',
-      message: `Your request to clear ${subject} was approved by Admin. The entry has been cleared and can be keyed again.`,
+      title: `CRS ${c.crsId} – ${clearKind(c)} Clear Request Approved`,
+      message: `Your ${request} has been approved. The entry has been cleared and can be keyed again.`,
       details: [...base, ...(note ? [{ label: 'Note', value: note }] : []), { label: 'Status', value: 'Approved' }],
     };
   }
   return {
-    title: 'Clear Request Rejected',
-    message: `Your request to clear ${subject} was rejected by Admin.${note ? ` ${note}` : ''}`,
+    title: `CRS ${c.crsId} – ${clearKind(c)} Clear Request Rejected`,
+    message: `Your ${request} has been rejected.${note ? ` ${note}` : ''}`,
     details: [...base, ...(note ? [{ label: 'Reason', value: note }] : []), { label: 'Status', value: 'Rejected' }],
   };
 }

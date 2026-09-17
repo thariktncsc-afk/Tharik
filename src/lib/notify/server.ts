@@ -17,6 +17,7 @@
  */
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import {
+  APPROVAL_TYPES,
   categoryOf,
   describeAudience,
   markPatch,
@@ -145,6 +146,9 @@ async function insertNotification(n: NewNotification, recipients: Roster[]): Pro
     })
     .select('id, created_at')
     .single();
+  // 0007's unique index: this request already has its pending notification —
+  // a retried submit or two servers backfilling at once. One is the answer.
+  if (error?.code === '23505') return null;
   if (error) throw error;
 
   const id = Number(data.id);
@@ -190,8 +194,24 @@ export type ApprovalRequest = {
  * notifyApprovalDecided finds who to tell, for any module, without each module
  * having to carry its own idea of who asked.
  */
-export async function notifyApprovalRequested(req: ApprovalRequest): Promise<void> {
+export async function notifyApprovalRequested(req: ApprovalRequest): Promise<boolean> {
+  let created = false;
   await safely(`request ${req.module}#${req.requestId}`, async () => {
+    // ONE REQUEST, ONE NOTIFICATION. A request still pending already has its
+    // notification — a retried submit, a reopened page or the backfill must not
+    // add another. A payment rejected and resubmitted is a new request: its
+    // earlier notification is no longer pending, so this one is created.
+    const { data: existing, error: eErr } = await supabaseAdmin()
+      .from('notifications')
+      .select('id')
+      .eq('related_module', req.module)
+      .eq('related_request_id', String(req.requestId))
+      .eq('type', req.type)
+      .eq('status', 'pending')
+      .limit(1);
+    if (eErr) throw eErr;
+    if (existing?.length) return;
+
     const admins = (await roster()).filter((u) => u.role === 'ADMIN' && u.active && u.id !== req.requester.userId);
     await insertNotification(
       {
@@ -208,8 +228,11 @@ export async function notifyApprovalRequested(req: ApprovalRequest): Promise<voi
         link: req.link,
       },
       admins,
-    );
+    ).then((id) => {
+      created = id !== null;
+    });
   });
+  return created;
 }
 
 export type ApprovalDecision = {
@@ -251,6 +274,31 @@ export async function notifyApprovalDecided(d: ApprovalDecision): Promise<void> 
     }
 
     if (!d.result) return;
+
+    // One result per decision. The decision routes only move a request out of
+    // its waiting state once, but a retried call must still not tell the
+    // requester twice: a result already sent for this request, since its
+    // latest request notification, is the answer.
+    const { data: lastAsk } = await db
+      .from('notifications')
+      .select('created_at')
+      .eq('related_module', d.module)
+      .eq('related_request_id', String(d.requestId))
+      .neq('type', 'APPROVAL_RESULT')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    let told = db
+      .from('notifications')
+      .select('id')
+      .eq('related_module', d.module)
+      .eq('related_request_id', String(d.requestId))
+      .eq('type', 'APPROVAL_RESULT')
+      .eq('status', d.decision);
+    if (lastAsk?.[0]?.created_at) told = told.gte('created_at', lastAsk[0].created_at as string);
+    const { data: already, error: tErr } = await told.limit(1);
+    if (tErr) throw tErr;
+    if (already?.length) return;
+
     const askers = new Set<number>([
       ...(open ?? []).map((n) => Number(n.sender_user_id)).filter((n) => Number.isInteger(n) && n > 0),
       ...(d.requesterIds ?? []).filter((n) => Number.isInteger(n) && n > 0),
@@ -357,18 +405,24 @@ function toItem(r: InboxRow): InboxItem | null {
   };
 }
 
+/** The same columns, joined so a filter on the notification's own type narrows the rows. */
+const REQUEST_COLUMNS = INBOX_COLUMNS.replace('n:notifications(', 'n:notifications!inner(');
+
 export async function listForUser(
   userId: number,
-  opts: { category?: Category | null; unreadOnly?: boolean; limit?: number; before?: string | null },
+  opts: { category?: Category | null; unreadOnly?: boolean; requestsOnly?: boolean; limit?: number; before?: string | null },
 ): Promise<InboxItem[]> {
   let q = supabaseAdmin()
     .from('notification_recipients')
-    .select(INBOX_COLUMNS)
+    .select(opts.requestsOnly ? REQUEST_COLUMNS : INBOX_COLUMNS)
     .eq('recipient_user_id', userId)
     .order('created_at', { ascending: false })
     .limit(Math.min(Math.max(opts.limit ?? 30, 1), 200));
   if (opts.category) q = q.eq('category', opts.category);
   if (opts.unreadOnly) q = q.eq('is_read', false);
+  // Approval Requests: every request, whichever module raised it — not the
+  // results or messages filed under the same categories.
+  if (opts.requestsOnly) q = q.in('n.type', [...APPROVAL_TYPES]);
   if (opts.before) q = q.lt('created_at', opts.before);
   const { data, error } = await q;
   if (error) throw error;
@@ -424,6 +478,24 @@ export async function summaryForUser(userId: number): Promise<{ unread: number; 
   return { unread: count ?? 0, latestAt: (latest?.[0]?.created_at as string) ?? null, popups };
 }
 
+/**
+ * The live-sync beat's view of one inbox: "<unread count>:<newest row id>".
+ *
+ * One indexed count and one id, asked every few seconds by /api/sync. Any new
+ * notification, any read — here or on this person's other device — changes it,
+ * and the bell then fetches the full summary. 'off' before 0005 is run.
+ */
+export async function inboxBeat(userId: number): Promise<string> {
+  const db = supabaseAdmin();
+  const [unread, latest] = await Promise.all([
+    db.from('notification_recipients').select('id', { count: 'exact', head: true }).eq('recipient_user_id', userId).eq('is_read', false),
+    db.from('notification_recipients').select('id').eq('recipient_user_id', userId).order('id', { ascending: false }).limit(1),
+  ]);
+  if (tablesMissing(unread.error) || tablesMissing(latest.error)) return 'off';
+  if (unread.error || latest.error) return 'unavailable';
+  return `${unread.count ?? 0}:${latest.data?.[0]?.id ?? 0}`;
+}
+
 /** Open, read or acknowledge one of THIS person's notifications. */
 export async function markForUser(userId: number, notificationId: number, action: MarkAction): Promise<InboxItem | null> {
   const db = supabaseAdmin();
@@ -456,7 +528,7 @@ export async function markForUser(userId: number, notificationId: number, action
 }
 
 /** Mark every unread notification of THIS person read, optionally within one filter. */
-export async function markAllForUser(userId: number, category: Category | null): Promise<number> {
+export async function markAllForUser(userId: number, category: Category | null, requestsOnly = false): Promise<number> {
   const now = new Date().toISOString();
   let q = supabaseAdmin()
     .from('notification_recipients')
@@ -464,6 +536,20 @@ export async function markAllForUser(userId: number, category: Category | null):
     .eq('recipient_user_id', userId)
     .eq('is_read', false);
   if (category) q = q.eq('category', category);
+  if (requestsOnly) {
+    // An update cannot filter through an embed, so find this person's unread
+    // request rows first, then mark exactly those.
+    const { data: rows, error: rErr } = await supabaseAdmin()
+      .from('notification_recipients')
+      .select('id, n:notifications!inner(type)')
+      .eq('recipient_user_id', userId)
+      .eq('is_read', false)
+      .in('n.type', [...APPROVAL_TYPES]);
+    if (rErr) throw rErr;
+    const ids = (rows ?? []).map((r) => Number(r.id));
+    if (!ids.length) return 0;
+    q = q.in('id', ids);
+  }
   const { data, error } = await q.select('id');
   if (error) throw error;
   // Anything marked read has also been received.
