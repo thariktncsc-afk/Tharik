@@ -42,6 +42,7 @@
  */
 import { receiptQtyForDay, receiptQtyForMonth, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { isProjectedSheet } from '@/lib/engine/monthProjection';
+import { buildChainIndex, openingFor, type ChainIndex } from '@/lib/engine/stockChain';
 
 /** Kilos carry three decimals; anything under half a gram is float noise. */
 export const TOLERANCE = 0.005;
@@ -125,6 +126,12 @@ type Ctx = {
   totalOnly: boolean;
   /** Opening and Receipt are only locked where they are actually keyed. */
   lockFields: boolean;
+  /**
+   * A day sheet's carried Opening for one commodity, from the data as it will
+   * stand after this write — or null where nothing earlier carries into it.
+   * Null for month stores.
+   */
+  carried: ((sec: 'a' | 'b', id: string) => number | null) | null;
 };
 
 /** Judge one commodity row of one record. */
@@ -137,7 +144,14 @@ function checkRow(ctx: Ctx, sec: 'a' | 'b', id: string, before: unknown, after: 
     out.push({ store: ctx.store, key: ctx.key, crsId: ctx.crsId, section: sec, commodity: id, kind, detail });
 
   if (ctx.lockFields && !ctx.isAdmin) {
-    if (openingLocked(false, before) && !near(num((before as Row).open), num(after.open))) {
+    // A re-carried Opening is not a re-keyed one. When an earlier day changes,
+    // every later sheet's Opening is rebuilt from the chain in date order
+    // (engine/rechain.ts), and that may move a saved figure — to the carried
+    // balance, and to nothing else. The start of the chain has no carry, so its
+    // saved Opening stays locked.
+    const carry = ctx.carried ? ctx.carried(sec, id) : null;
+    const recarried = carry !== null && near(carry, num(after.open));
+    if (openingLocked(false, before) && !near(num((before as Row).open), num(after.open)) && !recarried) {
       note(
         'opening-locked',
         `Opening is ${fmt(num((before as Row).open))} and was already saved; this save sets it to ${fmt(num(after.open))}. Only an administrator can change a saved Opening.`,
@@ -198,6 +212,20 @@ export function inspectStockWrite(
   const out: StockViolation[] = [];
   const receipts = (incoming.receiptStore ?? stored.receiptStore) as ReceiptRow[] | undefined;
 
+  // The stock chain as it will stand once this write lands, one index per shop,
+  // built the first time a shop's carried Opening is asked for.
+  const chains = new Map<number, ChainIndex>();
+  const chainFor = (crsId: number): ChainIndex => {
+    let ix = chains.get(crsId);
+    if (!ix) {
+      const entries = (isObj(incoming.entryStore) ? incoming.entryStore : stored.entryStore) as Parameters<typeof buildChainIndex>[0];
+      const insp = (isObj(incoming.inspectionStore) ? incoming.inspectionStore : stored.inspectionStore) as Record<string, unknown> | undefined;
+      ix = buildChainIndex(entries, insp, receipts, crsId);
+      chains.set(crsId, ix);
+    }
+    return ix;
+  };
+
   for (const store of ['entryStore', 'meManualStore', 'monthlyStore'] as const) {
     const after = incoming[store];
     if (!isObj(after)) continue;
@@ -225,6 +253,7 @@ export function inspectStockWrite(
             register: projected ? null : registerDay(receipts, crsId, m[2]),
             totalOnly: projected,
             lockFields: !projected && !isProjectedSheet(prev),
+            carried: projected ? null : (sec, id) => openingFor(chainFor(crsId), m[2], id, sec).value,
           },
           prev,
           rec,
@@ -250,6 +279,7 @@ export function inspectStockWrite(
           register: keyed ? registerMonth(receipts, crsId, Number(m[2]), Number(m[3])) : null,
           totalOnly: false,
           lockFields: keyed,
+          carried: null,
         },
         prev,
         rec,

@@ -42,6 +42,8 @@ import { openingLocked, receiptLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
 import type { ClearScope } from '@/lib/clearClient';
 import { RICE_DAILY_REQUIRED, RICE_INVALID, checkRiceBoxes, hasRiceFields, riceBox, withRice, type RiceBoxError } from '@/lib/engine/crs29Rice';
+import { confirmMonthlySalesClose } from '@/lib/monthCloseConfirm';
+import { rechainAndRepublish } from '@/lib/engine/rechain';
 
 type ShopRec = { name: string };
 
@@ -112,6 +114,33 @@ function gapDays(fromDs: string, toDs: string): number {
 
 const fmtDay = (ds: string) => new Date(ds + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
+type FormFill = { rows: Record<string, RowInput>; remits: Remit[]; riceFree: string; riceCost: string };
+
+/** The form as a saved sheet fills it — or empty, for a day without one. */
+function formOf(sheet: SavedSheet | undefined, date: string): FormFill {
+  const rows: Record<string, RowInput> = {};
+  if (!sheet) return { rows, remits: [], riceFree: '', riceCost: '' };
+  for (const sec of ['a', 'b'] as const) {
+    for (const [id, r] of Object.entries(sheet[sec] ?? {})) {
+      rows[`${sec}:${id}`] = {
+        open: r.open ? Number(r.open).toFixed(3) : '',
+        receipt: r.receipt ? Number(r.receipt).toFixed(3) : '',
+        sales: r.sales ? Number(r.sales).toFixed(3) : '',
+      };
+    }
+  }
+  return {
+    rows,
+    // Read through the shared reader so sheets saved before transactions
+    // existed (a bare remits array, or only remitAmount) still come back as
+    // deposits with stable ids rather than vanishing from the month.
+    remits: txnsOf(sheet, date).map(({ salesDate: _s, additional: _a, ...t }) => t),
+    // A saved 0 comes back as 0 — it was an answer, not a blank.
+    riceFree: riceBox(sheet.freeRice),
+    riceCost: riceBox(sheet.costRice),
+  };
+}
+
 export default function DailyEntryPage() {
   const { user } = useAuth();
   const shops: ShopRec[] = useShops();
@@ -173,54 +202,53 @@ export default function DailyEntryPage() {
    * figures were in the database the whole time, just never read into the
    * form.
    *
-   * Keyed on "which day, and has its sheet turned up yet", so it runs once
-   * more the moment the sheet appears — and NOT on every later store change,
-   * which would throw away what the clerk is halfway through typing (and the
-   * just-saved banner with it).
+   * It runs again whenever the day's sheet changes underneath this screen:
+   * the stores arriving after mount, somebody else saving this day, an
+   * approved clear, or an earlier day's change re-carrying this one's Opening
+   * (live sync, dataStore.ts; engine/rechain.ts). A form nobody has typed into
+   * since it was last filled takes the new figures. One somebody has typed
+   * into keeps the typing, and a banner says the day moved — what the clerk is
+   * halfway through is never thrown away, and neither is the just-saved banner.
    */
   const opened = useRef('');
+  /** The form as last filled from the store — what "untouched" is measured against. */
+  const filled = useRef('');
+  const [remoteChanged, setRemoteChanged] = useState(false);
+  const applyFill = (f: FormFill) => {
+    setRows(f.rows);
+    setRemits(f.remits);
+    setRiceFree(f.riceFree);
+    setRiceCost(f.riceCost);
+    filled.current = JSON.stringify(f);
+  };
   useEffect(() => {
     if (!key) return;
     const stamp = `${key}:${saved ? 'loaded' : 'empty'}`;
-    if (opened.current === stamp) return;
-    // The second run is the same day, now with its sheet — so the boxes are
-    // refilled but the transient state below is not. Saving turns a day from
-    // 'empty' to 'loaded', and clearing the banner it just set would flash it
-    // away before anyone could read it.
+    const fill = formOf(entryStore[key], date);
+    const fillJson = JSON.stringify(fill);
     const changedDay = opened.current.split(':')[0] !== key;
     opened.current = stamp;
-    const next: Record<string, RowInput> = {};
-    const sheet = entryStore[key];
-    if (sheet) {
-      for (const sec of ['a', 'b'] as const) {
-        for (const [id, r] of Object.entries(sheet[sec] ?? {})) {
-          next[`${sec}:${id}`] = {
-            open: r.open ? Number(r.open).toFixed(3) : '',
-            receipt: r.receipt ? Number(r.receipt).toFixed(3) : '',
-            sales: r.sales ? Number(r.sales).toFixed(3) : '',
-          };
-        }
+
+    if (!changedDay) {
+      // This save of ours lands here already filled (save() fills the form).
+      if (fillJson === filled.current) return;
+      const formJson = JSON.stringify({ rows, remits, riceFree, riceCost });
+      if (formJson === filled.current || formJson === fillJson) {
+        applyFill(fill);
+        setRemoteChanged(false);
+      } else {
+        setRemoteChanged(true);
       }
-      // Read through the shared reader so sheets saved before transactions
-      // existed (a bare remits array, or only remitAmount) still come back as
-      // deposits with stable ids rather than vanishing from the month.
-      setRemits(txnsOf(sheet, date).map(({ salesDate: _s, additional: _a, ...t }) => t));
-      // A saved 0 comes back as 0 — it was an answer, not a blank.
-      setRiceFree(riceBox(sheet.freeRice));
-      setRiceCost(riceBox(sheet.costRice));
-    } else {
-      setRemits([]);
-      setRiceFree('');
-      setRiceCost('');
+      return;
     }
-    setRows(next);
+
+    applyFill(fill);
     setRemitDate(date);
-    if (changedDay) {
-      setRemitAmt('');
-      setRemitErr({});
-      setRiceErr({});
-      setSavedMsg('');
-    }
+    setRemitAmt('');
+    setRemitErr({});
+    setRiceErr({});
+    setSavedMsg('');
+    setRemoteChanged(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, saved]);
 
@@ -287,13 +315,18 @@ export default function DailyEntryPage() {
     const auto = chain ? openingFor(chain, date, c.id, sec).value : null;
     const savedRow = saved?.[sec]?.[c.id];
     const savedOpen = savedRow?.open;
-    const openAuto = auto !== null && !savedOpen && r.open === undefined;
-    // Opening is a carried balance, so re-keying it after the fact breaks the
-    // chain — the day before still closes at the old figure. A projected sheet
-    // is exempt: converting the month into a real day sheet is meant to
-    // replace it. src/lib/stockGuard.ts is the same rule, server-side.
-    const openHeld = !sheetProjected && openingLocked(isAdmin, savedRow);
-    const open = openHeld ? Number(savedOpen) || 0 : openAuto ? auto! : Number(r.open) || 0;
+    // Opening follows the CALENDAR, not the order days were keyed in: a day
+    // with an earlier balance to carry from opens with that balance — saved or
+    // not, typed over or not, for every role. A different figure here would
+    // break the chain the day before closes into, and every save rebuilds that
+    // chain in date order anyway (engine/rechain.ts). Only the start of the
+    // chain, a day with nothing earlier, takes a typed Opening.
+    const openAuto = auto !== null;
+    // Once that starting figure is saved, only an administrator re-keys it. A
+    // projected sheet is exempt: converting the month into a real day sheet is
+    // meant to replace it. src/lib/stockGuard.ts is the same rule, server-side.
+    const openHeld = !openAuto && !sheetProjected && openingLocked(isAdmin, savedRow);
+    const open = openAuto ? auto! : openHeld ? Number(savedOpen) || 0 : Number(r.open) || 0;
     // A register quantity is never stored as 0, so its presence alone decides.
     const godown = dayReceipts[c.id] || 0;
     const receiptAuto = godown > 0;
@@ -477,6 +510,9 @@ export default function DailyEntryPage() {
     // the month twice.
     const [y, m] = date.split('-').map(Number);
     let tookOver = false;
+    // The day the person saved — the activity log tells it from the later days
+    // this save recalculates (activityLog/core.ts).
+    crsData.markEdited('entryStore', key);
     crsData.update<Record<string, SavedSheet>>('entryStore', (d) => {
       // CRS 29 carries its Free Rice / Cost Rice on the sheet; every other
       // shop's sheet is written exactly as before.
@@ -509,12 +545,37 @@ export default function DailyEntryPage() {
       d[moKey] = source;
     });
 
-    setRemits(list);
+    // Later saved days open with this day's Closing — and a day keyed BEFORE
+    // this earlier one no longer keeps the Opening typed on it. So the chain is
+    // rebuilt in date order from this day forward, and every month it moved
+    // republishes: Monthly Sales, closing stock, the DSS and the statements all
+    // read the rebuilt figures (engine/rechain.ts).
+    const chained = rechainAndRepublish(
+      {
+        entryStore: crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
+        inspectionStore: crsData.get<Record<string, unknown>>('inspectionStore') ?? {},
+        meManualStore: crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {},
+        meSourceStore: crsData.get<Record<string, SourceBlock>>('meSourceStore') ?? {},
+        monthlyStore: crsData.get<Record<string, MonthlyBlock>>('monthlyStore') ?? {},
+        receiptStore: crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+      },
+      Number(crsVal),
+      date,
+      lists,
+    );
+    for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
+    const later = chained.dates.filter((ds) => ds > date);
+
+    // The form now shows exactly what was saved — the baseline live sync
+    // measures "untouched" against, so this save is not taken for someone else's.
+    applyFill(formOf(crsData.get<Record<string, SavedSheet>>('entryStore')?.[key], date));
+    setRemoteChanged(false);
     setRemitAmt('');
     if (snap.remitDate) setRemitDate(snap.remitDate);
     setSavedMsg(
       `CRS ${crsVal} — ${shops[Number(crsVal) - 1]?.name ?? ''} (${new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })})` +
-        (tookOver || wasProjected ? " — this month is now keyed by day; Monthly Entry's projected sheet was removed" : ''),
+        (tookOver || wasProjected ? " — this month is now keyed by day; Monthly Entry's projected sheet was removed" : '') +
+        (later.length ? ` — Opening recalculated on ${later.length} later day${later.length === 1 ? '' : 's'} (${later.map(fmtDay).join(', ')})` : ''),
     );
     setTimeout(() => setSavedMsg(''), 5000);
     void crsData.save();
@@ -522,6 +583,9 @@ export default function DailyEntryPage() {
   };
 
   const markSalesClose = async () => {
+    // Asked before anything else runs — see monthCloseConfirm.ts. Daily Sales
+    // Close, right beside this button, does not ask.
+    if (!(await confirmMonthlySalesClose())) return;
     if (!crsVal || !date) {
       void appAlert('Select a CRS shop and date first.');
       return;
@@ -631,6 +695,15 @@ export default function DailyEntryPage() {
       void appAlert(e instanceof Error ? e.message : 'Could not check the download entitlement.');
       return;
     }
+
+    // The DSS is built in this browser, so the server never sees it opened —
+    // it is reported for the activity log instead. Fire-and-forget: a log gap
+    // must not stand between a shop and its DSS.
+    void fetch('/api/activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ module: 'DSS', action: 'viewed', crsId: Number(crsVal), month: dssMonth, year: dssYear }),
+    }).catch(() => undefined);
 
     const { createDssEngine } = await import('@/generated/dss-legacy');
     const engine = createDssEngine({
@@ -929,6 +1002,24 @@ export default function DailyEntryPage() {
           {savedMsg ? (
             <div style={{ display: 'flex', background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 10, padding: '12px 16px', marginBottom: 14, color: '#15803D', fontSize: 13, fontWeight: 600, alignItems: 'center', gap: 8 }}>
               ✓ Entry saved: <span>{savedMsg}</span>
+            </div>
+          ) : null}
+
+          {remoteChanged ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 16px', marginBottom: 14, color: '#92400E', fontSize: 12.5, alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 16 }}>⟳</span>
+              <span style={{ flex: 1, minWidth: 220 }}>
+                <strong>This day was just changed elsewhere</strong> — by another user, an approved clear, or a change to an earlier day. Your unsaved changes are still on screen and nothing has been saved over them.
+              </span>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => {
+                  applyFill(formOf(entryStore[key], date));
+                  setRemoteChanged(false);
+                }}
+              >
+                Load the latest
+              </button>
             </div>
           ) : null}
 
@@ -1240,7 +1331,7 @@ export default function DailyEntryPage() {
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%' }}>
+              <div className="de-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%' }}>
                 {scRec ? (
                   <span style={{ background: scRec.date === date ? '#DCFCE7' : '#FEF3C7', border: `1px solid ${scRec.date === date ? '#86EFAC' : '#FDE047'}`, color: scRec.date === date ? '#15803D' : '#92400E', fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 7 }}>
                     {scRec.date === date ? '🔒 THIS DAY is the Sales Close (last sales day)' : `🔒 Sales Close: ${scRec.date.split('-').reverse().join('/')}`}
@@ -1250,11 +1341,12 @@ export default function DailyEntryPage() {
                 {/* Monthly on the left, Daily pushed to the right. The only
                     change is the order and which button carries the auto
                     margin that does the pushing — each keeps its own colour,
-                    padding, title and handler. */}
-                <button onClick={() => void markSalesClose()} title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style={{ background: 'linear-gradient(135deg,#B45309,#F59E0B)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(245,158,11,.3)' }}>
+                    padding, title and handler. On a phone the two stack full
+                    width, Daily on top (.de-close in responsive.css). */}
+                <button className="de-close de-close-month" onClick={() => void markSalesClose()} title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style={{ background: 'linear-gradient(135deg,#B45309,#F59E0B)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(245,158,11,.3)' }}>
                   🔒 மாத விற்பனை நிறைவு
                 </button>
-                <button onClick={() => void save()} title="Save this day sheet. Requires at least one remittance." style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
+                <button className="de-close de-close-day" onClick={() => void save()} title="Save this day sheet. Requires at least one remittance." style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
                   💾 தினசரி விற்பனை நிறைவு
                 </button>
               </div>

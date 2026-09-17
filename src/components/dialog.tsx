@@ -10,9 +10,10 @@
  * Both accept a plain string as shorthand for { message }. Messages keep
  * their line breaks (white-space: pre-line). <DialogHost/> is mounted once
  * in the root layout; requests queue, Enter confirms, Escape cancels, and
- * the confirm button is focused on open. If the host is not mounted yet
- * (never the case in practice) the native dialogs are the fallback, so a
- * caller can never hang.
+ * the confirm button is focused on open — unless the confirm asks for
+ * `defaultCancel`, when Cancel holds the focus and a stray Enter cancels. If
+ * the host is not mounted yet (never the case in practice) the native dialogs
+ * are the fallback, so a caller can never hang.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -24,6 +25,11 @@ export type ConfirmOptions = {
   cancelLabel?: string;
   tone?: DialogTone;
   icon?: string;
+  /**
+   * For an action that must not happen by accident: focus Cancel rather than
+   * the confirm button, and never confirm on an Enter that is not on it.
+   */
+  defaultCancel?: boolean;
 };
 export type AlertOptions = {
   title?: string;
@@ -66,6 +72,7 @@ export default function DialogHost() {
   const [queue, setQueue] = useState<Request[]>([]);
   const current = queue[0] ?? null;
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const downOnBackdrop = useRef(false);
 
@@ -88,7 +95,8 @@ export default function DialogHost() {
 
   useEffect(() => {
     if (!current) return;
-    confirmRef.current?.focus();
+    const safe = current.kind === 'confirm' && !!current.opts.defaultCancel;
+    (safe ? cancelRef : confirmRef).current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return; // a held key must not auto-answer dialogs
       if (e.key === 'Escape') {
@@ -104,10 +112,11 @@ export default function DialogHost() {
         next.focus();
       } else if (e.key === 'Enter') {
         // A focused dialog button answers for itself (Enter on Cancel must
-        // cancel); Enter elsewhere confirms.
+        // cancel); Enter elsewhere confirms — except where confirming by
+        // accident is the thing being guarded against.
         if (boxRef.current?.contains(document.activeElement)) return;
         e.preventDefault();
-        close(true);
+        if (!safe) close(true);
       }
     };
     document.addEventListener('keydown', onKey);
@@ -152,9 +161,9 @@ export default function DialogHost() {
         <div className="modal-body" style={{ padding: '18px 20px' }}>
           <div style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text)', whiteSpace: 'pre-line' }}>{current.opts.message}</div>
         </div>
-        <div className="modal-foot">
+        <div className="modal-foot" style={{ flexWrap: 'wrap' }}>
           {isConfirm ? (
-            <button className="btn btn-outline" onClick={() => close(false)}>
+            <button ref={cancelRef} className="btn btn-outline" onClick={() => close(false)}>
               {(current.opts as ConfirmOptions).cancelLabel ?? 'Cancel'}
             </button>
           ) : null}

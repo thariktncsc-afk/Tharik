@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatRupees } from '@/lib/payments/pricing';
 import { fetchOrder, STATUS_COLOR, STATUS_LABEL, submitUtr, type Order, type Upi } from '@/lib/payments/client';
+import { useLiveRevision } from '@/lib/dataStore';
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -39,6 +40,25 @@ export default function PaymentDialog({ order: initial, upi: given, labels = {},
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setOrder(initial), [initial]);
+
+  // Waiting on the office: the approval (or a rejection) arrives here live
+  // (dataStore.ts), so the download unlocks without closing and reopening.
+  const paymentsRev = useLiveRevision('payments');
+  useEffect(() => {
+    if (!paymentsRev || order.status !== 'awaiting_approval') return;
+    let alive = true;
+    fetchOrder(order.id)
+      .then((r) => {
+        if (alive) setOrder(r.order);
+      })
+      .catch(() => {
+        /* the next beat tries again */
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentsRev]);
 
   // Opened from a list rather than straight after checkout, so the QR was
   // never handed over. Fetch the intent instead of telling the customer to go

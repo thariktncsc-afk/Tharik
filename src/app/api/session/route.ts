@@ -17,6 +17,7 @@ import { cookies } from 'next/headers';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, cookieOptions, decodeSession, encodeSession } from '@/lib/session';
 import { canSignIn } from '@/lib/engine/staffAssignment';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -152,6 +153,11 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.json({ ok: true, user: toEngineUser(chosen) });
+  // Signing in is on the activity log too, under the person who chose it.
+  await recordActivity(
+    { userId: chosen.id, username: chosen.username, role: chosen.role, crsId: chosen.crs_id ?? null, iat: 0 },
+    [{ crsId: chosen.crs_id ?? null, module: 'Session', action: 'signed-in', source: 'user', summary: 'Signed in' }],
+  );
   res.cookies.set(
     SESSION_COOKIE,
     encodeSession({
