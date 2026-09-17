@@ -23,6 +23,11 @@
  * fingerprint of the orders the caller may see — every order for an
  * administrator, the shop's own otherwise — so a UTR or a decision shows up on
  * the other side without anyone refreshing.
+ *
+ * `inbox` is the signed-in person's own unread count and newest notification
+ * id (notify/server.ts inboxBeat) — scoped by the session's user id, like every
+ * notification query. A change is the bell's cue to fetch its summary, so a
+ * request raised at a shop shows on an administrator's badge within one beat.
  */
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
@@ -30,6 +35,7 @@ import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession, type Session } from '@/lib/session';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 import { latestActivityId } from '@/lib/activityLog/server';
+import { inboxBeat } from '@/lib/notify/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,11 +76,13 @@ export async function GET(req: Request) {
   }
 
   const topics = (new URL(req.url).searchParams.get('topics') ?? '').split(',');
-  const body: { versions: Record<string, number>; clears: number; payments?: string; activity?: string } = { versions, clears };
+  const body: { versions: Record<string, number>; clears: number; payments?: string; activity?: string; inbox?: string } = { versions, clears };
   if (topics.includes('payments')) body.payments = await paymentsFingerprint(session);
   // The newest activity-log row the caller may see: every shop's for an
   // administrator, the shop's own otherwise (activityLog/server.ts).
   if (topics.includes('activity')) body.activity = await latestActivityId(session.role === 'ADMIN' ? null : Number(session.crsId) || -1);
+
+  if (topics.includes('inbox') && Number.isInteger(session.userId)) body.inbox = await inboxBeat(session.userId).catch(() => 'unavailable');
 
   return NextResponse.json(body, { headers: NO_STORE });
 }

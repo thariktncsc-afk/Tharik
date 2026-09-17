@@ -27,7 +27,9 @@
     "verify:crs29-sales": "node tools/verify-crs29-sales-report.mjs",
     "verify:live-sync": "node tools/verify-live-sync.mjs",
     "verify:chain-rebuild": "node tools/verify-chain-rebuild.mjs",
-    "verify:activity-log": "node tools/verify-activity-log.mjs"
+    "verify:activity-log": "node tools/verify-activity-log.mjs",
+    "verify:initial-opening": "node tools/verify-initial-opening.mjs",
+    "verify:holidays": "node tools/verify-holidays.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

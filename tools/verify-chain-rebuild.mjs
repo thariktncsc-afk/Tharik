@@ -120,6 +120,43 @@ console.log('\nThe reported case — CRS 7, September 2026');
   check('...nor re-key the saved start of the chain', startMoved.some((v) => v.kind === 'opening-locked' && v.key === '7_2026-09-02'));
 }
 
+console.log('\nThe second report — CRS 7, 16 Sep → 17 Sep, a stale saved Closing');
+{
+  // What the database held: 15 Sep closes NPHH FRK at 3780. 16 Sep was keyed
+  // before the chain rule and still stores its typed Opening 538 and Closing
+  // 100, though its screen showed 3780 − 438 = 3342. 17 Sep has no sheet yet.
+  const stored = {
+    '7_2026-09-15': { a: { NPHH_FRK: row(3780, 0), PHH_FRK: row(1060, 0) }, b: {} },
+    '7_2026-09-16': { a: { NPHH_FRK: { ...row(538, 438), close: 100 }, PHH_FRK: { ...row(685, 125), close: 560 } }, b: {} },
+  };
+  const { buildChainIndex, openingFor, closingAsAt } = await import(pathToFileURL(join(root, 'src/lib/engine/stockChain.ts')).href);
+  const ix = buildChainIndex(stored, {}, [], 7);
+  check('17 Sep NPHH FRK opens at 16 Sep’s calculated Closing, 3342 — not the stale 100 on the sheet',
+    openingFor(ix, '2026-09-17', 'NPHH_FRK', 'a').value === 3342, String(openingFor(ix, '2026-09-17', 'NPHH_FRK', 'a').value));
+  check('...and PHH FRK at 1060 − 125 = 935, not 560', openingFor(ix, '2026-09-17', 'PHH_FRK', 'a').value === 935);
+  check('the Dashboard’s closing stock as at 16 Sep agrees: 3342', closingAsAt(ix, '2026-09-16', 'NPHH_FRK', 'a').value === 3342);
+
+  const fixed = rebuildChain({ entryStore: stored, inspectionStore: {}, receiptStore: [] }, 7, '0000-00-00');
+  const d16 = fixed.entryStore['7_2026-09-16'].a;
+  check('the repair writes 16 Sep NPHH FRK as Opening 3780, Total 3780, Closing 3342', d16.NPHH_FRK.open === 3780 && d16.NPHH_FRK.total === 3780 && d16.NPHH_FRK.close === 3342);
+  check('...PHH FRK as 1060 → 935', d16.PHH_FRK.open === 1060 && d16.PHH_FRK.close === 935);
+  check('...keeping the Sales exactly as keyed (438, 125)', d16.NPHH_FRK.sales === 438 && d16.PHH_FRK.sales === 125);
+  check('...and leaves 15 Sep alone', fixed.dates.join() === '2026-09-16');
+  const after = buildChainIndex(fixed.entryStore, {}, [], 7);
+  check('after the repair the stored Closing IS the carry', d16.NPHH_FRK.close === openingFor(after, '2026-09-17', 'NPHH_FRK', 'a').value);
+
+  const arith = rebuildChain({ entryStore: { '7_2026-09-01': { a: { BRA: { open: 100, receipt: 0, total: 90, sales: 10, close: 50 } }, b: {} } }, inspectionStore: {}, receiptStore: [] }, 7, '0000-00-00');
+  check('the start of the chain keeps its typed Opening but its Total and Closing are corrected: 100 → 90',
+    arith.entryStore['7_2026-09-01'].a.BRA.open === 100 && arith.entryStore['7_2026-09-01'].a.BRA.total === 100 && arith.entryStore['7_2026-09-01'].a.BRA.close === 90);
+
+  const withRcp = rebuildChain(
+    { entryStore: { '7_2026-09-01': sheet(row(100, 0)), '7_2026-09-02': sheet(row(100, 10)) }, inspectionStore: {}, receiptStore: [{ id: 9, crsId: 7, date: '2026-09-01', items: { BRA: { qty: 50 } } }] },
+    7, '0000-00-00',
+  );
+  check('a receipt added to an earlier day: that day takes the register’s 50 and the next day opens at 150',
+    withRcp.entryStore['7_2026-09-01'].a.BRA.receipt === 50 && withRcp.entryStore['7_2026-09-01'].a.BRA.close === 150 && withRcp.entryStore['7_2026-09-02'].a.BRA.open === 150);
+}
+
 console.log('\nMissing dates carry the latest earlier Closing');
 {
   const base = { '8_2026-09-08': sheet(row(600, 100)), '8_2026-09-10': sheet(row(0, 0)) };

@@ -65,7 +65,8 @@ console.log('\nDaily Sales — the reported shapes');
   check('updating the 1 Sep sheet is logged against CRS 7 with ENTRY date 1 Sep', edited?.crsId === 7 && edited?.entryDate === '2026-09-01', show(edited));
   check('...as a person’s Daily Sales update', edited?.module === 'Daily Sales' && edited?.action === 'updated' && edited?.source === 'user');
   check('...showing BRA Rice Sales 100 → 150', has(edited, 'BRA Rice · Sales', '100', '150'));
-  check('...and Remittance ₹1,000.00 → ₹1,500.00', has(edited, 'Remittance', '₹1,000.00', '₹1,500.00'));
+  check('...and the deposit itself, Remittance 1 · Amount ₹1,000.00 → ₹1,500.00', has(edited, 'Remittance 1 · Amount', '₹1,000.00', '₹1,500.00'), show(edited));
+  check('...with the day total alongside', has(edited, 'Remittance total', '₹1,000.00', '₹1,500.00'));
   check('the later day whose Opening was re-carried is a System Update, not a person’s edit',
     carried?.action === 'recalculated' && carried?.source === 'system' && L.ACTION_LABEL[carried.action] === 'System Update', show(carried));
   check('...with its Opening 900 → 850 in the detail', has(carried, 'BRA Rice · Opening', '900', '850'));
@@ -77,7 +78,7 @@ console.log('\nDaily Sales — the reported shapes');
   check('without the browser’s hint, a Sales change is still the person’s', unhinted.find((d) => d.recordKey === '7_2026-09-01')?.source === 'user');
 
   const created = L.diffStateWrite({ entryStore: {} }, { entryStore: { '7_2026-09-16': day(row(125, 20), 2000) } });
-  check('a new sheet is Created, with what it held and a blank before', created[0]?.action === 'created' && has(created[0], 'BRA Rice · Sales', '—', '20') && has(created[0], 'Remittance', '—', '₹2,000.00'), show(created[0]));
+  check('a new sheet is Created, with what it held and a blank before', created[0]?.action === 'created' && has(created[0], 'BRA Rice · Sales', '—', '20') && has(created[0], 'Remittance 1 added', '—', '₹2,000.00 · 01-09-2026'), show(created[0]));
   check('...and no zero figures listed', !created[0]?.changes.some((c) => c.after === '0'));
 
   const deleted = L.diffStateWrite({ entryStore: { '7_2026-09-16': day(row(125, 20), 2000) } }, { entryStore: {} });
@@ -101,7 +102,8 @@ console.log('\nDaily Sales — the reported shapes');
 console.log('\nWhat is never logged as a day');
 {
   const proj = { a: { BRA: row(0, 0) }, b: {}, __projection: { source: 'monthly', at: 'x' } };
-  check('a month-close projection is Monthly Entry’s output, not a day', L.diffStateWrite({ entryStore: {} }, { entryStore: { '7_2026-09-30': proj } }).length === 0);
+  const gen = L.diffStateWrite({ entryStore: {} }, { entryStore: { '7_2026-09-30': proj } });
+  check('a month-close projection is Monthly Entry’s output, not a day: one automatic "generated" row', gen.length === 1 && gen[0].module === 'Monthly Entry' && gen[0].action === 'generated' && gen[0].source === 'system' && !gen[0].changes.length, show(gen));
   check('...nor is its removal', L.diffStateWrite({ entryStore: { '7_2026-09-30': proj } }, { entryStore: {} }).length === 0);
   const converted = L.diffStateWrite({ entryStore: { '7_2026-09-30': proj } }, { entryStore: { '7_2026-09-30': day(row(0, 10), 100) } });
   check('a projection turned into a real day sheet is a Created day', converted[0]?.action === 'created' && converted[0]?.module === 'Daily Sales');
@@ -167,6 +169,43 @@ console.log('\nWording and scope');
   check('an administrator’s feed holds everything', L.scopeFeed(feed, null).length === 3);
   const hints = L.readHints({ edited: { entryStore: { '7_2026-09-01': 'edited', x: 'drop table' }, meManualStore: { '7_9_2026': 'closed' }, junk: 5 } });
   check('edit hints are accepted only in their exact shape', JSON.stringify(hints) === JSON.stringify({ entryStore: { '7_2026-09-01': 'edited' }, meManualStore: { '7_9_2026': 'closed' } }), JSON.stringify(hints));
+}
+
+
+console.log('\nRemittance deposits, admin corrections, shops, carry-forward wording');
+{
+  const base = (remits) => ({ a: { BRA: row(100, 10) }, b: {}, remits });
+  const r1 = { id: 'r1', amount: 500, date: '2026-09-16' };
+  const r2 = { id: 'r2', amount: 40, date: '2026-09-16', reason: 'Tea' };
+  const edit = L.diffStateWrite({ entryStore: { '7_2026-09-16': base([r1, r2]) } }, { entryStore: { '7_2026-09-16': base([{ ...r1, date: '2026-09-17' }, { ...r2, reason: 'Salt' }]) } });
+  check('a remittance-only change is under Remittance', edit[0]?.module === 'Remittance', show(edit));
+  check('...naming the date change on deposit 1', has(edit[0], 'Remittance 1 · Date', '16-09-2026', '17-09-2026'));
+  check('...and the reason change on deposit 2', has(edit[0], 'Remittance 2 (Salt) · Reason', 'Tea', 'Salt'));
+  const removed = L.diffStateWrite({ entryStore: { '7_2026-09-16': base([r1, r2]) } }, { entryStore: { '7_2026-09-16': base([r1]) } });
+  check('a removed deposit is its own line', has(removed[0], 'Remittance 2 (Tea) removed', '₹40.00 · 16-09-2026', '—'), show(removed));
+
+  const fixed = L.diffStateWrite({ entryStore: { '7_2026-09-16': { a: { BRA: row(100, 10) }, b: {} } } }, { entryStore: { '7_2026-09-16': { a: { BRA: { ...row(120, 10), openFixed: true } }, b: {} } } });
+  check('an administrator fixing an Opening is a person’s update, marked as a correction', fixed[0]?.source === 'user' && has(fixed[0], 'BRA Rice · Opening correction', 'Carried', 'Fixed'), show(fixed));
+
+  const carried = L.diffStateWrite(
+    { entryStore: { '7_2026-09-16': { a: { BRA: row(100, 10) }, b: {} }, '7_2026-09-17': { a: { BRA: row(90, 5) }, b: {} } } },
+    { entryStore: { '7_2026-09-16': { a: { BRA: row(100, 20) }, b: {} }, '7_2026-09-17': { a: { BRA: row(80, 5) }, b: {} } } },
+    { entryStore: { '7_2026-09-16': 'edited' } },
+  );
+  const sys = carried.find((d) => d.recordKey === '7_2026-09-17');
+  check('the re-carried day reads "Opening carried forward from 16-09-2026 Closing to 17-09-2026 Opening"', sys?.source === 'system' && /^Opening carried forward from 16-09-2026 Closing to 17-09-2026 Opening/.test(sys.summary), show(sys));
+
+  const shopsBefore = [{ name: 'A', active: true }, { name: 'B', active: false }];
+  const shopsAfter = [{ name: 'A', active: true }, { name: 'B', active: true }];
+  const t = L.diffStateWrite({ __shops: shopsBefore }, { __shops: shopsAfter });
+  check('a shop made active is one CRS Shops row for that shop — no duplicate Masters row', t.length === 1 && t[0].module === 'CRS Shops' && t[0].crsId === 2 && t[0].action === 'activated', show(t));
+  const m = L.diffStateWrite({ __crsMaster: [{ id: 13, status: 'active' }] }, { __crsMaster: [{ id: 13, status: 'no_usage' }] });
+  check('CRS Master no_usage is a deactivation of CRS 13', m.length === 1 && m[0].action === 'deactivated' && m[0].crsId === 13, show(m));
+
+  const msg = L.messageDraft({ id: 5, title: 'Stock check', audience: 'CRS 7 · BC & Packer', recipients: 2, priority: 'normal' });
+  check('an admin message is a Notifications "sent" row', msg.module === 'Notifications' && msg.action === 'sent' && /Stock check/.test(msg.summary));
+  const pv = L.documentDraft({ module: 'Reports', action: 'printed', crsId: 7, month: 7, year: 2026, report: 'Quarterly PV (3-Month)', period: 'Jul–Sep 2026' });
+  check('a printed PV names the report and period', pv.module === 'Reports' && has(pv, 'Report', '', 'Quarterly PV (3-Month)') && has(pv, 'Period', '', 'Jul–Sep 2026'));
 }
 
 console.log(`\n${failures ? `${failures} FAILED` : 'ACTIVITY LOG OK'}`);

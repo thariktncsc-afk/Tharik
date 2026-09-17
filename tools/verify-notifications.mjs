@@ -160,7 +160,8 @@ console.log('\nwhat an approval request says');
   };
   const w = N.paymentRequestText(p);
   const line = (l) => w.details.find((d) => d.label === l)?.value;
-  check('titled as in the spec', w.title === 'Payment Approval Request');
+  check('titled as in the spec', w.title === 'CRS 19 – Statement Download Payment Approval', w.title);
+  check('second line: what | Requested by | time (IST)', w.message === 'Monthly Statement – September 2026 · 3 sheets · ₹120.00 | Requested by Rahamathullakhan (BC) | 9:15 PM', w.message);
   check('names the shop', line('CRS') === 'CRS 19 — காக்காதோப்பு');
   check('names who asked, with their role', line('Requested By') === 'Rahamathullakhan (BC)');
   check('names the statement and period', line('Statement') === 'Monthly Statement – September 2026 · 3 sheets');
@@ -177,7 +178,11 @@ console.log('\nwhat an approval request says');
   };
   const w = N.clearRequestText(c);
   const line = (l) => w.details.find((d) => d.label === l)?.value;
-  check('titled as in the spec', w.title === 'Clear Approval Request');
+  check('titled as in the spec', w.title === 'CRS 1 – Daily Sales Clear Request', w.title);
+  check('second line as in the spec: date | Requested by | time', w.message === '01-09-2026 | Requested by Divya (BC) | 8:50 PM', w.message);
+  check('a month clear is a Monthly Sales Clear Request', N.clearRequestText({ ...c, scopeKind: 'month', scopeLabel: 'September 2026' }).title === 'CRS 1 – Monthly Sales Clear Request');
+  check('the stored "16 Sept 2026" label is written 16-09-2026', N.clearRequestText({ ...c, scopeLabel: '16 Sept 2026' }).message.startsWith('16-09-2026 | '));
+  check('a 10:35 IST request says 10:35 AM', N.clockIST('2026-09-16T05:05:00.000Z') === '10:35 AM', N.clockIST('2026-09-16T05:05:00.000Z'));
   check('names the module', line('Module') === 'Daily Sales');
   check('writes the entry date the way the office does', line('Entry Date') === '01-09-2026');
   check('names the requester and role', line('Requested By') === 'Divya (BC)');
@@ -189,15 +194,16 @@ console.log('\nwhat the requester is told');
 {
   const p = { orderNo: 'PAY-1', crsId: 19, shopName: '', requesterName: 'R', requesterRole: 'BC', kind: 'statement', month: 9, year: 2026, sheetCount: 1, dayCount: 0, totalPaise: 4000, submittedAt: 'x' };
   const ok = N.paymentResultText(p, 'approved');
-  check('an approval says the download is unlocked', ok.title === 'Payment Request Approved' && /can now download the statement/.test(ok.message));
+  check('an approval says the download is unlocked', ok.title === 'CRS 19 – Payment Request Approved' && /has been approved/.test(ok.message) && /can now download the statement/.test(ok.message));
   const no = N.paymentResultText(p, 'rejected', 'UTR not found in bank feed');
-  check('a rejection gives the reason', no.title === 'Payment Request Rejected' && /UTR not found/.test(no.message));
+  check('a rejection gives the reason', no.title === 'CRS 19 – Payment Request Rejected' && /has been rejected/.test(no.message) && /UTR not found/.test(no.message));
   check('a shop with no name on file still reads correctly', ok.details[0].value === 'CRS 19');
 }
 {
   const c = { id: 1, crsId: 1, shopName: '', modules: ['Daily Sales'], scopeKind: 'day', scopeLabel: '2026-09-01', requesterName: 'Divya', requesterRole: 'BC', reason: 'x', createdAt: 'x' };
   const no = N.clearResultText(c, 'rejected');
-  check('a rejected clear is worded as in the spec', no.message === 'Your request to clear Daily Sales for 01-09-2026 was rejected by Admin.', no.message);
+  check('a rejected clear is worded as in the spec', no.message === 'Your Daily Sales Clear Request for 01-09-2026 has been rejected.', no.message);
+  check('an approved clear is worded as in the spec', N.clearResultText(c, 'cleared').message.startsWith('Your Daily Sales Clear Request for 01-09-2026 has been approved.'));
   check('an approved clear says the entry can be keyed again', /cleared and can be keyed again/.test(N.clearResultText(c, 'cleared').message));
 }
 

@@ -18,7 +18,10 @@ import type { Session } from '@/lib/session';
 import { CRS_NAMES } from '@/lib/engine/shops';
 import type { ActivityDraft, ActivityRow, FeedItem } from './core';
 
-export const ACTIVITY_MIGRATION_HINT = 'The activity log is not installed yet — run supabase/migrations/0006_activity_log.sql.';
+export const ACTIVITY_MIGRATION_HINT = 'The activity log is not installed yet — run supabase/migrations/0006_activity_log.sql and 0008_activity_log_complete.sql.';
+
+/** Modules where an administrator's update is a correction of a shop's operational figures. */
+const CORRECTABLE = new Set(['Daily Sales', 'Remittance', 'Monthly Entry', 'Receipt', 'Inspection', 'Sales Close', 'Gunny']);
 
 type DbError = { code?: string; message?: string } | null | undefined;
 export const logMissing = (e: DbError) =>
@@ -47,8 +50,12 @@ export async function recordActivity(session: Session | null, drafts: ActivityDr
   try {
     const ids = [...new Set(drafts.map((d) => d.crsId).filter((x): x is number => typeof x === 'number' && x > 0))];
     const [who, names] = await Promise.all([actor(session), shopNames(ids)]);
+    const isAdmin = session?.role === 'ADMIN';
     const rows = drafts.map((d) => ({
       actor_user_id: session?.userId ?? null,
+      // The shop the person belonged to at the time — kept on the row, so a
+      // transfer or deletion later does not rewrite who they were.
+      actor_crs_id: typeof session?.crsId === 'number' ? session.crsId : null,
       actor_username: session?.username ?? 'system',
       actor_name: who.name,
       actor_role: who.role,
@@ -61,12 +68,15 @@ export async function recordActivity(session: Session | null, drafts: ActivityDr
       entry_month: d.entryMonth ?? null,
       entry_year: d.entryYear ?? null,
       record_key: d.recordKey ?? null,
-      summary: String(d.summary ?? '').slice(0, 500),
+      summary: (isAdmin && d.source === 'user' && d.action === 'updated' && CORRECTABLE.has(d.module) ? `Admin correction — ${d.summary ?? ''}` : String(d.summary ?? '')).slice(0, 500),
       changes: (d.changes ?? []).slice(0, 150),
       related_id: d.relatedId ?? null,
     }));
     for (let i = 0; i < rows.length; i += 200) {
-      const { error } = await supabaseAdmin().from('activity_log').insert(rows.slice(i, i + 200));
+      const chunk = rows.slice(i, i + 200);
+      let { error } = await supabaseAdmin().from('activity_log').insert(chunk);
+      // 0006 without 0008: the snapshot column is missing — record the rest.
+      if (error?.code === 'PGRST204') ({ error } = await supabaseAdmin().from('activity_log').insert(chunk.map(({ actor_crs_id: _c, ...r }) => r)));
       if (error) throw error;
     }
   } catch (e) {
@@ -99,6 +109,8 @@ const toRow = (r: Raw): ActivityRow => ({
   summary: String(r.summary ?? ''),
   changes: Array.isArray(r.changes) ? (r.changes as ActivityRow['changes']) : [],
   relatedId: r.related_id == null ? null : String(r.related_id),
+  historical: r.historical === true,
+  actorCrsId: r.actor_crs_id == null ? null : Number(r.actor_crs_id),
 });
 
 export type LogFilters = {
@@ -120,9 +132,13 @@ export type LogFilters = {
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The all-shop log, newest first. Administrators only — the caller checks. */
-export async function readActivityLog(f: LogFilters): Promise<{ installed: boolean; items: ActivityRow[]; nextCursor: number | null }> {
+export async function readActivityLog(
+  f: LogFilters,
+): Promise<{ installed: boolean; items: ActivityRow[]; nextCursor: number | null; total: number | null }> {
   const limit = Math.max(1, Math.min(Number(f.limit) || 100, 300));
-  let q = supabaseAdmin().from('activity_log').select('*').order('id', { ascending: false }).limit(limit + 1);
+  // The count is of every row matching the filters (not just this page), so the
+  // number on screen moves with the filters.
+  let q = supabaseAdmin().from('activity_log').select('*', { count: 'exact' }).order('id', { ascending: false }).limit(limit + 1);
   // Days are India's days: 17 Sep runs 00:00–23:59 IST, not UTC.
   if (f.from && ISO.test(f.from)) q = q.gte('at', `${f.from}T00:00:00+05:30`);
   if (f.to && ISO.test(f.to)) q = q.lte('at', `${f.to}T23:59:59.999+05:30`);
@@ -133,15 +149,15 @@ export async function readActivityLog(f: LogFilters): Promise<{ installed: boole
   if (f.source) q = q.eq('source', f.source);
   if (f.before) q = q.lt('id', f.before);
   if (f.after) q = q.gt('id', f.after);
-  const { data, error } = await q;
+  const { data, error, count } = await q;
   if (error) {
-    if (logMissing(error)) return { installed: false, items: [], nextCursor: null };
+    if (logMissing(error)) return { installed: false, items: [], nextCursor: null, total: null };
     throw new Error(error.message);
   }
   const rows = (data ?? []).map((r) => toRow(r as Raw));
   const more = rows.length > limit;
   const items = rows.slice(0, limit);
-  return { installed: true, items, nextCursor: more ? items[items.length - 1].id : null };
+  return { installed: true, items, nextCursor: more ? items[items.length - 1].id : null, total: count ?? null };
 }
 
 /** The dashboard's short feed. `crsId` null means an administrator; otherwise that shop only. */
@@ -160,7 +176,7 @@ export async function recentFeed(crsId: number | null, limit: number): Promise<{
   return {
     installed: true,
     items: (data ?? []).map((r) => {
-      const { changes: _c, recordKey: _k, relatedId: _r, actorUserId: _u, ...item } = toRow(r as Raw);
+      const { changes: _c, recordKey: _k, relatedId: _r, actorUserId: _u, historical: _h, actorCrsId: _s, ...item } = toRow(r as Raw);
       return item;
     }),
   };

@@ -25,6 +25,7 @@
  */
 import { CRS29_KERO, DSS_A, DSS_B } from '@/lib/engine/commodities';
 import { isSystemRecord } from '@/lib/clearGuard';
+import { txnsOf } from '@/lib/engine/remittance';
 
 export type ActivityAction =
   | 'created'
@@ -43,7 +44,11 @@ export type ActivityAction =
   | 'printed'
   | 'exported'
   | 'refused'
-  | 'signed-in';
+  | 'signed-in'
+  | 'activated'
+  | 'deactivated'
+  | 'generated'
+  | 'sent';
 
 export type ActivitySource = 'user' | 'system';
 export type Change = { label: string; before: string; after: string };
@@ -83,10 +88,14 @@ export type ActivityRow = {
   summary: string;
   changes: Change[];
   relatedId: string | null;
+  /** Rebuilt from evidence that predates the log (tools/backfill-activity-log.mjs). */
+  historical: boolean;
+  /** The shop the person belonged to when they acted. */
+  actorCrsId: number | null;
 };
 
 /** The dashboard's short line — a row without its change detail. */
-export type FeedItem = Omit<ActivityRow, 'changes' | 'recordKey' | 'relatedId' | 'actorUserId'>;
+export type FeedItem = Omit<ActivityRow, 'changes' | 'recordKey' | 'relatedId' | 'actorUserId' | 'historical' | 'actorCrsId'>;
 
 /** Which record the person edited in this save, and whether it closed something. */
 export type EditHints = Record<string, Record<string, 'edited' | 'closed'>>;
@@ -109,6 +118,10 @@ export const ACTION_LABEL: Record<ActivityAction, string> = {
   exported: 'Exported',
   refused: 'Refused',
   'signed-in': 'Signed in',
+  activated: 'Activated',
+  deactivated: 'Deactivated',
+  generated: 'Generated',
+  sent: 'Sent',
 };
 
 export const ACTIONS = Object.keys(ACTION_LABEL) as ActivityAction[];
@@ -127,7 +140,10 @@ export const MODULES = [
   'Payment',
   'Statements',
   'DSS',
+  'Reports',
+  'Notifications',
   'Users',
+  'CRS Shops',
   'Masters',
   'Session',
 ];
@@ -137,6 +153,7 @@ export const roleLabel = (role: string) => {
   if (r === 'ADMIN') return 'Admin';
   if (r === 'BC') return 'BC';
   if (r === 'PACKER') return 'Packer';
+  if (r === 'SYSTEM') return 'System';
   return role || '';
 };
 
@@ -220,7 +237,7 @@ const CARRIED = new Set<string>(['open', 'receipt', 'excess', 'shortage', 'trans
 const remitTotal = (s: Loose) =>
   Array.isArray(s.remits) && s.remits.length ? (s.remits as unknown[]).reduce<number>((t, r) => t + num(obj(r).amount), 0) : num(s.remitAmount);
 
-function dayChanges(before: unknown, after: unknown) {
+function dayChanges(before: unknown, after: unknown, dateIso = '') {
   const b = obj(before);
   const a = obj(after);
   const blankBefore = before === undefined;
@@ -245,21 +262,43 @@ function dayChanges(before: unknown, after: unknown) {
         if (CARRIED.has(f)) carried = true;
         else keyed = true;
       }
+      // An administrator fixing an Opening instead of carrying it (stockChain.ts).
+      if (!blankBefore && !blankAfter && (x.openFixed === true) !== (y.openFixed === true)) {
+        changes.push({ label: `${commodityName(id)} · Opening correction`, before: x.openFixed === true ? 'Fixed' : 'Carried', after: y.openFixed === true ? 'Fixed' : 'Carried' });
+        keyed = true;
+      }
     }
   }
 
+  // Remittance, deposit by deposit — each has an id that survives a re-save
+  // (engine/remittance.ts), so a changed amount, date or reason is named
+  // against the deposit it belongs to, and an added or removed one is its own line.
+  const tb = blankBefore ? [] : txnsOf(b, dateIso);
+  const ta = blankAfter ? [] : txnsOf(a, dateIso);
+  const was = new Map(tb.map((t) => [t.id, t]));
+  const now = new Set(ta.map((t) => t.id));
+  const depositName = (i: number, reason?: string) => `Remittance ${i + 1}${reason ? ` (${reason})` : ''}`;
+  ta.forEach((t, i) => {
+    const x = was.get(t.id);
+    const name = depositName(i, t.reason);
+    if (!x) {
+      changes.push({ label: `${name} added`, before: '—', after: `${rupees(t.amount)} · ${dmy(t.date)}` });
+      remittance = true;
+      return;
+    }
+    if (!near(x.amount, t.amount)) changes.push({ label: `${name} · Amount`, before: rupees(x.amount), after: rupees(t.amount) });
+    if (x.date !== t.date) changes.push({ label: `${name} · Date`, before: dmy(x.date), after: dmy(t.date) });
+    if ((x.reason ?? '') !== (t.reason ?? '')) changes.push({ label: `${name} · Reason`, before: x.reason ?? '—', after: t.reason ?? '—' });
+    if (!near(x.amount, t.amount) || x.date !== t.date || (x.reason ?? '') !== (t.reason ?? '')) remittance = true;
+  });
+  tb.forEach((t, i) => {
+    if (now.has(t.id)) return;
+    changes.push({ label: `${depositName(i, t.reason)} removed`, before: `${rupees(t.amount)} · ${dmy(t.date)}`, after: '—' });
+    remittance = true;
+  });
   const rb = remitTotal(b);
   const ra = remitTotal(a);
-  if ((blankBefore || blankAfter) ? rb || ra : !near(rb, ra)) {
-    changes.push({ label: 'Remittance', before: blankBefore ? '—' : rupees(rb), after: blankAfter ? '—' : rupees(ra) });
-    remittance = true;
-  }
-  const db = String(b.remitDate ?? '');
-  const da = String(a.remitDate ?? '');
-  if (db !== da && !(blankBefore || blankAfter)) {
-    changes.push({ label: 'Remittance date', before: dmy(db), after: dmy(da) });
-    remittance = true;
-  }
+  if (remittance && !blankBefore && !blankAfter && !near(rb, ra)) changes.push({ label: 'Remittance total', before: rupees(rb), after: rupees(ra) });
   for (const [f, label] of [['freeRice', 'Free Rice'], ['costRice', 'Cost Rice']] as const) {
     const hb = b[f] !== undefined;
     const ha = a[f] !== undefined;
@@ -271,34 +310,60 @@ function dayChanges(before: unknown, after: unknown) {
   return { changes: changes.slice(0, MAX_CHANGES), keyed, remittance, carried };
 }
 
-function dayDraft(key: string, before: unknown, after: unknown, hint: 'edited' | 'closed' | undefined): ActivityDraft | null {
+/** The shop's sheet before `dateIso` in a whole entryStore — where a carried Opening came from. */
+function previousSheetDate(store: unknown, crsId: number | null, dateIso: string): string | null {
+  if (!crsId || !isObj(store)) return null;
+  let best: string | null = null;
+  for (const k of Object.keys(store)) {
+    const m = DAY_KEY.exec(k);
+    if (!m || Number(m[1]) !== crsId || m[2] >= dateIso) continue;
+    if (!best || m[2] > best) best = m[2];
+  }
+  return best;
+}
+
+function dayDraft(key: string, before: unknown, after: unknown, hint: 'edited' | 'closed' | undefined, store?: unknown): ActivityDraft | null {
   const e = entryOf(key);
   if (!e.entryDate) return null;
   const projBefore = isObj(before) && !!before.__projection;
   const projAfter = isObj(after) && !!after.__projection;
-  // A projected sheet is Monthly Entry's own output (monthProjection.ts): the
-  // month-close that writes it is logged as Monthly Entry, not as a day.
-  if (after !== undefined && projAfter) return null;
+  // A projected sheet is Monthly Entry's own output (monthProjection.ts): one
+  // automatic row says the month-close generated it; its figures are the
+  // month's, already logged against Monthly Entry.
+  if (after !== undefined && projAfter) {
+    return {
+      ...e, recordKey: key, module: 'Monthly Entry', action: 'generated', source: 'system',
+      summary: `Last-day sheet ${dmy(e.entryDate)} ${before === undefined ? 'generated' : 'regenerated'} from Monthly Entry`, changes: [],
+    };
+  }
   if (after === undefined && projBefore) return null;
 
   const base = { ...e, recordKey: key };
   if (after === undefined) {
-    const d = dayChanges(before, undefined);
+    const d = dayChanges(before, undefined, e.entryDate);
     return { ...base, module: 'Daily Sales', action: 'deleted', source: 'user', summary: 'Day sheet deleted', changes: d.changes };
   }
   if (before === undefined || projBefore) {
-    const d = dayChanges(undefined, after);
+    const d = dayChanges(undefined, after, e.entryDate);
     return {
       ...base, module: 'Daily Sales', action: 'created', source: 'user',
       summary: projBefore ? 'The month\'s projected sheet became a day sheet' : 'New day sheet', changes: d.changes,
     };
   }
 
-  const d = dayChanges(before, after);
+  const d = dayChanges(before, after, e.entryDate);
   if (!d.changes.length) return null;
   const module = d.remittance && !d.keyed && !d.carried ? 'Remittance' : 'Daily Sales';
   if (!hint && !d.keyed && !d.remittance) {
-    return { ...base, module: 'Daily Sales', action: 'recalculated', source: 'system', summary: summarise(d.changes, 'Recalculated'), changes: d.changes };
+    // One row for the day, not one per figure: "OB carried forward from 16 Sep CB to 17 Sep OB".
+    const prev = previousSheetDate(store, e.crsId, e.entryDate);
+    const openingMoved = d.changes.some((c) => c.label.endsWith('· Opening'));
+    const head = openingMoved
+      ? prev
+        ? `Opening carried forward from ${dmy(prev)} Closing to ${dmy(e.entryDate)} Opening`
+        : `Opening recalculated for ${dmy(e.entryDate)}`
+      : `Figures recalculated for ${dmy(e.entryDate)}`;
+    return { ...base, module: 'Daily Sales', action: 'recalculated', source: 'system', summary: `${head} — ${summarise(d.changes, '')}`.slice(0, 500), changes: d.changes };
   }
   return { ...base, module, action: hint === 'closed' ? 'closed' : 'updated', source: 'user', summary: summarise(d.changes, 'Updated'), changes: d.changes };
 }
@@ -455,7 +520,8 @@ function receiptDrafts(before: unknown, after: unknown): ActivityDraft[] {
     if (JSON.stringify(x) === JSON.stringify(y)) continue;
     const row = (y ?? x)!;
     const date = String(row.date ?? '');
-    const changes = genericChanges(x ? { 'Receipt no': x.receiptNo, Date: dmy(String(x.date ?? '')), ...obj(x.items) } : undefined, y ? { 'Receipt no': y.receiptNo, Date: dmy(String(y.date ?? '')), ...obj(y.items) } : undefined);
+    const view = (r: Loose) => ({ 'Receipt no': r.receiptNo, Type: r.type === 'advance' ? 'Advance' : 'Regular', Date: dmy(String(r.date ?? '')), ...obj(r.items) });
+    const changes = genericChanges(x ? view(x) : undefined, y ? view(y) : undefined);
     out.push({
       crsId: Number(row.crsId) || null,
       entryDate: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
@@ -464,7 +530,7 @@ function receiptDrafts(before: unknown, after: unknown): ActivityDraft[] {
       action: !x ? 'created' : !y ? 'deleted' : 'updated',
       // The row Monthly Entry writes for a whole month is its output.
       source: row.source === 'monthly-entry' ? 'system' : 'user',
-      summary: `Receipt ${String(row.receiptNo ?? id)}`,
+      summary: `${row.type === 'advance' ? 'Advance' : 'Regular'} receipt ${String(row.receiptNo ?? id)}`,
       changes,
     });
   }
@@ -475,6 +541,33 @@ function receiptDrafts(before: unknown, after: unknown): ActivityDraft[] {
 
 /** Published by the roll-up on every save — logging them would double every entry. */
 const DERIVED = new Set(['monthlyStore', 'meSourceStore', '__counters']);
+
+/**
+ * Shops made active or inactive in one master write: `__shops[i].active`
+ * (true/false) or `__crsMaster[i].status` ('active' / 'no_usage'). `label` is
+ * the generic diff's label for the same leaf, so it is not listed twice.
+ */
+function shopToggles(store: string, before: unknown, after: unknown): { label: string; draft: ActivityDraft }[] {
+  if (!Array.isArray(before) || !Array.isArray(after)) return [];
+  const out: { label: string; draft: ActivityDraft }[] = [];
+  after.forEach((raw, i) => {
+    const a = obj(raw);
+    const b = obj(before[i]);
+    const field = store === '__shops' ? 'active' : 'status';
+    if (!(field in a) || !(field in b) || a[field] === b[field]) return;
+    const on = store === '__shops' ? a.active !== false : a.status === 'active';
+    const crsId = store === '__crsMaster' && Number(a.id) > 0 ? Number(a.id) : i + 1;
+    const shown = (v: unknown) => (store === '__shops' ? (v === false ? 'Inactive' : 'Active') : v === 'active' ? 'Active' : 'Inactive');
+    out.push({
+      label: `${i + 1} · ${field}`,
+      draft: {
+        crsId, module: 'CRS Shops', action: on ? 'activated' : 'deactivated', source: 'user', recordKey: store,
+        summary: `CRS ${crsId} ${on ? 'activated' : 'made inactive'}`, changes: [{ label: 'Status', before: shown(b[field]), after: shown(a[field]) }],
+      },
+    });
+  });
+  return out;
+}
 
 /** What the browser says it edited, accepted only in this exact shape. */
 export function readHints(raw: unknown): EditHints {
@@ -506,7 +599,11 @@ export function diffStateWrite(before: Record<string, unknown>, after: Record<st
     }
 
     if (MASTER_LABEL[store]) {
-      const changes = genericChanges(prev, value);
+      // A shop switched on or off is its own row, under that shop.
+      const toggles = store === '__shops' || store === '__crsMaster' ? shopToggles(store, prev, value) : [];
+      out.push(...toggles.map((t) => t.draft));
+      const skip = new Set(toggles.map((t) => t.label));
+      const changes = genericChanges(prev, value).filter((c) => !skip.has(c.label));
       if (!changes.length) continue;
       out.push({ crsId: null, module: 'Masters', action: prev === undefined ? 'created' : 'updated', source: 'user', recordKey: store, summary: `${MASTER_LABEL[store]} updated`, changes });
       continue;
@@ -520,7 +617,7 @@ export function diffStateWrite(before: Record<string, unknown>, after: Record<st
       if (JSON.stringify(x) === JSON.stringify(y)) continue;
       const hint = hints[store]?.[key];
       let draft: ActivityDraft | null = null;
-      if (store === 'entryStore') draft = dayDraft(key, x, y, hint);
+      if (store === 'entryStore') draft = dayDraft(key, x, y, hint, value);
       else if (store === 'inspectionStore') draft = inspectionDraft(key, x, y);
       else if (store === 'meManualStore') draft = manualDraft(key, x, y, hint);
       else if (store === 'salesCloseStore') draft = salesCloseDraft(key, x, y);
@@ -616,18 +713,40 @@ export function paymentDraft(o: OrderLike, action: 'created' | 'submitted' | 'ap
 }
 
 export function documentDraft(input: {
-  module: 'Statements' | 'DSS';
+  module: 'Statements' | 'DSS' | 'Reports';
   action: 'viewed' | 'printed' | 'exported';
   crsId: number;
   month: number;
   year: number;
   sections?: string[];
+  /** For Reports: which report — "Quarterly PV (3-Month)", "Yearly PV", "Monthly Report". */
+  report?: string;
+  /** For a PV: the period it covers, e.g. "Jul–Sep 2026". */
+  period?: string;
 }): ActivityDraft {
   const list = (input.sections ?? []).slice(0, 20);
+  const changes: Change[] = [];
+  if (input.report) changes.push({ label: 'Report', before: '', after: input.report });
+  if (input.period) changes.push({ label: 'Period', before: '', after: input.period });
+  if (list.length) changes.push({ label: 'Sections', before: '', after: list.join(', ') });
   return {
     crsId: input.crsId, entryMonth: input.month, entryYear: input.year, module: input.module, action: input.action, source: 'user',
-    summary: list.length ? list.join(', ') : input.module,
-    changes: list.length ? [{ label: 'Sections', before: '', after: list.join(', ') }] : [],
+    summary: [input.report, input.period, list.join(', ')].filter(Boolean).join(' · ') || input.module,
+    changes,
+  };
+}
+
+/** An administrator's message sent to shops (notify/server.ts sendMessage). */
+export function messageDraft(input: { id: number; title: string; audience: string; recipients: number; priority: string }): ActivityDraft {
+  return {
+    crsId: null, module: 'Notifications', action: 'sent', source: 'user', recordKey: `message:${input.id}`, relatedId: String(input.id),
+    summary: `Message “${input.title}” to ${input.audience} (${input.recipients} recipient${input.recipients === 1 ? '' : 's'})`.slice(0, 500),
+    changes: [
+      { label: 'Title', before: '', after: input.title },
+      { label: 'Sent to', before: '', after: input.audience },
+      { label: 'Recipients', before: '', after: String(input.recipients) },
+      { label: 'Priority', before: '', after: input.priority },
+    ],
   };
 }
 

@@ -14,8 +14,10 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
-import { MESSAGE_MAX, parseAudience, parsePriority, TITLE_MAX } from '@/lib/notify/core';
+import { MESSAGE_MAX, describeAudience, parseAudience, parsePriority, TITLE_MAX } from '@/lib/notify/core';
 import { MIGRATION_HINT, personFor, sendMessage, sentMessages, tablesMissing } from '@/lib/notify/server';
+import { messageDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,7 +61,10 @@ export async function POST(req: Request) {
 
   try {
     const sender = await personFor(s.userId, s.username, s.role, null);
-    const sent = await sendMessage({ sender, title, message, priority: parsePriority(body.priority), audience });
+    const priority = parsePriority(body.priority);
+    const sent = await sendMessage({ sender, title, message, priority, audience });
+    // Logged once it has actually gone out.
+    await recordActivity(s, [messageDraft({ id: sent.id, title, audience: describeAudience(audience), recipients: sent.recipients, priority })]);
     return NextResponse.json({ ok: true, ...sent });
   } catch (e) {
     const err = e as { code?: string; status?: number; message?: string };

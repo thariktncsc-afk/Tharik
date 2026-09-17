@@ -243,8 +243,24 @@ pair there; no schema change.
   (there is no `auth.uid()`), so a subscribed browser receives nothing. Making
   it receive would mean a policy exposing every shop's notifications to the
   public key, or a guessable broadcast channel — and either breaks "the browser
-  never talks to Supabase". The bell polls its own route every 15 s while
-  visible, on focus, and straight after the person's own actions.
+  never talks to Supabase". The bell rides the live-sync beat: `/api/sync
+  ?topics=inbox` answers `<unread>:<newest recipient id>` for the session's
+  user (`inboxBeat`), and a change makes the bell fetch its summary — so a
+  badge moves within ~4 s. A 30 s poll, focus and the person's own actions
+  are the fallbacks.
+- **One request, one notification.** `notifyApprovalRequested` skips a
+  request that already has a `pending` notification, and migration `0007`
+  says the same with a partial unique index (a 23505 is treated as "already
+  there"). A result is skipped if one with the same decision was already sent
+  since the latest request notification. A payment rejected and resubmitted is
+  a new request, so it is notified again.
+- **Waiting requests are backfilled.** An administrator's first summary per
+  server process announces every `awaiting_approval` payment and `pending`
+  clear request that has no notification (`backfillPendingApprovals`) — read
+  only, idempotent, and only once the tables are known to exist. An unpaid
+  `pending` payment order is not waiting for anyone and is not announced.
+- Request wording is the office's: `CRS 7 – Daily Sales Clear Request` over
+  `16-09-2026 | Requested by Name (BC) | 10:35 AM` (time in IST).
 - Recipients are denormalised at send time, so a Packer transferred next month
   still appears under their old shop in an old message's read report.
 
@@ -271,11 +287,82 @@ role.
 - The stock guard's Opening lock lets a saved Opening move **to its carried
   balance and nothing else**, or a shop saving an earlier day would be refused
   for the later days it re-carries.
-- Data saved before this rule can still hold typed Openings mid-chain; they are
-  corrected the next time a balance-moving write at or before them rebuilds.
+- **A sheet's Closing is calculated, never read.** `buildChainIndex` walks each
+  commodity in date order and works out every sheet's Closing from the Opening
+  carried into it, that day's register receipt, inspection and sales — what
+  Daily Entry shows for that day. A stale stored Closing can therefore never
+  leak into the next day's Opening (CRS 7: 16 Sep stored 100 while its screen
+  showed 3342, and 17 Sep opened at 100). The rebuild writes the same figures
+  back: Opening, Receipt where the register speaks, adjustments, Total, Closing
+  — never Sales or anything else keyed.
+- Stored sheets that predate the rule are repaired with
+  `node tools/repair-stock-chain.mjs [--crs=N]` (dry run) then `--write`, which
+  backs up the rows to `backups/` first and writes under version.
 
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
+
+## Holidays — one engine
+
+`src/lib/engine/holidays.ts` decides every date: a **government holiday on
+exactly that date** (the `__holidays` master, `{ d, name }` per year) first,
+then the **1st/2nd Friday and 3rd/4th Sunday**, else a working day. The
+Dashboard's status and its Entries / Days Without Entry counts
+(`workingDayCounts`), Daily Entry's date line and the holiday calendar all call
+it — do not add a formula anywhere else.
+
+- **"3rd Sunday" is the third Sunday in the month: `ceil(day / 7)`.** The
+  ported engine used the calendar row (`ceil((day + firstWeekday) / 7)`), which
+  in September 2026 called the 13th the 3rd Sunday and missed the real 4th (the
+  27th). The legacy prelude and `10-holidays.js` carry the corrected formula
+  too; no statement builder reads either, and `verify:statements` output was
+  identical before and after.
+- Nothing is cached: the Dashboard recomputes from `new Date()` every render
+  (the clock re-renders it each second), so it moves past midnight on its own.
+- A holiday's date is only as right as the master. `__holidays` 2026 had
+  Vinayagar Chaturthi on 2026-09-17 (seeded from the legacy literals); the
+  office confirmed 2026-09-14, and both the live row and `10-holidays.js` were
+  corrected. Check such dates with the office rather than working around them
+  in code.
+
+`npm run verify:holidays`.
+
+## Who may type an Opening — once for a shop, always for an admin
+
+`src/lib/engine/stockInit.ts`, enforced in `stockGuard.ts` (rule 1) on every
+`/api/state` write; the screens only mirror it.
+
+- **Shop staff type an Opening once, ever** — the shop's Initial Opening
+  Balance, before it has *started*. After that every Opening they save must be
+  the carried balance, or the figure already stored where nothing carries in.
+  They also may not key a day before the shop's first day (it would re-carry
+  the Initial Opening away), nor change a saved remittance's amount, date,
+  account or reason (rule 1b — adding and removing deposits is unchanged).
+- **"Started" is persistent**: crs_state `__stockInit`, one entry per shop
+  (`{date, at, by, source}`). Not in `ALLOWED_KEYS`, so no client writes it; the
+  server adds a shop when a day sheet for it lands (`shopsStartedBy` compares
+  stored vs landed, so another shop's untouched sheet in the same store does
+  not count), and entries are never removed. It never reads `__shops.active` /
+  `__crsMaster.status`, so Active → Inactive → Active cannot hand out a second
+  Initial Opening, and an approved clear of every sheet leaves the shop
+  started. Before the row exists at all the guard treats any shop with stored
+  sheets as started.
+- Seeded with `node tools/seed-stock-init.mjs --crs=7,19,30 --write` (the office
+  named them; CRS 16 holds a 1 Sep sheet but was listed as not started, so it
+  was deliberately left out). The tool only adds.
+- **Administrators may correct any Opening, Total or Closing** on Daily Entry.
+  Total and Closing are arithmetic, so a correction is saved as the Opening
+  that produces it — Sales (money banked) stays as keyed. A corrected row is
+  marked `openFixed: true`; `buildChainIndex` and `rebuildChain` keep a fixed
+  Opening instead of the carry, and the days after carry from it. The Initial
+  Opening is saved fixed too, so a day keyed before it later cannot carry it
+  away. Emptying an admin's Opening box goes back to the carry. Total and
+  Closing arithmetic is still enforced for everyone.
+- Administrators correct a saved remittance in place (✎, same id), so Monthly
+  Remittance and the statements — which read the day sheets — follow without
+  a duplicate row.
+
+`npm run verify:initial-opening` has the office's scenarios A–H.
 
 ## Clear requests — what a day and a month take
 
@@ -331,6 +418,24 @@ and reads.
   Activity falls back to deriving from `crs_state_audit` (`src/lib/activity.ts`).
 - Live: the log page and the dashboard watch the `activity` topic on
   `/api/sync` and fetch only rows newer than the ones shown.
+- **Append-only, in the database** (migration `0008`): update, delete and
+  truncate raise for every role, the service key included. `anon` and
+  `authenticated` hold no privileges on the table. There is no edit path.
+- **Snapshots**: name, role and `actor_crs_id` (the shop they belonged to then)
+  are copied onto each row, so transfers, renames and deletions never rewrite
+  old rows. The page's User filter lists only the selected shop's current staff.
+- **History** (`historical = true`): `node tools/backfill-activity-log.mjs
+  [--preview|--write]` rebuilds what the database genuinely shows — consecutive
+  `crs_state_audit` versions diffed with the live rules, payment order
+  timestamps, the clear-request event list, user `created_at`. Maintenance tool
+  writes (`import:xlsx`, `cleanup:…`) are System; a shared shop login (crs7)
+  leaves the role blank; an unrecorded person or previous value stays blank.
+  `backfill_key` makes re-runs add nothing, and evidence newer than the first
+  live row is ignored.
+- Admin updates to operational figures are summarised "Admin correction — …";
+  a remittance change names the deposit (amount, date, reason, added, removed);
+  shops activated/deactivated, admin messages sent, PV/report prints and the
+  Monthly Entry last-day sheet generation are their own rows.
 
 `npm run verify:activity-log`.
 
@@ -414,7 +519,7 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 - Run any new migration against the live database as an explicit step —
   `0004_payments.sql` included, or the Payments screen 503s and every download
   silently stays free
-- `0005_notifications.sql` too. Unlike 0004 nothing breaks without it — every
+- `0005_notifications.sql`, then `0007_notification_dedupe.sql`, too. Unlike 0004 nothing breaks without it — every
   approval proceeds and notifications are silently skipped — which is exactly
   why it is easy to forget: the bell just stays at zero forever
 - Supabase free tier **pauses after 7 days idle and has no backups** — upgrade

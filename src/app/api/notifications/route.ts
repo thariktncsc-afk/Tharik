@@ -1,8 +1,8 @@
 /**
  * The signed-in person's own notifications.
  *
- * GET  ?category=payments|clear|approvals|messages|system &unread=1 &limit= &before=
- * POST { action: 'read-all', category? }
+ * GET  ?category=payments|clear|approvals|messages|system &unread=1 &requests=1 &limit= &before=
+ * POST { action: 'read-all', category?, requests? }
  *
  * There is no parameter that names a user. Whose notifications these are comes
  * from the session cookie and nowhere else, so no request can ask for someone
@@ -36,6 +36,7 @@ export async function GET(req: Request) {
     const items = await listForUser(s.userId, {
       category: asCategory(url.searchParams.get('category')),
       unreadOnly: url.searchParams.get('unread') === '1',
+      requestsOnly: url.searchParams.get('requests') === '1',
       limit: Number(url.searchParams.get('limit')) || 30,
       before: url.searchParams.get('before'),
     });
@@ -52,11 +53,11 @@ export async function POST(req: Request) {
   const s = await me();
   if (!s) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
 
-  const body = (await req.json().catch(() => ({}))) as { action?: string; category?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; category?: string; requests?: boolean };
   if (body.action !== 'read-all') return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
 
   try {
-    const marked = await markAllForUser(s.userId, asCategory(body.category));
+    const marked = await markAllForUser(s.userId, asCategory(body.category), body.requests === true);
     return NextResponse.json({ marked });
   } catch (e) {
     if (tablesMissing(e as { code?: string })) return NextResponse.json({ marked: 0, installed: false });

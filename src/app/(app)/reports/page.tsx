@@ -264,6 +264,20 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crsVal, summary, monthlyStore, commodityMaster]);
 
+  /**
+   * A report printed or exported in this browser, reported for the activity
+   * log (/api/activity). Fire-and-forget: a log gap must never stand between
+   * the office and its report.
+   */
+  const reportEvent = (action: 'printed' | 'exported', report: string, month: number, year: number, period?: string) => {
+    if (!crsVal) return;
+    void fetch('/api/activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ module: 'Reports', action, crsId: Number(crsVal), month, year, report, period }),
+    }).catch(() => undefined);
+  };
+
   /** This month as the sheet readMonthlyStatement() expects. */
   const exportMonthlyData = async () => {
     if (!crsVal || !exportRows.length) return;
@@ -279,6 +293,7 @@ export default function ReportsPage() {
         rows: exportRows,
       };
       xlsx.writeFile(buildMonthlySheet(xlsx, data), monthlyFileName(data));
+      reportEvent('exported', 'Monthly Statement (Excel)', summary.moNum, summary.moYear);
     } catch (e) {
       void appAlert(e instanceof Error ? e.message : 'Could not build the Excel file.');
     } finally {
@@ -440,6 +455,10 @@ export default function ReportsPage() {
                   if (!pvHtml) {
                     void appAlert('Generate a PV Statement first.');
                     return;
+                  }
+                  // Printed in this browser, so the server never sees it: reported for the activity log.
+                  if (pvPeriod && crsVal) {
+                    reportEvent('printed', type === 'quarterly' ? 'Quarterly PV (3-Month)' : 'Yearly PV', pvPeriod.months[0].month, pvPeriod.months[0].year, pvPeriod.label);
                   }
                   window.print();
                 }}

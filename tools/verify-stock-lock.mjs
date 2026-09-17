@@ -76,15 +76,16 @@ console.log('\nOpening locks once saved');
   check('an administrator can', judge(before, after, ADMIN).length === 0);
   check(
     'the message names both figures',
-    /100\.000.*200\.000/.test(judge(before, after).find((v) => v.kind === 'opening-locked')?.detail ?? ''),
+    /200\.000.*must be 100\.000/.test(judge(before, after).find((v) => v.kind === 'opening-locked')?.detail ?? ''),
   );
 }
 {
-  // A saved sheet writes a row for every commodity, so a stored zero means
-  // "never keyed", not "keyed as nothing".
+  // The Opening is typed once, when the shop starts (engine/stockInit.ts). A
+  // started shop's stored zero is its answer; before it starts, it is keyable.
   const before = { entryStore: { [DAY]: sheet(row(0, 0, 0)) } };
   const after = { entryStore: { [DAY]: sheet(row(500, 0, 0)) } };
-  check('a stored Opening of zero is still keyable', judge(before, after).length === 0);
+  check('a started shop cannot re-key even a stored zero Opening', kinds(judge(before, after)).includes('opening-locked'));
+  check('a shop that has not started still types its Initial Opening', judge({ ...before, __stockInit: {} }, after).length === 0);
 }
 {
   const after = { entryStore: { [DAY]: sheet(row(100, 0, 40)) } };
@@ -94,7 +95,8 @@ console.log('\nOpening locks once saved');
   const projected = { ...sheet(row(100, 0, 40)), __projection: { source: 'monthly', at: 'x' } };
   const before = { entryStore: { [DAY]: projected } };
   const after = { entryStore: { [DAY]: sheet(row(900, 0, 40)) } };
-  check("converting Monthly Entry's projected sheet is not an Opening change", judge(before, after).length === 0);
+  check("converting Monthly Entry's projected sheet keeps the month's Opening", judge(before, { entryStore: { [DAY]: sheet(row(100, 0, 40)) } }).length === 0);
+  check('… and shop staff cannot retype it while converting', kinds(judge(before, after)).includes('opening-locked'));
 }
 {
   const before = { entryStore: { [DAY]: sheet(row(100, 0, 40)) } };

@@ -12,12 +12,13 @@
  * wrong.
  */
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { statusLabel, type InboxItem } from '@/lib/notify/core';
 import {
   FILTER_LABEL,
   PRIORITY_STYLE,
+  dayHeading,
   fetchInbox,
   filtersFor,
   fmtWhen,
@@ -104,7 +105,7 @@ export default function NotificationsPage() {
           </div>
         </div>
         {installed && unread > 0 ? (
-          <button type="button" onClick={() => void markAllRead(toQuery(filter).category)} style={{ ...btn, color: '#0369A1', padding: '8px 14px' }}>
+          <button type="button" onClick={() => void markAllRead(toQuery(filter).category, toQuery(filter).requests)} style={{ ...btn, color: '#0369A1', padding: '8px 14px' }}>
             Mark all as read{filter !== 'all' && filter !== 'unread' ? ` in ${FILTER_LABEL[filter]}` : ''}
           </button>
         ) : null}
@@ -154,13 +155,21 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          {items.map((it) => {
+          {items.map((it, i) => {
             const pr = PRIORITY_STYLE[it.priority];
             const st = statusLabel(it.status);
             const sc = statusStyle(it.status);
+            // Date-wise history: a heading wherever the day changes.
+            const day = dayHeading(it.createdAt);
+            const newDay = i === 0 || dayHeading(items[i - 1].createdAt) !== day;
             return (
+              <Fragment key={it.id}>
+              {newDay ? (
+                <div style={{ padding: '8px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: 11.5, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  {day}
+                </div>
+              ) : null}
               <div
-                key={it.id}
                 style={{
                   display: 'flex',
                   gap: 12,
@@ -207,6 +216,7 @@ export default function NotificationsPage() {
                   </div>
                 </div>
               </div>
+              </Fragment>
             );
           })}
           {more ? (
