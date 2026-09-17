@@ -14,6 +14,9 @@ import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { crsOfKey, isProtectedStore, periodOfKey, STORE_LABEL } from '@/lib/clearGuard';
 import { mutateClearDb, readClearDb, type StoredRequest } from '@/lib/clearStore';
 import { onClearRequested } from '@/lib/notify/approvals';
+import { monthDayKeys } from '@/lib/clearExecute';
+import { clearRequestDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -79,6 +82,19 @@ export async function POST(req: Request) {
   const { data: rows, error: readErr } = await supabaseAdmin().from('crs_state').select('store_key, data').eq('scope', 'global');
   if (readErr) return NextResponse.json({ error: 'Could not read the current data.' }, { status: 500 });
 
+  // A month clear takes the month's Daily Sales sheets and their inspection
+  // with it (clearExecute.ts), so the snapshot — the administrator's record of
+  // what is about to go — holds those days too.
+  const dataOf = (store: string) => (rows ?? []).find((r) => r.store_key === store)?.data;
+  const alsoGoing: Record<string, string[]> = { entryStore: [], inspectionStore: [] };
+  for (const k of storeKeys) {
+    const mo = /^(\d+)_(\d{1,2})_(\d{4})$/.exec(k);
+    if (!mo) continue;
+    const days = monthDayKeys({ entryStore: dataOf('entryStore'), inspectionStore: dataOf('inspectionStore') }, Number(mo[1]), Number(mo[2]), Number(mo[3]));
+    alsoGoing.entryStore.push(...days.entryStore);
+    alsoGoing.inspectionStore.push(...days.inspectionStore);
+  }
+
   const snapshot: Record<string, unknown> = {};
   const modules = new Set<string>();
   for (const row of rows ?? []) {
@@ -95,7 +111,7 @@ export async function POST(req: Request) {
     }
     if (!data || typeof data !== 'object') continue;
     const picked: Record<string, unknown> = {};
-    for (const k of storeKeys) {
+    for (const k of [...storeKeys, ...(alsoGoing[store] ?? [])]) {
       const rec = (data as Record<string, unknown>)[k];
       if (rec !== undefined) picked[k] = rec;
     }
@@ -161,6 +177,7 @@ export async function POST(req: Request) {
     // A duplicate returned above never reaches here, so the administrators are
     // told once per request, not once per click.
     await onClearRequested(created.request, s);
+    await recordActivity(s, [clearRequestDraft(created.request, 'requested')]);
     return NextResponse.json({ request: created.request });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not create the request.' }, { status: 500 });

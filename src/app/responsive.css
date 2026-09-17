@@ -357,3 +357,22 @@
     padding: 32px 16px;
   }
 }
+
+/* Daily Entry's two Sales Close buttons on a phone: Daily Sales Close on top,
+   Monthly Sales Close below it, each the full width. Only their order and
+   width change — handlers, titles, colours and the Monthly confirmation popup
+   are untouched (daily-entry/page.tsx). Tablets and desktops keep the row. */
+@media (max-width: 560px) {
+  .de-actions .de-close {
+    flex: 1 1 100%;
+    width: 100%;
+    margin-left: 0 !important;
+    justify-content: center;
+  }
+  .de-actions .de-close-day {
+    order: 1;
+  }
+  .de-actions .de-close-month {
+    order: 2;
+  }
+}

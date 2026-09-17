@@ -13,11 +13,13 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { cookies } from 'next/headers';
-import { describe, inspectWrite, isProtectedStore } from '@/lib/clearGuard';
+import { describe, inspectWrite, isProtectedStore, STORE_LABEL } from '@/lib/clearGuard';
 import { describeStock, inspectStockWrite } from '@/lib/stockGuard';
 import { describeRice, inspectRiceWrite } from '@/lib/engine/crs29Rice';
 import { logEvent } from '@/lib/clearServer';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
+import { diffStateWrite, readHints, refusedDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -66,17 +68,23 @@ async function requireSession() {
   return decodeSession(jar.get(SESSION_COOKIE)?.value);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   if (!supabaseConfigured()) {
     return NextResponse.json({ error: 'Supabase is not configured on the server.' }, { status: 503 });
   }
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
 
-  const { data, error } = await supabaseAdmin()
-    .from('crs_state')
-    .select('store_key, data, version')
-    .eq('scope', 'global');
+  // Live sync asks for just the stores somebody else wrote since this client
+  // read them (/api/sync tells it which); the first load asks for everything.
+  const keys = (new URL(req.url).searchParams.get('keys') ?? '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean)
+    .slice(0, 50);
+  let query = supabaseAdmin().from('crs_state').select('store_key, data, version').eq('scope', 'global');
+  if (keys.length) query = query.in('store_key', keys);
+  const { data, error } = await query;
 
   if (error) {
     console.error('[api/state] read failed:', error.code, error.message);
@@ -134,6 +142,9 @@ export async function POST(req: Request) {
   // where the data actually changes — a dialog in the browser is only manners.
   // Admins bypass: the point is a reviewed trail for shop staff.
   const isAdmin = session.role === 'ADMIN';
+  /** What the database held for the stores read below — the guards judge against it, and the activity log records the difference. */
+  let stored: Record<string, unknown> = {};
+  const refuse = (module: string, crsId: number | null, reason: string) => recordActivity(session, [refusedDraft(module, crsId, reason)]);
 
   const touched = Object.keys(stores).filter(isProtectedStore);
   if (touched.length) {
@@ -142,7 +153,10 @@ export async function POST(req: Request) {
     // it — the client posts just the stores that changed. So it is read here
     // whether or not it is being written.
     const needsRegister = 'entryStore' in stores || 'meManualStore' in stores;
-    const read = [...new Set(needsRegister ? [...touched, 'receiptStore'] : touched)];
+    // A day sheet's Opening may move to its carried balance (engine/rechain.ts),
+    // and the carry counts inspection on sheet-less days — so that is read too.
+    const alsoRead = [...(needsRegister ? ['receiptStore'] : []), ...('entryStore' in stores ? ['inspectionStore'] : [])];
+    const read = [...new Set([...touched, ...alsoRead])];
 
     const { data: current } = await db
       .from('crs_state')
@@ -150,7 +164,7 @@ export async function POST(req: Request) {
       .eq('scope', 'global')
       .in('store_key', read);
 
-    const stored: Record<string, unknown> = {};
+    stored = {};
     const stale: string[] = [];
     for (const row of current ?? []) {
       const key = row.store_key as string;
@@ -187,6 +201,7 @@ export async function POST(req: Request) {
       if (verdict.foreign.length) {
         const shops = [...new Set(verdict.foreign.map((f) => f.crsId))].join(', ');
         await logEvent(null, 'blocked', session, `Attempted to change CRS ${shops} while signed in to CRS ${ownCrsId}`);
+        await refuse(STORE_LABEL[verdict.foreign[0].store] ?? 'Data', ownCrsId, `Attempted to change CRS ${shops} while signed in to CRS ${ownCrsId}`);
         return NextResponse.json(
           { error: `This account may only change CRS ${ownCrsId} records — the save also altered CRS ${shops}.` },
           { status: 403 },
@@ -198,6 +213,7 @@ export async function POST(req: Request) {
       // So there is nothing to check against here: destructive is refused.
       if (verdict.destructive.length) {
         await logEvent(null, 'blocked', session, `Clear refused: ${describe(verdict.destructive)}`);
+        await refuse(verdict.destructive[0].label, verdict.destructive[0].crsId, `Clear refused — needs admin approval: ${describe(verdict.destructive)}`);
         return NextResponse.json(
           {
             error: 'This entry already contains saved data. Admin approval is required to clear or reset this entry.',
@@ -217,6 +233,7 @@ export async function POST(req: Request) {
     const broken = inspectStockWrite(stored, stores, isAdmin);
     if (broken.length) {
       await logEvent(null, 'blocked', session, `Stock field guard refused: ${describeStock(broken)}`);
+      await refuse(broken[0].store === 'entryStore' ? 'Daily Sales' : 'Monthly Entry', broken[0].crsId, `Refused: ${describeStock(broken.slice(0, 3))}`);
       return NextResponse.json(
         { error: describeStock(broken.slice(0, 3)) + (broken.length > 3 ? ` (+${broken.length - 3} more)` : ''), stockViolations: broken },
         { status: 403 },
@@ -230,11 +247,22 @@ export async function POST(req: Request) {
     const riceBroken = inspectRiceWrite(stored, stores);
     if (riceBroken.length) {
       await logEvent(null, 'blocked', session, `CRS 29 rice guard refused: ${describeRice(riceBroken)}`);
+      await refuse('Daily Sales', 29, `Refused: ${describeRice(riceBroken.slice(0, 3))}`);
       return NextResponse.json(
         { error: describeRice(riceBroken.slice(0, 3)) + (riceBroken.length > 3 ? ` (+${riceBroken.length - 3} more)` : ''), riceViolations: riceBroken },
         { status: 403 },
       );
     }
+  }
+
+  // The activity log compares what was stored with what is written. Protected
+  // stores were read for the guards above; a master being written is read now,
+  // before it is overwritten.
+  const unread = Object.keys(stores).filter((k) => ALLOWED_KEYS.has(k) && !(k in stored) && k !== '__counters');
+  if (unread.length) {
+    const { data: prior } = await db.from('crs_state').select('store_key, data').eq('scope', 'global').in('store_key', unread);
+    stored = { ...stored };
+    for (const row of prior ?? []) stored[row.store_key as string] = row.data;
   }
 
   for (const [key, value] of Object.entries(stores)) {
@@ -273,6 +301,13 @@ export async function POST(req: Request) {
 
     if (error || !data) conflicts.push(key);
     else savedVersions[key] = data.version;
+  }
+
+  // The activity log: only the stores that actually landed. A refused or
+  // conflicting store logs nothing here — its re-send will, once it lands.
+  const landed = Object.fromEntries(Object.entries(stores).filter(([k]) => k in savedVersions));
+  if (Object.keys(landed).length) {
+    await recordActivity(session, diffStateWrite(stored, landed, readHints((body as { activity?: unknown }).activity)));
   }
 
   if (conflicts.length) {

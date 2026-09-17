@@ -132,7 +132,7 @@ export default function StatementsPage() {
     setBusy(what);
     try {
       await crsData.save();
-      return await renderStatements({ crsId, month, year, sectionIds: ids });
+      return await renderStatements({ crsId, month, year, sectionIds: ids, purpose: what === 'print' ? 'print' : what === 'excel' ? 'excel' : 'preview' });
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
         // Not paid for. Raise the order for exactly the sheets that are owing
@@ -510,6 +510,13 @@ export default function StatementsPage() {
                     let html = '';
                     for (let i = 0; i < preview.section.copies; i++) html += preview.html;
                     openPrintWindow(`${preview.section.label} - CRS ${crsId} ${MONTHS[month]} ${year}`, '', html);
+                    // Printed from a preview already on screen — no server call
+                    // happens, so it is reported for the activity log.
+                    void fetch('/api/activity', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ module: 'Statements', action: 'printed', crsId, month, year, sections: [preview.section.label] }),
+                    }).catch(() => undefined);
                   }}
                   style={{ background: '#0284C7', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
                 >

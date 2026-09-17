@@ -17,6 +17,7 @@ import { type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
+import { rechainAndRepublish } from '@/lib/engine/rechain';
 
 type InspRec = { excess?: number; shortage?: number; transfer?: number; __projection?: boolean };
 type InspDay = { a?: Record<string, InspRec>; b?: Record<string, InspRec> };
@@ -116,6 +117,23 @@ export default function InspectionModal({
     crsData.update<Record<string, SourceBlock>>('meSourceStore', (d) => {
       d[`${crsId}_${m}_${y}`] = next.source;
     });
+    // An adjustment moves the balance on its date: that day's sheet takes it,
+    // and every later sheet re-opens with the carried Closing, in date order
+    // (engine/rechain.ts).
+    const chained = rechainAndRepublish(
+      {
+        entryStore: crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
+        inspectionStore: crsData.get<Record<string, unknown>>('inspectionStore') ?? {},
+        meManualStore: crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {},
+        meSourceStore: crsData.get<Record<string, SourceBlock>>('meSourceStore') ?? {},
+        monthlyStore: crsData.get<Record<string, MonthlyBlock>>('monthlyStore') ?? {},
+        receiptStore: crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+      },
+      crsId,
+      date,
+      lists,
+    );
+    for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
     void crsData.save();
     setSavedMsg('✓ Saved!');
     setTimeout(() => setSavedMsg(''), 3000);

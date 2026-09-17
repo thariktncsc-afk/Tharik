@@ -18,6 +18,8 @@ import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { mutateClearDb, type StoredRequest } from '@/lib/clearStore';
 import { executeClear } from '@/lib/clearExecute';
 import { onClearDecided } from '@/lib/notify/approvals';
+import { clearRequestDraft, clearedDrafts } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,6 +72,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
       if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status });
       await onClearDecided(outcome.request, s, outcome.request.status === 'rejected' ? 'rejected' : 'cancelled', note);
+      await recordActivity(s, [clearRequestDraft(outcome.request, outcome.request.status === 'rejected' ? 'rejected' : 'cancelled', note)]);
       return NextResponse.json({ request: outcome.request });
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not record the decision.' }, { status: 500 });
@@ -107,29 +110,35 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   try {
-    const cleared = await executeClear(claimed, s.username);
+    const { cleared, recalculated } = await executeClear(claimed, s.username);
     const doneAt = new Date().toISOString();
     const final = await mutateClearDb(s.username, (db) => {
       const r = db.requests.find((x) => x.id === id)!;
       r.status = 'cleared';
       r.clearedAt = doneAt;
       r.clearedRecords = cleared;
+      r.recalculatedKeys = recalculated;
+      const removed = cleared.length
+        ? `Removed ${cleared.length} record(s): ${cleared.map((c) => `${c.module} ${c.key}`).join(', ')}.`
+        : 'Nothing left to remove — the records were already gone.';
+      const carried = recalculated.length ? ` Opening re-carried on ${recalculated.length} later day sheet(s): ${recalculated.join(', ')}.` : '';
       db.events.push({
         requestId: r.id,
         event: 'cleared',
         actor: s.username,
         actorRole: s.role,
         at: doneAt,
-        detail: cleared.length
-          ? `Removed ${cleared.length} record(s): ${cleared.map((c) => `${c.module} ${c.key}`).join(', ')}`.slice(0, 2000)
-          : 'Nothing left to remove — the records were already gone.',
+        detail: (removed + carried).slice(0, 2000),
       });
       return { ...r };
     });
     // Told only now that the records are actually gone — never on approval
     // alone, which can still fail and put the request back to pending.
     await onClearDecided(final, s, 'cleared', note);
-    return NextResponse.json({ request: final, cleared });
+    // The approval, then each record it removed and each later day it
+    // re-carried — all attributed to the administrator who approved.
+    await recordActivity(s, [clearRequestDraft(final, 'approved', note), ...clearedDrafts(final, cleared, recalculated)]);
+    return NextResponse.json({ request: final, cleared, recalculated });
   } catch (e) {
     // The data is untouched (executeClear rolls its own writes back), so the
     // request must not be left looking decided.
@@ -154,6 +163,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     } catch {
       /* the failure is reported to the admin either way */
     }
+    await recordActivity(s, [clearRequestDraft(claimed, 'failed', reason.slice(0, 300))]);
     return NextResponse.json({ error: `The clear failed, so nothing was removed and the request is still pending. ${reason}` }, { status: 500 });
   }
 }

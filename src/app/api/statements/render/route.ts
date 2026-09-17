@@ -18,6 +18,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseConfigured } from '@/lib/supabaseAdmin';
 import { authorise, isAdmin, loadStatementEngine, requireSession, sectionsForShop } from '@/lib/payments/server';
+import { documentDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -92,6 +94,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Could not build the ${meta.label} statement.` }, { status: 500 });
     }
   }
+
+  // Opening a statement is itself an action the office accounts for: who
+  // looked at, printed or exported which shop's month (activityLog/core.ts).
+  const purpose = body.purpose === 'print' ? 'printed' : body.purpose === 'excel' ? 'exported' : 'viewed';
+  await recordActivity(session, [documentDraft({ module: 'Statements', action: purpose, crsId, month, year, sections: sections.map((s) => s.label) })]);
 
   return NextResponse.json({
     css: engine.printCss,

@@ -9,6 +9,8 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { requireSession, toEngineUser } from '../route';
 import { canSignIn } from '@/lib/engine/staffAssignment';
+import { userDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -84,6 +86,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
   }
 
+  // The account as it was, for the activity log's before → after.
+  const { data: was } = await db.from('users').select(SAFE_COLUMNS).eq('id', g.id).maybeSingle();
+
   const { data, error } = await db
     .from('users')
     .update(patch)
@@ -111,6 +116,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
   }
 
+  const draft = userDraft(was, data, body.password !== undefined);
+  if (draft) await recordActivity(g.session!, [draft]);
   return NextResponse.json({ ok: true, user: toEngineUser(data) });
 }
 
@@ -129,7 +136,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     .eq('role', 'ADMIN')
     .eq('active', true);
 
-  const { data: target } = await db.from('users').select('role').eq('id', g.id).maybeSingle();
+  const { data: target } = await db.from('users').select(SAFE_COLUMNS).eq('id', g.id).maybeSingle();
   if (target?.role === 'ADMIN' && (count ?? 0) <= 1) {
     return NextResponse.json({ error: 'This is the last administrator — it cannot be deleted.' }, { status: 400 });
   }
@@ -139,6 +146,8 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     console.error('[api/users/:id] delete failed:', error.code, error.message);
     return NextResponse.json({ error: 'Could not delete the user.' }, { status: 500 });
   }
+  const draft = target ? userDraft(target, null) : null;
+  if (draft) await recordActivity(g.session!, [draft]);
 
   return NextResponse.json({ ok: true });
 }

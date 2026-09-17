@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { decideRequest, listRequests, type ClearRequest } from '@/lib/clearClient';
+import { useLiveRevision } from '@/lib/dataStore';
 
 const TONE: Record<string, { bg: string; fg: string; bd: string; label: string }> = {
   pending: { bg: '#FFFBEB', fg: '#92400E', bd: '#FDE68A', label: 'Pending' },
@@ -104,6 +105,27 @@ export default function ClearRequestsPage() {
   }, [status]);
 
   useEffect(load, [load]);
+
+  // Live: a request raised at a shop, or decided by another administrator,
+  // appears without a refresh (dataStore.ts) — quietly, with no spinner.
+  const clearsRev = useLiveRevision('clears');
+  useEffect(() => {
+    if (!clearsRev) return;
+    let alive = true;
+    listRequests(status)
+      .then((rs) => {
+        if (!alive) return;
+        setRows(rs);
+        setErr('');
+      })
+      .catch(() => {
+        /* the next beat tries again */
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearsRev]);
 
   const decide = async (id: number, action: 'approve' | 'reject' | 'cancel') => {
     setBusy(id);
@@ -212,6 +234,11 @@ export default function ClearRequestsPage() {
                   {r.clearedRecords?.length ? (
                     <div style={{ marginTop: 6, fontSize: 11, color: '#15803D' }}>
                       Removed: {r.clearedRecords.map((c) => `${c.module} ${c.key}`).join(', ')}
+                    </div>
+                  ) : null}
+                  {r.recalculatedKeys?.length ? (
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#0369A1' }}>
+                      Opening recalculated from the previous closing: {r.recalculatedKeys.join(', ')}
                     </div>
                   ) : null}
                   <button

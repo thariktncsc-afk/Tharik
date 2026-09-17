@@ -20,6 +20,8 @@ import {
 } from '@/lib/payments/server';
 import { quoteDss, quoteStatement } from '@/lib/payments/pricing';
 import { upiUri } from '@/lib/payments/upi';
+import { paymentDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -234,6 +236,7 @@ export async function POST(req: Request) {
   }
 
   const order = toOrder(data);
+  await recordActivity(session, [paymentDraft(order, 'created')]);
   const uri = upiUri({
     vpa: settings.upiVpa,
     payeeName: settings.upiPayeeName || 'TNCSC CRS',
