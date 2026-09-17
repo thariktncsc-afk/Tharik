@@ -143,6 +143,8 @@ export async function renderStatements(input: {
   month: number;
   year: number;
   sectionIds: string[];
+  /** What the sheets are for — recorded in the activity log. */
+  purpose?: 'preview' | 'print' | 'excel';
 }): Promise<Rendered> {
   return json<Rendered>(
     await fetch('/api/statements/render', {

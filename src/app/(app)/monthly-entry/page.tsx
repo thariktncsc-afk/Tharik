@@ -39,6 +39,8 @@ import ClearRequestDialog from '@/components/ClearRequestDialog';
 import { hasData } from '@/lib/clearGuard';
 import { openingLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
+import { confirmMonthlySalesClose } from '@/lib/monthCloseConfirm';
+import { rechainAndRepublish } from '@/lib/engine/rechain';
 import {
   RICE_INVALID,
   RICE_MONTHLY_REQUIRED,
@@ -136,12 +138,20 @@ export default function MonthlyEntryPage() {
   const riceCostRef = useRef<HTMLInputElement>(null);
   const projRice = riceShop && isProjectedSheet(projection) ? riceOf(projection) : null;
   const projRiceStamp = `${key}|${projRice ? `${projRice.freeRice}|${projRice.costRice}` : ''}`;
+  const riceFilled = useRef({ key: '', free: '', cost: '' });
   useEffect(() => {
-    // Refilled when the month changes or its saved figures do — never while
-    // the clerk types, which leaves the stamp where it was.
-    setRiceFree(riceBox(projRice?.freeRice));
-    setRiceCost(riceBox(projRice?.costRice));
-    setRiceErr({});
+    // Refilled when the month changes, or when its saved figures change and
+    // the boxes still hold what was last filled. Figures typed and not yet
+    // saved stay put when another screen's month-close arrives (live sync).
+    const free = riceBox(projRice?.freeRice);
+    const cost = riceBox(projRice?.costRice);
+    const last = riceFilled.current;
+    if (last.key !== key || (riceFree === last.free && riceCost === last.cost)) {
+      setRiceFree(free);
+      setRiceCost(cost);
+      setRiceErr({});
+    }
+    riceFilled.current = { key, free, cost };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projRiceStamp]);
   const dayRice = useMemo(
@@ -316,12 +326,18 @@ export default function MonthlyEntryPage() {
    *
    * /api/state refuses the write regardless of what this does.
    */
+  // A month clear also removes every Daily Sales sheet dated in the month
+  // (clearExecute.ts), so a month keyed by day is saved data too.
+  const monthDaysPrefix = ctx ? `${ctx.crsId}_${ctx.year}-${pad2(ctx.month)}-` : '';
   const monthSaved = ctx
     ? hasData(meManualStore[ctx.key]) ||
       hasData(meRemitStore[ctx.key]) ||
       hasData(meGunnyStore[ctx.key]) ||
       hasData(meCardStore[ctx.key]) ||
-      hasData(meAllotStore[ctx.key])
+      hasData(meAllotStore[ctx.key]) ||
+      dayDates.length > 0 ||
+      isProjectedSheet(projection) ||
+      Object.entries(inspectionStore).some(([k, v]) => k.startsWith(monthDaysPrefix) && hasData(v))
     : false;
   const clearScope: ClearScope | null = ctx
     ? {
@@ -376,6 +392,8 @@ export default function MonthlyEntryPage() {
         if (!empty) manual[sec]![r.c.id] = rec;
       }
     }
+    // The month-close, as the activity log names it (activityLog/core.ts).
+    crsData.markEdited('meManualStore', ctx.key, 'closed');
     crsData.update<Record<string, Partial<MonthlyBlock>>>('meManualStore', (d) => {
       d[ctx.key] = manual;
     });
@@ -488,6 +506,23 @@ export default function MonthlyEntryPage() {
     crsData.update<Record<string, SourceBlock>>('meSourceStore', (d) => {
       d[ctx.key] = next.source;
     });
+    // The month's Closing is what the next day sheet after it opens with, so
+    // the chain is rebuilt in date order from the month's first day, and every
+    // month it moved republishes (engine/rechain.ts).
+    const chained = rechainAndRepublish(
+      {
+        entryStore: crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
+        inspectionStore: crsData.get<Record<string, unknown>>('inspectionStore') ?? {},
+        meManualStore: crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {},
+        meSourceStore: crsData.get<Record<string, SourceBlock>>('meSourceStore') ?? {},
+        monthlyStore: crsData.get<Record<string, MonthlyBlock>>('monthlyStore') ?? {},
+        receiptStore: crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+      },
+      ctx.crsId,
+      `${ctx.year}-${pad2(ctx.month)}-01`,
+      lists,
+    );
+    for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
     void crsData.save();
     setCloseNote(note);
     setSaved(true);
@@ -1006,7 +1041,8 @@ export default function MonthlyEntryPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, width: '100%' }}>
                 <button className="btn btn-outline btn-sm" onClick={clearMonth}>🗑 Clear</button>
                 <button
-                  onClick={save}
+                  // Asks first (monthCloseConfirm.ts); only a yes runs the save.
+                  onClick={() => void confirmMonthlySalesClose().then((ok) => ok && save())}
                   title="மாத விற்பனை நிறைவு — store this month's entry, remittance, gunny stock and card details"
                   style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}
                 >

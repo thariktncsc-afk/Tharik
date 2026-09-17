@@ -54,6 +54,11 @@ export type StoredRequest = {
   clearedAt: string | null;
   /** Exactly which records the approval removed. */
   clearedRecords: { store: string; module: string; key: string }[];
+  /**
+   * Later day sheets whose Opening a day clear re-carried from the closing
+   * before the cleared day (engine/rechain.ts). Absent on older rows.
+   */
+  recalculatedKeys?: string[];
   /** Set when a clear failed, so the admin sees why it is still pending. */
   lastError: string | null;
 };

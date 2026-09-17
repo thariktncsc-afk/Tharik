@@ -24,7 +24,10 @@
     "verify:stock-chain": "node tools/verify-stock-chain.mjs",
     "verify:notifications": "node tools/verify-notifications.mjs",
     "verify:crs29-rice": "node tools/verify-crs29-rice.mjs",
-    "verify:crs29-sales": "node tools/verify-crs29-sales-report.mjs"
+    "verify:crs29-sales": "node tools/verify-crs29-sales-report.mjs",
+    "verify:live-sync": "node tools/verify-live-sync.mjs",
+    "verify:chain-rebuild": "node tools/verify-chain-rebuild.mjs",
+    "verify:activity-log": "node tools/verify-activity-log.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

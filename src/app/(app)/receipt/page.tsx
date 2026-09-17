@@ -26,6 +26,7 @@ import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity, type DayEntry } fro
 import { type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { resyncReceiptMonth } from '@/lib/engine/receiptSync';
+import { rechainAndRepublish } from '@/lib/engine/rechain';
 
 type ShopRec = { name: string };
 type ReceiptRec = {
@@ -144,6 +145,24 @@ export default function ReceiptPage() {
       { dateIso, before, lists: commodityListsFor(commodityMaster, rCrsId) },
     );
     for (const [store, value] of Object.entries(patch)) crsData.set(store as never, value as never);
+
+    // A receipt moves the balance on its date, so every later sheet re-opens
+    // with the carried Closing, in date order, and their months republish
+    // (engine/rechain.ts).
+    const chained = rechainAndRepublish(
+      {
+        entryStore: crsData.get<Record<string, DayEntry>>('entryStore') ?? {},
+        inspectionStore: crsData.get<Record<string, unknown>>('inspectionStore') ?? {},
+        meManualStore: crsData.get<Record<string, Partial<MonthlyBlock>>>('meManualStore') ?? {},
+        meSourceStore: crsData.get<Record<string, SourceBlock>>('meSourceStore') ?? {},
+        monthlyStore: crsData.get<Record<string, MonthlyBlock>>('monthlyStore') ?? {},
+        receiptStore: crsData.get<ReceiptRow[]>('receiptStore') ?? [],
+      },
+      rCrsId,
+      dateIso,
+      commodityListsFor(commodityMaster, rCrsId),
+    );
+    for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
   };
 
   /**

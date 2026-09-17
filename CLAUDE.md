@@ -251,6 +251,89 @@ pair there; no schema change.
 `npm run verify:notifications` covers who a message reaches, the read-time
 rules and the approval wording.
 
+## The Opening → Closing chain runs in date order
+
+A saved day sheet stores its own Opening. **Only the start of the chain — a day
+with nothing earlier to carry from — keeps a typed Opening.** Every other day
+opens with the previous applicable day's Closing, plus receipts and inspection
+on the sheet-less days between (`stockChain.ts`); a missing date is stepped
+over, never read as zero. Daily Entry shows that carry read-only, for every
+role.
+
+- **Order of keying does not matter.** Key the 16th first with a typed 200,
+  then the 2nd: the 16th re-opens at the 15th's Closing.
+- **Every balance-moving write rebuilds the chain from its date forward** and
+  republishes every month it moved (`engine/rechain.ts`,
+  `rechainAndRepublish`): Daily Entry save, a receipt saved or deleted, an
+  inspection, a Monthly Entry month-close, and every approved clear. A
+  rewritten row also takes its date's inspection adjustments, as a re-save
+  would. Projected sheets are never rewritten, only carried from.
+- The stock guard's Opening lock lets a saved Opening move **to its carried
+  balance and nothing else**, or a shop saving an earlier day would be refused
+  for the later days it re-carries.
+- Data saved before this rule can still hold typed Openings mid-chain; they are
+  corrected the next time a balance-moving write at or before them rebuilds.
+
+`npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
+of change.
+
+## Clear requests — what a day and a month take
+
+`clearExecute.ts`. A **day** clear removes that shop and date only: the sheet
+(its remittance lives on it), that date's inspection, and Sales Close only if
+it names that day. A **month** clear removes every month store for it AND every
+Daily Sales sheet and inspection dated in the month — a month keyed by day has
+nothing else to clear. Neither touches receipts, other shops or other months'
+records; both then rebuild the chain after them, so the next day outside a
+cleared month re-opens from the last Closing before it. `verify:clear-execute`.
+
+## Live sync
+
+Open screens take other people's writes within about 4 s, without a refresh.
+`dataStore.ts` asks `/api/sync` for store **versions** only; a store someone
+else wrote is fetched alone (`/api/state?keys=`) and taken in, with this
+client's unsaved changes laid over it record by record (`storeMerge.ts`). A 409
+is rebased the same way and re-sent instead of reloading — every shop's day
+sheets share one row, so reloading used to throw away the second of two
+near-simultaneous saves. Clear requests and payment orders are not stores: they
+move a revision (`useLiveRevision`) that the screens showing them re-fetch on.
+Not Supabase Realtime, for the same RLS reason as notifications.
+`verify:live-sync` drives the real data layer against a stand-in server.
+
+## Activity log (admin only)
+
+`activity_log` (migration `0006`), shown on `/audit` — "Activity Log" in the
+nav, administrators only, enforced by `/api/activity/log` returning 403 to
+anyone else. `src/lib/activityLog/core.ts` holds the rules; `server.ts` writes
+and reads.
+
+- **Written on the server where data changes, never in the browser.**
+  `/api/state` diffs stored vs written record by record (`diffStateWrite`);
+  clear decisions, payments, statement renders, users and sign-in build their
+  own rows. So a live-sync fetch, a rebased re-send or a save of identical
+  content never logs anything, and a refused or conflicting write logs only
+  the refusal. Printing from a preview and opening the DSS happen in the
+  browser, so those two are reported through `POST /api/activity`.
+- **Two dates on every row.** `at` is when the person acted; `entry_date` (or
+  `entry_month`/`entry_year`) is the date the DATA belongs to, taken from the
+  record's key.
+- **The person, not the login.** User id, full name and role are copied onto
+  the row — a shop's BC and Packer share one username.
+- **System updates are marked.** Later days re-carried by a save, a receipt
+  moving its day's figures, a register reconcile: `source: 'system'`,
+  `action: 'recalculated'`, attributed to whoever caused them. The browser
+  names the record the person saved (`crsData.markEdited`) so a hand-keyed
+  Opening on that day stays theirs.
+- `monthlyStore`, `meSourceStore` and `__counters` are never logged — the
+  roll-up republishes them on every save.
+- **Recording never fails the action.** Errors are swallowed; a missing table
+  is noticed and skipped for a minute. Until 0006 is run the dashboard's Recent
+  Activity falls back to deriving from `crs_state_audit` (`src/lib/activity.ts`).
+- Live: the log page and the dashboard watch the `activity` topic on
+  `/api/sync` and fetch only rows newer than the ones shown.
+
+`npm run verify:activity-log`.
+
 ## CRS 29 — Free Rice and Cost Rice
 
 CRS 29 (Refugee Camp) keys two extra figures per day on Daily Entry: the kilos

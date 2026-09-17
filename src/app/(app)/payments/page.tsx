@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/authClient';
 import { useShops } from '@/lib/masters';
 import { formatRupees } from '@/lib/payments/pricing';
 import { decideOrder, fetchOrders, STATUS_COLOR, STATUS_LABEL, type Order } from '@/lib/payments/client';
+import { useLiveRevision } from '@/lib/dataStore';
 
 const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -81,6 +82,24 @@ export default function PaymentsPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Live: a UTR submitted at a shop, or a decision another administrator
+  // made, lands in this list without a refresh (dataStore.ts). Quietly — no
+  // spinner, and a reject reason being typed stays where it is.
+  const paymentsRev = useLiveRevision('payments');
+  useEffect(() => {
+    if (!paymentsRev) return;
+    let alive = true;
+    fetchOrders(isAdmin ? filter : 'all')
+      .then((next) => alive && setOrders(next))
+      .catch(() => {
+        /* the next beat tries again */
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentsRev]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {};

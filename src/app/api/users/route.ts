@@ -9,6 +9,8 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession, type Session } from '@/lib/session';
+import { userDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -126,5 +128,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Could not set the password.' }, { status: 500 });
   }
 
+  const draft = userDraft(null, data);
+  if (draft) await recordActivity(session, [draft]);
   return NextResponse.json({ ok: true, user: toEngineUser(data) }, { status: 201 });
 }

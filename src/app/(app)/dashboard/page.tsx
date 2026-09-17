@@ -16,11 +16,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import HolidayCalendar from '@/components/HolidayCalendar';
 import { useAuth } from '@/lib/authClient';
-import { useStore, useUsers } from '@/lib/dataStore';
+import { useLiveRevision, useStore, useUsers } from '@/lib/dataStore';
 import { dashboardEntryView, type DayEntry } from '@/lib/engine/commodities';
 import { useShops, useStockLists } from '@/lib/masters';
 import { govtHolidayName, isWeeklyHoliday, weeklyHolidayName, type GovtHolidayMap } from '@/lib/engine/holidays';
-import { describeActivity, type ActivityItem } from '@/lib/activity';
+import { feedLine, roleLabel, type FeedItem } from '@/lib/activityLog/core';
 import { buildChainIndex, closingAsAt } from '@/lib/engine/stockChain';
 
 /**
@@ -76,8 +76,10 @@ export default function DashboardPage() {
   const [clock, setClock] = useState({ time: '--:--:--', ampm: '--' });
   const [calOpen, setCalOpen] = useState(false);
   /** Real activity, scoped by the server to what this account may see. */
-  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const [activity, setActivity] = useState<FeedItem[] | null>(null);
   const [activityErr, setActivityErr] = useState('');
+  // Live: re-fetched when something new is logged that this account may see.
+  const activityRev = useLiveRevision('activity');
 
   // Re-fetched when the signed-in account changes, because what may be seen
   // changes with it — an admin sees every shop, a shop only its own.
@@ -91,7 +93,7 @@ export default function DashboardPage() {
       })
       .catch((e) => alive && setActivityErr(e instanceof Error ? e.message : String(e)));
     return () => { alive = false; };
-  }, [user?.username, user?.role]);
+  }, [user?.username, user?.role, activityRev]);
 
   useEffect(() => {
     const tick = () => {
@@ -760,7 +762,13 @@ export default function DashboardPage() {
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {sectionTitle('linear-gradient(180deg,#8B5CF6,#A78BFA)', 'Recent Activity')}
-          <span style={{ fontSize: 20 }}>🕐</span>
+          {isAdmin ? (
+            <a href="/audit" style={{ fontSize: 12.5, fontWeight: 700, color: '#6D28D9', textDecoration: 'none' }}>
+              View full activity log →
+            </a>
+          ) : (
+            <span style={{ fontSize: 20 }}>🕐</span>
+          )}
         </div>
         <div style={{ padding: '12px 18px' }}>
           {activityErr ? (
@@ -776,10 +784,12 @@ export default function DashboardPage() {
           ) : (
             activity.map((a) => (
               <div className="activity-item" key={a.id}>
-                <div className="activity-dot" />
+                <div className="activity-dot" style={a.source === 'system' ? { background: '#94A3B8' } : undefined} />
                 <div>
                   <div className="activity-text">
-                    <strong>{a.actor}</strong> — {describeActivity(a)}
+                    <strong>{a.source === 'system' ? 'System Update' : a.actorName || a.actorUsername}</strong>
+                    {a.source !== 'system' && a.actorRole ? ` (${roleLabel(a.actorRole)})` : ''} — {feedLine(a)}
+                    {a.source === 'system' ? <span style={{ color: 'var(--muted)' }}> · after a change by {a.actorName || a.actorUsername}</span> : null}
                   </div>
                   <div className="activity-time">{fmtWhen(a.at)}</div>
                 </div>

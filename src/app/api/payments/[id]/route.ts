@@ -17,6 +17,8 @@ import { isAdmin, readSettings, requireSession } from '@/lib/payments/server';
 import { upiUri } from '@/lib/payments/upi';
 import { toOrder } from '../route';
 import { onPaymentDecided, onPaymentSubmitted } from '@/lib/notify/approvals';
+import { paymentDraft } from '@/lib/activityLog/core';
+import { recordActivity } from '@/lib/activityLog/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -152,6 +154,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // notification is written before a serverless function can be frozen,
     // but it cannot fail this request — see src/lib/notify/approvals.ts.
     await onPaymentSubmitted(submitted, session);
+    await recordActivity(session, [paymentDraft(submitted, 'submitted')]);
     return NextResponse.json({ order: submitted });
   }
 
@@ -199,6 +202,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     // so the requester is told exactly once. It cannot fail the decision —
     // see src/lib/notify/approvals.ts.
     await onPaymentDecided(decided, session, action === 'approve' ? 'approved' : 'rejected', reason);
+    await recordActivity(session, [paymentDraft(decided, action === 'approve' ? 'approved' : 'rejected')]);
     return NextResponse.json({ order: decided });
   }
 
