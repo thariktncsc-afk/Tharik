@@ -87,16 +87,15 @@ __DSS_LISTS__
   }
   function isHoliday(dateObj){                                       // 08-dashboard.js
     var d=dateObj.getDay(),dt=dateObj.getDate();
-    var firstDay=new Date(dateObj.getFullYear(),dateObj.getMonth(),1).getDay();
-    var weekNum=Math.ceil((dt+firstDay)/7);
+    // The nth Friday/Sunday IN the month, as src/lib/engine/holidays.ts.
+    var weekNum=Math.ceil(dt/7);
     if(d===5&&(weekNum===1||weekNum===2)) return true;
     if(d===0&&(weekNum===3||weekNum===4)) return true;
     return false;
   }
   function getHolidayName(dateObj){                                  // 08-dashboard.js
     var d=dateObj.getDay(),dt=dateObj.getDate();
-    var f=new Date(dateObj.getFullYear(),dateObj.getMonth(),1).getDay();
-    var w=Math.ceil((dt+f)/7);
+    var w=Math.ceil(dt/7);
     if(d===5&&w===1) return '1st Friday Holiday';
     if(d===5&&w===2) return '2nd Friday Holiday';
     if(d===0&&w===3) return '3rd Sunday Holiday';

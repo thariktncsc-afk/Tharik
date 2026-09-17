@@ -16,6 +16,7 @@
  * current filters, and never twice.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/authClient';
 import { useLiveRevision, useUsers } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
@@ -85,8 +86,14 @@ const selectStyle: React.CSSProperties = { width: '100%', fontSize: 12.5, paddin
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 };
 
 export default function ActivityLogPage() {
-  const { user } = useAuth();
+  const { user, status } = useAuth();
+  const router = useRouter();
   const isAdmin = user?.role === 'ADMIN';
+  // Shop staff typing /audit are sent away. The page holds no rows of its own —
+  // /api/activity/log refuses them with 403 whatever this does.
+  useEffect(() => {
+    if (status === 'signedIn' && user && user.role !== 'ADMIN') router.replace('/dashboard');
+  }, [status, user, router]);
   const shops = useShops();
   const users = useUsers();
 
@@ -107,6 +114,7 @@ export default function ActivityLogPage() {
   const [hint, setHint] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const [fresh, setFresh] = useState<Set<number>>(new Set());
+  const [total, setTotal] = useState<number | null>(null);
 
   const [from, to] = bounds(range, customFrom, customTo);
   const query = useMemo(() => {
@@ -123,7 +131,7 @@ export default function ActivityLogPage() {
     const r = await fetch(`/api/activity/log?${query}${extra}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
     const b = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(b?.error || `Server returned ${r.status}`);
-    return b as { installed: boolean; items: ActivityRow[]; nextCursor: number | null; hint?: string };
+    return b as { installed: boolean; items: ActivityRow[]; nextCursor: number | null; total?: number | null; hint?: string };
   }, [query]);
 
   // The filters changed: start the list again.
@@ -138,6 +146,7 @@ export default function ActivityLogPage() {
         if (!alive) return;
         setItems(b.items);
         setCursor(b.nextCursor);
+        setTotal(typeof b.total === 'number' ? b.total : null);
         setHint(b.installed ? '' : b.hint || 'The activity log is not installed yet.');
       })
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)))
@@ -160,7 +169,9 @@ export default function ActivityLogPage() {
         if (!alive || !b.items.length) return;
         setItems((cur) => {
           const seen = new Set(cur.map((i) => i.id));
-          return [...b.items.filter((i) => !seen.has(i.id)), ...cur];
+          const added = b.items.filter((i) => !seen.has(i.id));
+          setTotal((t) => (t === null ? t : t + added.length));
+          return [...added, ...cur];
         });
         const ids = new Set(b.items.map((i) => i.id));
         setFresh(ids);
@@ -200,10 +211,22 @@ export default function ActivityLogPage() {
     return out;
   }, [items]);
 
+  /**
+   * The User list follows the shop: every user for all shops; for one shop,
+   * only that shop's current BC and Packer. Someone who has since left the shop
+   * keeps their old rows — choose "All users" with that shop to see them.
+   */
   const staff = useMemo(
-    () => [...users].sort((a, b) => (a.crsId ?? 0) - (b.crsId ?? 0) || String(a.fullName).localeCompare(String(b.fullName))),
-    [users],
+    () =>
+      [...users]
+        .filter((u) => !crsId || (u.crsId === Number(crsId) && u.role !== 'ADMIN'))
+        .sort((a, b) => (a.crsId ?? 0) - (b.crsId ?? 0) || String(a.role).localeCompare(String(b.role)) || String(a.fullName).localeCompare(String(b.fullName))),
+    [users, crsId],
   );
+  // A user chosen under another shop no longer fits the list: back to all.
+  useEffect(() => {
+    if (userId && !staff.some((u) => String(u.id) === userId)) setUserId('');
+  }, [staff, userId]);
 
   const filtered = !!(crsId || userId || module || action || source);
   const rangeText = from === to ? dmy(from) : `${dmy(from)} to ${dmy(to)}`;
@@ -316,7 +339,7 @@ export default function ActivityLogPage() {
 
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--muted)' }}>
             <span>
-              {loading ? 'Loading…' : `${items.length}${cursor ? '+' : ''} ${items.length === 1 ? 'activity' : 'activities'}`} · {rangeText}
+              {loading ? 'Loading…' : `${total ?? items.length}${total === null && cursor ? '+' : ''} ${(total ?? items.length) === 1 ? 'activity' : 'activities'}`} · {rangeText}
             </span>
             {filtered ? (
               <button
@@ -367,25 +390,38 @@ export default function ActivityLogPage() {
                 >
                   <span style={{ minWidth: 70, fontSize: 12, fontWeight: 700, color: '#475569', paddingTop: 2 }}>{timeOf(r.at)}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13, color: '#0F172A' }}>
-                      <strong>{r.crsId ? `CRS ${r.crsId}${r.shopName ? ` — ${r.shopName}` : ''}` : 'Office'}</strong>
-                      <span style={{ color: '#64748B' }}> · </span>
-                      {r.actorName || r.actorUsername}
-                      {r.actorRole ? <span style={{ color: '#64748B' }}> ({roleLabel(r.actorRole)})</span> : null}
-                    </span>
-                    <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12.5, color: '#334155' }}>
-                      <span>{r.module}</span>
-                      {entry ? <span style={{ color: '#64748B' }}>· {entry}</span> : null}
+                    <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#0F172A' }}>
+                      <strong>
+                        {r.crsId ? `CRS ${r.crsId}` : 'Office'} — {r.module}
+                      </strong>
                       <span style={{ background: tone.bg, color: tone.fg, fontWeight: 800, fontSize: 11, borderRadius: 6, padding: '2px 8px' }}>{ACTION_LABEL[r.action] ?? r.action}</span>
                       {r.source === 'system' ? (
-                        <span style={{ border: '1px dashed #94A3B8', color: '#475569', fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: '1px 6px' }}>Automatic</span>
+                        <span style={{ border: '1px dashed #94A3B8', color: '#475569', fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: '1px 6px' }}>System</span>
                       ) : null}
+                      {r.historical ? (
+                        <span title="Rebuilt from records that existed before the log was switched on" style={{ background: '#F5F3FF', color: '#6D28D9', border: '1px solid #DDD6FE', fontSize: 10.5, fontWeight: 700, borderRadius: 6, padding: '1px 6px' }}>
+                          Historical
+                        </span>
+                      ) : null}
+                    </span>
+                    <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', marginTop: 4, fontSize: 12, color: '#475569' }}>
+                      <span>
+                        {r.source === 'system' ? 'System · triggered by ' : 'User: '}
+                        <strong style={{ color: '#0F172A' }}>{r.actorName || r.actorUsername || 'Not recorded'}</strong>
+                        {r.actorRole ? ` • ${roleLabel(r.actorRole)}` : ''}
+                      </span>
+                      {entry ? (
+                        <span>
+                          Data Date: <strong style={{ color: '#0F172A' }}>{entry}</strong>
+                        </span>
+                      ) : null}
+                      <span>Performed: {stampOf(r.at)}</span>
                     </span>
                     {r.summary ? (
                       <span style={{ display: 'block', marginTop: 3, fontSize: 12, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: expanded ? 'normal' : 'nowrap' }}>{r.summary}</span>
                     ) : null}
                   </span>
-                  <span style={{ fontSize: 12, color: '#94A3B8', paddingTop: 2 }}>{expanded ? '▲' : '▼'}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#0369A1', paddingTop: 2, whiteSpace: 'nowrap' }}>{expanded ? 'Hide ▲' : 'View Details ▼'}</span>
                 </button>
 
                 {expanded ? (
@@ -399,6 +435,8 @@ export default function ActivityLogPage() {
                           ['Action', `${ACTION_LABEL[r.action] ?? r.action}${r.source === 'system' ? ' (automatic recalculation)' : ''}`],
                           [doneByLabel(r), `${r.actorName || r.actorUsername}${r.actorRole ? ` (${roleLabel(r.actorRole)})` : ''}${r.actorUsername && r.actorName !== r.actorUsername ? ` · ${r.actorUsername}` : ''}`],
                           ['Activity Time', stampOf(r.at)],
+                          ...(r.actorCrsId && r.actorCrsId !== r.crsId ? ([['User’s shop at the time', `CRS ${r.actorCrsId}`]] as [string, string][]) : []),
+                          ...(r.historical ? ([['Record', 'Historical — rebuilt from earlier database records']] as [string, string][]) : []),
                         ] as [string, string][]
                       ).map(([k, v]) => (
                         <div key={k}>
@@ -444,7 +482,9 @@ export default function ActivityLogPage() {
                         </table>
                       </div>
                     ) : (
-                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>No figure-level detail for this action.</div>
+                      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
+                        {r.historical ? 'No earlier value is on record for this historical entry.' : 'No figure-level detail for this action.'}
+                      </div>
                     )}
                   </div>
                 ) : null}

@@ -22,6 +22,24 @@
  * have is a godown receipt and an inspection adjustment, and both move stock.
  * They are added to the carried closing in the same arithmetic the grid uses.
  *
+ * A SHEET'S CLOSING IS CALCULATED, NEVER READ. A saved sheet stores its own
+ * Opening and Closing, and a stored figure can be stale: a sheet keyed out of
+ * date order kept the Opening typed on it, so 16 Sep showed a Closing of 3342
+ * on screen (carried Opening − Sales) while the database still held 100, and
+ * 17 Sep opened at 100. So the index walks each commodity in DATE order and
+ * works out every sheet's Closing from the Opening carried into it, that day's
+ * receipt, adjustments and sales — exactly what Daily Entry shows for that
+ * day. Only the start of the chain uses the Opening stored on the sheet. A
+ * month keyed on Monthly Entry (a projected sheet) states its own Closing and
+ * is taken as it is.
+ *
+ * A FIXED OPENING IS AN ANCHOR. A row marked `openFixed` keeps the Opening
+ * stored on it instead of the carry: an administrator's correction (say, a
+ * physical stock count), or a shop's one-time Initial Opening Balance
+ * (stockInit.ts). The chain restarts there — the days after it carry from its
+ * Closing — so a correction on the 16th reaches the 17th and onward, and a day
+ * keyed earlier than a shop's first day cannot overwrite its Initial Opening.
+ *
  * The index is built once per shop and reused for every commodity: a Daily
  * Entry render asks this 26 times and would otherwise rescan the register each
  * time.
@@ -31,6 +49,9 @@ import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 
 type InspRec = { excess?: unknown; shortage?: unknown; transfer?: unknown };
 type InspDay = { a?: Record<string, InspRec>; b?: Record<string, InspRec> };
+
+/** Does this row keep its own Opening rather than the carried one? See the module comment. */
+export const isOpenFixed = (row: unknown): boolean => !!row && typeof row === 'object' && (row as { openFixed?: unknown }).openFixed === true;
 export type Section = 'a' | 'b';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,6 +59,8 @@ const num = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+/** Kilos carry three decimals; anything finer is float noise from the sums. */
+const kg = (n: number) => Math.round(n * 1000) / 1000;
 
 export type ChainIndex = {
   crsId: number;
@@ -48,6 +71,11 @@ export type ChainIndex = {
   receipts: Record<string, Record<string, number>>;
   /** date → `<sec>:<comm>` → net adjustment (excess − shortage − transfer). */
   adjustments: Record<string, Record<string, number>>;
+  /**
+   * date → `<sec>:<comm>` → the Closing that sheet works out to, walking the
+   * chain in date order. What the next day carries — never the stored figure.
+   */
+  closes: Record<string, Record<string, number>>;
 };
 
 /**
@@ -111,7 +139,54 @@ export function buildChainIndex(
     }
   }
 
-  return { crsId, sheetDates, sheets, receipts, adjustments };
+  const receiptDays = Object.keys(receipts).sort();
+  const adjustmentDays = Object.keys(adjustments).sort();
+  /** Stock moved for one commodity on the sheet-less days strictly between two dates. */
+  const movedBetween = (after: string, before: string, id: string, key: string) => {
+    let moved = 0;
+    for (const ds of receiptDays) {
+      if (ds <= after) continue;
+      if (ds >= before) break;
+      moved += receipts[ds][id] ?? 0;
+    }
+    for (const ds of adjustmentDays) {
+      if (ds <= after) continue;
+      if (ds >= before) break;
+      moved += adjustments[ds][key] ?? 0;
+    }
+    return moved;
+  };
+
+  // Every sheet's Closing, commodity by commodity, in date order.
+  const closes: Record<string, Record<string, number>> = {};
+  const last = new Map<string, { date: string; close: number }>();
+  for (const ds of [...sheetDates].reverse()) {
+    const sheet = sheets[ds] as DayEntry & { __projection?: unknown };
+    const out: Record<string, number> = {};
+    for (const sec of ['a', 'b'] as const) {
+      for (const [id, raw] of Object.entries(sheet?.[sec] ?? {})) {
+        const row = (raw ?? {}) as unknown as Record<string, unknown>;
+        const key = `${sec}:${id}`;
+        let close: number;
+        if (sheet?.__projection) {
+          close = num(row.close);
+        } else {
+          const prev = last.get(key);
+          const open = prev && !isOpenFixed(row) ? prev.close + movedBetween(prev.date, ds, id, key) : num(row.open);
+          // The register is the Receipt wherever it speaks for the day, as on
+          // the Daily Entry grid; a figure keyed with no register row stands.
+          const godown = receipts[ds]?.[id] ?? 0;
+          const receipt = godown > 0 ? godown : num(row.receipt);
+          close = kg(open + receipt + (adjustments[ds]?.[key] ?? 0) - num(row.sales) - num(row.cs));
+        }
+        out[key] = close;
+        last.set(key, { date: ds, close });
+      }
+    }
+    closes[ds] = out;
+  }
+
+  return { crsId, sheetDates, sheets, receipts, adjustments, closes };
 }
 
 export type Carry = {
@@ -144,7 +219,7 @@ function walk(ix: ChainIndex, upto: string, commId: string, sec: Section, inclus
     if (!within(ds)) continue;
     const rec = ix.sheets[ds]?.[sec]?.[commId];
     if (rec !== undefined) {
-      from = { date: ds, close: num(rec.close) };
+      from = { date: ds, close: ix.closes[ds]?.[`${sec}:${commId}`] ?? num(rec.close) };
       break;
     }
   }
@@ -170,7 +245,7 @@ function walk(ix: ChainIndex, upto: string, commId: string, sec: Section, inclus
     }
   }
 
-  return { from, received, adjusted, movedOn: [...movedOn].sort(), value: from.close + received + adjusted };
+  return { from, received, adjusted, movedOn: [...movedOn].sort(), value: kg(from.close + received + adjusted) };
 }
 
 /** What this commodity's Opening should be on `dateIso`. */

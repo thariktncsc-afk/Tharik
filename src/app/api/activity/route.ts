@@ -97,7 +97,7 @@ export async function POST(req: Request) {
   if (!s) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const module = body.module === 'DSS' ? 'DSS' : body.module === 'Statements' ? 'Statements' : null;
+  const module = body.module === 'DSS' ? 'DSS' : body.module === 'Statements' ? 'Statements' : body.module === 'Reports' ? 'Reports' : null;
   const action = body.action === 'printed' || body.action === 'viewed' || body.action === 'exported' ? body.action : null;
   const crsId = Math.trunc(Number(body.crsId));
   const month = Math.trunc(Number(body.month));
@@ -109,6 +109,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'You may only record actions for your own shop.' }, { status: 403 });
   }
   const sections = Array.isArray(body.sections) ? (body.sections as unknown[]).map(String).slice(0, 20) : [];
-  await recordActivity(s, [documentDraft({ module, action, crsId, month, year, sections })]);
+  // Which report, from a fixed list — the log never stores free text a client made up.
+  const REPORTS = ['Quarterly PV (3-Month)', 'Yearly PV', 'Monthly Statement (Excel)', 'Monthly Report', 'Daily Report'];
+  const report = module === 'Reports' && REPORTS.includes(String(body.report)) ? String(body.report) : undefined;
+  if (module === 'Reports' && !report) return NextResponse.json({ error: 'Not a report this endpoint records.' }, { status: 400 });
+  const period = typeof body.period === 'string' && /^[\w\s–-]{1,40}$/.test(body.period) ? body.period : undefined;
+  await recordActivity(s, [documentDraft({ module, action, crsId, month, year, sections, report, period })]);
   return NextResponse.json({ ok: true });
 }

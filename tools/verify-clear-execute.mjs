@@ -168,7 +168,7 @@ console.log('\nMonth clear — CRS 3, September 2026');
   const month = (v) => ({ '3_8_2026': { v: `aug-${v}` }, '3_9_2026': { v: `sep-${v}` }, '3_10_2026': { v: `oct-${v}` }, '30_9_2026': { v: `crs30-${v}` } });
   const stores = {
     entryStore: {
-      '3_2026-08-31': { a: { BRA: row(500, 0, 100) }, b: {} },
+      '3_2026-08-31': { a: { BRA: row(500, 0, 100, { excess: 1 }) }, b: {} },
       '3_2026-09-01': { a: { BRA: row(400, 0, 50) }, b: {}, remitAmount: 5 },
       '3_2026-09-15': { a: { BRA: row(350, 0, 50) }, b: {}, remitAmount: 6 },
       '3_2026-09-30': { a: { BRA: row(300, 0, 0) }, b: {}, __projection: { source: 'monthly', at: 'x' } },
@@ -207,8 +207,8 @@ console.log('\nMonth clear — CRS 3, September 2026');
   check('Sales Close for September goes, August’s stays', !('3_9_2026' in next.salesCloseStore) && same(next.salesCloseStore['3_8_2026'], stores.salesCloseStore['3_8_2026']));
   check('31 Aug is untouched', same(e['3_2026-08-31'], stores.entryStore['3_2026-08-31']));
   const oct = e['3_2026-10-01'].a.BRA;
-  check('1 Oct re-opens across the cleared month: 31 Aug closes 400, + 150 received in September = 550',
-    oct.open === 550 && oct.close === 530 && oct.sales === 20, `got ${oct.open} / ${oct.close}`);
+  check('1 Oct re-opens across the cleared month: 31 Aug closes 401 (its inspection excess counts), + 150 received in September = 551',
+    oct.open === 551 && oct.close === 531 && oct.sales === 20, `got ${oct.open} / ${oct.close}`);
   check('August’s inspection is untouched', same(next.inspectionStore['3_2026-08-31'], stores.inspectionStore['3_2026-08-31']));
   check('CRS 30 and CRS 13 are untouched though their keys look alike',
     same(e['30_2026-09-01'], stores.entryStore['30_2026-09-01']) && same(e['13_2026-09-15'], stores.entryStore['13_2026-09-15']) &&

@@ -13,21 +13,25 @@
  * to another, and both would break the project's rule that the browser never
  * talks to Supabase directly.
  *
- * So the bell asks its own authenticated route, every 15 seconds while the
- * page is visible, immediately when the tab comes back into view, and
- * immediately after the person's own actions. A request submitted at a shop
- * reaches an administrator's badge within that interval with nobody pressing
- * refresh, and nothing crosses a shop boundary on the way.
+ * So the bell rides the app's live-sync beat (dataStore.ts, every 4 seconds
+ * while visible): /api/sync answers with this person's unread count and newest
+ * notification id, and when that changes the bell fetches its summary. It also
+ * asks immediately when the tab comes back into view and after the person's
+ * own actions, and on a slow timer of its own in case the beat is not running.
+ * A request submitted at a shop reaches an administrator's badge within a beat
+ * with nobody pressing refresh, and nothing crosses a shop boundary on the way.
  *
  * ONE POLL FOR THE WHOLE SHELL. The bell, the popup and the history page read
  * the same store, so three components do not mean three timers.
  */
 import { useSyncExternalStore } from 'react';
+import { crsData } from '@/lib/dataStore';
 import type { Category, InboxItem, MarkAction, Priority, ReadStats, RecipientReport, SentMessage } from './core';
 
 export type Summary = { installed: boolean; unread: number; latestAt: string | null; popups: InboxItem[] };
 
-const POLL_MS = 15_000;
+/** The fallback only — the live beat is what normally moves the badge. */
+const POLL_MS = 30_000;
 const EMPTY: Summary = { installed: true, unread: 0, latestAt: null, popups: [] };
 
 class InboxStore {
@@ -36,6 +40,10 @@ class InboxStore {
   private listeners = new Set<() => void>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private inflight = false;
+  private again = false;
+  private beat: string | number = '';
+  private unwatch: (() => void) | null = null;
+  private unsubscribe: (() => void) | null = null;
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -52,7 +60,12 @@ class InboxStore {
   }
 
   async refresh(): Promise<void> {
-    if (this.inflight) return;
+    // A beat that lands while a fetch is out must not be lost — it may be the
+    // very notification the fetch in flight was too early to see.
+    if (this.inflight) {
+      this.again = true;
+      return;
+    }
     this.inflight = true;
     try {
       const r = await fetch('/api/notifications/summary', { cache: 'no-store', headers: { Accept: 'application/json' } });
@@ -74,8 +87,19 @@ class InboxStore {
       /* offline for a moment — the next tick tries again */
     } finally {
       this.inflight = false;
+      if (this.again) {
+        this.again = false;
+        void this.refresh();
+      }
     }
   }
+
+  private onBeat = () => {
+    const next = crsData.getRevision('inbox');
+    if (next === this.beat) return;
+    this.beat = next;
+    void this.refresh();
+  };
 
   private onVisible = () => {
     if (document.visibilityState === 'visible') void this.refresh();
@@ -91,6 +115,9 @@ class InboxStore {
     }, POLL_MS);
     document.addEventListener('visibilitychange', this.onVisible);
     window.addEventListener('focus', this.onVisible);
+    this.beat = crsData.getRevision('inbox');
+    this.unwatch = crsData.watch('inbox');
+    this.unsubscribe = crsData.subscribe(this.onBeat);
   }
 
   stop() {
@@ -98,6 +125,9 @@ class InboxStore {
     this.timer = null;
     document.removeEventListener('visibilitychange', this.onVisible);
     window.removeEventListener('focus', this.onVisible);
+    this.unwatch?.();
+    this.unsubscribe?.();
+    this.unwatch = this.unsubscribe = null;
   }
 
   /** After this person did something: redraw lists now, and re-count. */
@@ -129,10 +159,11 @@ async function json<T>(r: Response): Promise<T> {
   return b;
 }
 
-export async function fetchInbox(opts: { category?: Category | null; unread?: boolean; limit?: number; before?: string | null }) {
+export async function fetchInbox(opts: { category?: Category | null; unread?: boolean; requests?: boolean; limit?: number; before?: string | null }) {
   const q = new URLSearchParams();
   if (opts.category) q.set('category', opts.category);
   if (opts.unread) q.set('unread', '1');
+  if (opts.requests) q.set('requests', '1');
   if (opts.limit) q.set('limit', String(opts.limit));
   if (opts.before) q.set('before', opts.before);
   return json<{ installed: boolean; items: InboxItem[] }>(await fetch(`/api/notifications?${q}`, { cache: 'no-store' }));
@@ -146,9 +177,9 @@ export async function markNotification(id: number, action: MarkAction): Promise<
   return b.item ?? null;
 }
 
-export async function markAllRead(category: Category | null): Promise<number> {
+export async function markAllRead(category: Category | null, requests = false): Promise<number> {
   const b = await json<{ marked: number }>(
-    await fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read-all', category }) }),
+    await fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read-all', category, requests }) }),
   );
   inbox.changed();
   return b.marked ?? 0;
@@ -182,23 +213,38 @@ export function fmtWhen(iso: string | null | undefined): string {
   return `${d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}, ${t}`;
 }
 
-export type Filter = 'all' | 'unread' | Category;
+export type Filter = 'all' | 'unread' | 'requests' | Category;
 
 export const FILTER_LABEL: Record<Filter, string> = {
   all: 'All',
   unread: 'Unread',
+  requests: 'Approval Requests',
   payments: 'Payments',
   clear: 'Clear Requests',
   approvals: 'Other Approvals',
-  messages: 'Messages',
+  messages: 'Admin Messages',
   system: 'System',
 };
 
-/** Administrators get every filter; shop staff only the ones that can hold anything for them. */
+/** Administrators get every request filter; shop staff only the ones that can hold anything for them. */
 export const filtersFor = (isAdmin: boolean): Filter[] =>
-  isAdmin ? ['all', 'unread', 'payments', 'clear', 'approvals', 'messages', 'system'] : ['all', 'unread', 'messages', 'payments', 'clear'];
+  isAdmin ? ['all', 'unread', 'requests', 'payments', 'clear', 'messages'] : ['all', 'unread', 'messages', 'payments', 'clear'];
 
-export const toQuery = (f: Filter) => ({ category: f === 'all' || f === 'unread' ? null : f, unread: f === 'unread' });
+export const toQuery = (f: Filter) => ({
+  category: f === 'all' || f === 'unread' || f === 'requests' ? null : f,
+  unread: f === 'unread',
+  requests: f === 'requests',
+});
+
+/** "Today" / "Yesterday" / "14 Sept 2026" — the heading a notification is listed under. */
+export function dayHeading(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (new Date(today.getTime() - 86_400_000).toDateString() === d.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 export function iconFor(item: Pick<InboxItem, 'type' | 'status'>): string {
   switch (item.type) {

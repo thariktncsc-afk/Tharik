@@ -162,7 +162,7 @@ export default function NotificationBell() {
             {installed && unread > 0 ? (
               <button
                 type="button"
-                onClick={() => void markAllRead(toQuery(filter).category).then(load)}
+                onClick={() => void markAllRead(toQuery(filter).category, toQuery(filter).requests).then(load)}
                 style={{ border: 'none', background: 'none', color: '#0369A1', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
               >
                 Mark all as read
@@ -255,7 +255,7 @@ export default function NotificationBell() {
                         {it.message}
                       </span>
                       <span style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap', fontSize: 10.5, color: '#94A3B8' }}>
-                        {it.relatedCrsId ? <span style={{ fontWeight: 700, color: '#0369A1' }}>CRS {it.relatedCrsId}</span> : null}
+                        {it.relatedCrsId && !it.title.startsWith(`CRS ${it.relatedCrsId} `) ? <span style={{ fontWeight: 700, color: '#0369A1' }}>CRS {it.relatedCrsId}</span> : null}
                         <span>{fmtWhen(it.createdAt)}</span>
                         {st ? <span style={{ fontWeight: 700, color: sc.fg, background: sc.bg, padding: '0 6px', borderRadius: 4 }}>{st}</span> : null}
                         {!it.isRead ? <span style={{ fontWeight: 800, color: '#0284C7' }}>● Unread</span> : null}
