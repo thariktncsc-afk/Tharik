@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import { AuthProvider } from '@/lib/authClient';
 import DialogHost from '@/components/dialog';
 import './globals.css';
@@ -36,6 +37,10 @@ export const viewport = {
   initialScale: 1,
 };
 
+// Microsoft Clarity. Off unless the project id is set, so local dev and any
+// deploy without it load nothing.
+const CLARITY_ID = process.env.NEXT_PUBLIC_CLARITY_ID?.trim();
+
 export default function RootLayout({
   children,
 }: {
@@ -46,10 +51,20 @@ export default function RootLayout({
     // <body> before React loads (Grammarly, ColorZilla's cz-shortcut-listen and
     // friends). It applies to this element's own attributes only, so genuine
     // mismatches inside the app are still reported.
+    //
+    // data-clarity-mask masks every piece of text and every input in Clarity's
+    // recordings. The screens show stock figures, staff names, phone numbers
+    // and payment UTRs, none of which should reach a third party; clicks,
+    // scrolling and heatmaps still work with the text masked.
     <html lang="en">
-      <body suppressHydrationWarning>
+      <body suppressHydrationWarning data-clarity-mask="True">
         <AuthProvider>{children}</AuthProvider>
         <DialogHost />
+        {CLARITY_ID && /^[a-z0-9]+$/i.test(CLARITY_ID) ? (
+          <Script id="ms-clarity" strategy="afterInteractive">
+            {`(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script",${JSON.stringify(CLARITY_ID)});`}
+          </Script>
+        ) : null}
       </body>
     </html>
   );
