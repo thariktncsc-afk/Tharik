@@ -21,8 +21,10 @@ export type Section = {
 };
 
 export type Access = {
-  /** No charge applies: an admin, or charging is switched off. */
+  /** Statements are free here: an admin, charging off, or this shop's Statement switch OFF. */
   free: boolean;
+  /** The DSS is free here: an admin, charging off, or this shop's DSS switch OFF. */
+  dssFree: boolean;
   charging: boolean;
   isAdmin: boolean;
   settings: PaymentSettings;

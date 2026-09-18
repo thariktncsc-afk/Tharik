@@ -6,6 +6,7 @@
  * /api/statements/render, because a disabled button stops nobody.
  */
 import { NextResponse } from 'next/server';
+import { gateRequired } from '@/lib/payments/gate';
 import { supabaseConfigured } from '@/lib/supabaseAdmin';
 import {
   chargingActive,
@@ -13,6 +14,7 @@ import {
   isAdmin,
   loadStatementEngine,
   paidSections,
+  readPaymentGate,
   readSettings,
   requireSession,
   sectionsForShop,
@@ -42,10 +44,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'You can only open your own shop’s statements.' }, { status: 403 });
   }
 
-  const [settings, charging, engine] = await Promise.all([
+  const [settings, charging, engine, gate] = await Promise.all([
     readSettings(),
     chargingActive(),
     loadStatementEngine(null),
+    readPaymentGate(),
   ]);
 
   // The section list comes from the engine, so CRS 29's twelve-section family
@@ -66,17 +69,19 @@ export async function GET(req: Request) {
   // Admin downloads are free and unconditional — that is the requirement, and
   // it is also what keeps the office able to reissue paperwork for a shop
   // whose payment is stuck in the queue.
-  const free = admin || !charging;
+  // Payment Access Control: each kind has its own switch per shop, so the
+  // Statements answer (`free`) and the DSS answer (`dssFree`) are separate.
+  const free = admin || !charging || !gateRequired(gate, crsId, 'statement');
+  const dssFree = admin || !charging || !gateRequired(gate, crsId, 'dss');
 
-  const [paid, dss] = free
-    ? [new Set<string>(), true]
-    : await Promise.all([
-        paidSections({ crsId, kind: 'statement', year, month }),
-        dssPaid({ crsId, year, month }),
-      ]);
+  const [paid, dss] = await Promise.all([
+    free ? Promise.resolve(new Set<string>()) : paidSections({ crsId, kind: 'statement', year, month }),
+    dssFree ? Promise.resolve(true) : dssPaid({ crsId, year, month }),
+  ]);
 
   return NextResponse.json({
     free,
+    dssFree,
     charging,
     isAdmin: admin,
     settings,
