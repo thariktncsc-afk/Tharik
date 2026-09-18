@@ -843,7 +843,8 @@ export default function DailyEntryPage() {
 
     try {
       const access = await fetchAccess(Number(crsVal), dssMonth, dssYear);
-      if (!access.free && !access.dssPaid) {
+      // The DSS has its own switch (Payment Access Control) — not the Statements'.
+      if (!access.dssFree && !access.dssPaid) {
         const { order, upi } = await createOrder({ kind: 'dss', month: dssMonth, year: dssYear });
         setDssPay({ order, upi });
         return;

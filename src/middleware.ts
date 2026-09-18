@@ -26,6 +26,7 @@ const APP_PATHS = [
   '/users',
   '/settings',
   '/audit',
+  '/payment-access',
 ];
 
 export function middleware(req: NextRequest) {
@@ -58,6 +59,7 @@ export const config = {
     '/payments/:path*',
     '/reports/:path*',
     '/clear-requests/:path*',
+    '/payment-access/:path*',
     '/pv-officers/:path*',
     '/users/:path*',
     '/settings/:path*',

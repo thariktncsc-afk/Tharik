@@ -4,6 +4,18 @@
  *
  *   node tools/set-initial-ob.mjs --file=<ob.json>            dry run
  *   node tools/set-initial-ob.mjs --file=<ob.json> --write    apply
+ *   … --before-first [--write]   the office's Initial Opening is dated BEFORE the
+ *                         day the shop's user already started on (e.g. CRS 14 keyed
+ *                         18 Sep, office gives 01 Sep): the new sheet becomes the
+ *                         Initial Opening, the old first day's typed Openings are
+ *                         released so it carries from the new one (its Sales,
+ *                         remittance and everything else stay), the chain is
+ *                         rebuilt and the start date moves.
+ *   … --amend [--write]   correct lines of an Initial Opening already entered
+ *                         (e.g. Police rows given later): only the named
+ *                         commodities' Opening changes; their Total and Closing
+ *                         follow, Sales and everything else on the sheet stay,
+ *                         later days re-carry and their months republish.
  *
  * ob.json:
  *   { "crsId": 20, "date": "2026-09-01",
@@ -49,6 +61,7 @@ const { createClient } = createRequire(join(root, 'package.json'))('@supabase/su
 const I = await import(pathToFileURL(join(root, 'src/lib/engine/stockInit.ts')).href);
 const G = await import(pathToFileURL(join(root, 'src/lib/stockGuard.ts')).href);
 const C = await import(pathToFileURL(join(root, 'src/lib/engine/stockChain.ts')).href);
+const R = await import(pathToFileURL(join(root, 'src/lib/engine/rechain.ts')).href);
 const MR = await import(pathToFileURL(join(root, 'src/lib/engine/monthlyRollup.ts')).href);
 const RR = await import(pathToFileURL(join(root, 'src/lib/engine/receiptRollup.ts')).href);
 
@@ -58,6 +71,8 @@ readFileSync(join(root, '.env.local'), 'utf8').split('\n').forEach((l) => {
 });
 const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const write = process.argv.includes('--write');
+const amend = process.argv.includes('--amend');
+const beforeFirst = process.argv.includes('--before-first');
 const fileArg = (process.argv.find((a) => a.startsWith('--file=')) ?? '').slice(7);
 const kg = (n) => Math.round(n * 1000) / 1000;
 const canon = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
@@ -87,8 +102,19 @@ async function main() {
   const init = I.readStockInit(get(I.STOCK_INIT_KEY, {}));
 
   // ── Refuse anything that is not a genuine first entry ─────────────────────
-  if (entry[dayKey]) throw new Error(`${dayKey} already has a day sheet — not overwriting it.`);
-  if (I.isInitialized(init, crsId)) throw new Error(`CRS ${crsId} has already started (${I.initialDate(init, crsId)}) — an Initial Opening is entered once.`);
+  if (amend) {
+    // Only the Initial Opening itself: the shop's first stock day, as recorded.
+    if (!entry[dayKey]) throw new Error(`${dayKey} has no day sheet — nothing to amend; enter it without --amend.`);
+    if (I.initialDate(init, crsId) !== date) throw new Error(`CRS ${crsId}'s Initial Opening is dated ${I.initialDate(init, crsId) ?? '(none)'}, not ${date}.`);
+  } else if (beforeFirst) {
+    if (entry[dayKey]) throw new Error(`${dayKey} already has a day sheet — not overwriting it.`);
+    const first = I.initialDate(init, crsId);
+    if (!first) throw new Error(`CRS ${crsId} has not started — enter it without --before-first.`);
+    if (!(date < first)) throw new Error(`CRS ${crsId} started on ${first}; --before-first needs an earlier date than that.`);
+  } else {
+    if (entry[dayKey]) throw new Error(`${dayKey} already has a day sheet — not overwriting it.`);
+    if (I.isInitialized(init, crsId)) throw new Error(`CRS ${crsId} has already started (${I.initialDate(init, crsId)}) — an Initial Opening is entered once.`);
+  }
   const earlier = Object.keys(entry).filter((k) => k.startsWith(`${crsId}_`) && k.slice(k.indexOf('_') + 1) < date);
   if (earlier.length) throw new Error(`CRS ${crsId} has sheets before ${date}: ${earlier.join(', ')}`);
   if (spec.gunny && gunnyStore[monthKey]) throw new Error(`${monthKey} already has a Gunny record — not overwriting it.`);
@@ -103,7 +129,22 @@ async function main() {
 
   const register = RR.receiptQtyForDay(receipts, crsId, date);
   const sheet = { a: {}, b: {} };
-  for (const [sec, comms] of [['a', lists.a], ['b', lists.b]]) {
+  /** For --amend: the named rows before and after, for the report and the log. */
+  const amended = [];
+  if (amend) {
+    const old = entry[dayKey];
+    for (const sec of ['a', 'b']) sheet[sec] = { ...(old[sec] ?? {}) };
+    Object.assign(sheet, Object.fromEntries(Object.entries(old).filter(([k]) => k !== 'a' && k !== 'b')));
+    for (const [id, v] of Object.entries(spec.opening ?? {})) {
+      const sec = known.get(id);
+      const was = sheet[sec][id] ?? { receipt: kg(register[id] ?? 0), sales: 0, amount: 0, excess: 0, shortage: 0, transfer: 0 };
+      const open = kg(Number(v));
+      const total = kg(open + Number(was.receipt || 0) + Number(was.excess || 0) - Number(was.shortage || 0) - Number(was.transfer || 0));
+      sheet[sec][id] = { ...was, open, total, close: kg(total - Number(was.sales || 0) - Number(was.cs || 0)), openFixed: true };
+      amended.push({ id, sec, before: Number(was.open || 0), after: open });
+    }
+  }
+  for (const [sec, comms] of amend ? [] : [['a', lists.a], ['b', lists.b]]) {
     for (const c of comms) {
       const open = kg(Number(spec.opening?.[c.id] ?? 0));
       const receipt = kg(register[c.id] ?? 0);
@@ -116,16 +157,43 @@ async function main() {
     }
   }
 
-  const nextEntry = { ...entry, [dayKey]: sheet };
+  let nextEntry = { ...entry, [dayKey]: sheet };
+  /** --before-first: the old first day, its typed Openings released to carry. */
+  const released = [];
+  const oldFirstKey = beforeFirst ? `${crsId}_${I.initialDate(init, crsId)}` : null;
+  if (oldFirstKey && nextEntry[oldFirstKey]) {
+    const old = nextEntry[oldFirstKey];
+    const copy = { ...old };
+    for (const sec of ['a', 'b']) {
+      copy[sec] = { ...(old[sec] ?? {}) };
+      for (const [id, r] of Object.entries(copy[sec])) {
+        if (r && r.openFixed) {
+          const { openFixed: _f, ...rest } = r;
+          copy[sec][id] = rest;
+          released.push({ id, sec, before: Number(r.open || 0) });
+        }
+      }
+    }
+    nextEntry = { ...nextEntry, [oldFirstKey]: copy };
+  }
+  // Later days carry from the amended Closing — rebuilt in date order, as a save does.
+  const rebuilt = R.rebuildChain({ entryStore: nextEntry, inspectionStore: insp, receiptStore: receipts }, crsId, date);
+  nextEntry = rebuilt.entryStore;
   // The arithmetic rule binds every writer, administrators included.
   const broken = G.inspectStockWrite({ entryStore: entry, receiptStore: receipts, inspectionStore: insp, [I.STOCK_INIT_KEY]: init }, { entryStore: nextEntry }, true);
   if (broken.length) throw new Error(`Stock guard refused: ${G.describeStock(broken.slice(0, 3))}`);
 
-  // Republish the month as a Daily Entry save does.
+  // Republish every month the entry moved, as a Daily Entry save does.
   const manual = get('meManualStore', {});
-  const { merged, source } = MR.rebuildMonthlyFromDaily(crsId, m, y, nextEntry, insp, manual[monthKey], lists, receipts);
-  const nextMonthly = { ...get('monthlyStore', {}), [monthKey]: merged };
-  const nextSource = { ...get('meSourceStore', {}), [monthKey]: source };
+  const nextMonthly = { ...get('monthlyStore', {}) };
+  const nextSource = { ...get('meSourceStore', {}) };
+  for (const ym of new Set([date.slice(0, 7), ...rebuilt.dates.map((d) => d.slice(0, 7))])) {
+    const [yy, mm] = ym.split('-').map(Number);
+    const k = `${crsId}_${mm}_${yy}`;
+    const { merged, source } = MR.rebuildMonthlyFromDaily(crsId, mm, yy, nextEntry, insp, manual[k], lists, receipts);
+    nextMonthly[k] = merged;
+    nextSource[k] = source;
+  }
 
   const at = new Date().toISOString();
   const labels = { ss50: '50 KG SS', poly: 'POLY', cbox: 'C.BOX' };
@@ -144,14 +212,26 @@ async function main() {
 
   // ── Report ────────────────────────────────────────────────────────────────
   const names = new Map(master.map((c) => [c.id, `${c.en} (${c.unit})`]));
-  console.log(`CRS ${crsId} — Initial Opening Balance on ${date.split('-').reverse().join('-')}`);
-  for (const [sec, comms] of [['a', lists.a], ['b', lists.b]]) {
+  console.log(`CRS ${crsId} — Initial Opening Balance on ${date.split('-').reverse().join('-')}${amend ? ' — AMEND' : ''}`);
+  for (const a of amended) {
+    const r = sheet[a.sec][a.id];
+    console.log(`  ${names.get(a.id).padEnd(26)} OB ${a.before} → ${a.after}  total ${r.total}  sales ${r.sales ?? 0}  CB ${r.close}`);
+  }
+  if (amend && rebuilt.dates.length) console.log(`  later days re-carried: ${rebuilt.dates.join(', ')}`);
+  if (oldFirstKey) {
+    console.log(`  old first day ${oldFirstKey}: typed Openings released; re-carried days: ${rebuilt.dates.join(', ') || 'none'}`);
+    for (const r of released) {
+      const now = nextEntry[oldFirstKey][r.sec][r.id];
+      if (r.before !== now.open) console.log(`    ${names.get(r.id).padEnd(26)} OB ${r.before} → ${now.open}  sales ${now.sales}  CB ${now.close}${now.close < 0 ? '  ⚠ NEGATIVE' : ''}`);
+    }
+  }
+  for (const [sec, comms] of amend ? [] : [['a', lists.a], ['b', lists.b]]) {
     for (const c of comms) {
       const r = sheet[sec][c.id];
       if (r.open || r.receipt) console.log(`  ${names.get(c.id).padEnd(26)} OB ${String(r.open).padStart(10)}  receipt ${r.receipt}  total ${r.total}  CB ${r.close}`);
     }
   }
-  console.log(`  (${lists.a.length + lists.b.length} rows on the sheet; the rest open at 0)`);
+  if (!amend) console.log(`  (${lists.a.length + lists.b.length} rows on the sheet; the rest open at 0)`);
   if (spec.gunny) console.log(`  Gunny ${m}/${y}: ${Object.entries(spec.gunny).map(([id, n]) => `${labels[id] ?? id} ${n}`).join(', ')}`);
   console.log(`  started record: ${changes.map((c) => `${c.from ?? 'not started'} → ${c.to}`).join(', ') || 'unchanged'}`);
   const ix = C.buildChainIndex(nextEntry, insp, receipts, crsId);
@@ -173,7 +253,7 @@ async function main() {
 
   // ── Backup, then write under version, rolling back on any failure ─────────
   mkdirSync(join(root, 'backups'), { recursive: true });
-  const backup = join(root, 'backups', `initial-ob-crs${crsId}-${at.replace(/[:.]/g, '-')}.json`);
+  const backup = join(root, 'backups', `initial-ob${amend ? '-amend' : beforeFirst ? '-before-first' : ''}-crs${crsId}-${at.replace(/[:.]/g, '-')}.json`);
   writeFileSync(backup, JSON.stringify(Object.fromEntries(plan.map(([k]) => [k, rows[k] ?? null])), null, 1));
   console.log(`backup: ${backup}`);
   const done = [];
@@ -214,7 +294,13 @@ async function main() {
   const who = { actor_user_id: null, actor_username: 'initial-ob:office', actor_name: 'Administrator (office instruction)', actor_role: 'ADMIN', source: 'user', crs_id: crsId, shop_name: shopName };
   const changesOf = (sec) => Object.entries(sheet[sec]).filter(([, r]) => r.open).map(([id, r]) => ({ label: `${names.get(id)} · Opening`, before: '—', after: String(r.open) }));
   const { error: logErr } = await db.from('activity_log').insert([
-    { ...who, module: 'Daily Sales', action: 'created', entry_date: date, record_key: dayKey, summary: `Initial Opening Balance entered for ${date.split('-').reverse().join('-')} on the office's instruction`, changes: [...changesOf('a'), ...changesOf('b')] },
+    ...(amend
+      ? [{ ...who, module: 'Daily Sales', action: 'updated', entry_date: date, record_key: dayKey, summary: `Admin correction — Initial Opening Balance for ${date.split('-').reverse().join('-')} amended on the office's instruction`, changes: amended.map((a) => ({ label: `${names.get(a.id)} · Opening`, before: String(a.before), after: String(a.after) })) }]
+      : []),
+    ...(oldFirstKey
+      ? [{ ...who, module: 'Daily Sales', action: 'updated', entry_date: oldFirstKey.slice(oldFirstKey.indexOf('_') + 1), record_key: oldFirstKey, summary: `Admin correction — Openings now carried from the ${date.split('-').reverse().join('-')} Initial Opening (typed Openings released); Sales and remittance unchanged`, changes: released.map((r) => ({ label: `${names.get(r.id)} · Opening`, before: String(r.before), after: String(nextEntry[oldFirstKey][r.sec][r.id].open) })).filter((c) => c.before !== c.after) }]
+      : []),
+    ...(amend ? [] : [{ ...who, module: 'Daily Sales', action: 'created', entry_date: date, record_key: dayKey, summary: `Initial Opening Balance entered for ${date.split('-').reverse().join('-')} on the office's instruction`, changes: [...changesOf('a'), ...changesOf('b')] }]),
     ...(spec.gunny ? [{ ...who, module: 'Gunny', action: 'created', entry_month: m, entry_year: y, record_key: monthKey, summary: `Gunny opening for ${m}/${y} entered on the office's instruction`, changes: Object.entries(spec.gunny).map(([id, n]) => ({ label: `${labels[id] ?? id} · Opening`, before: '—', after: String(n) })) }] : []),
   ]);
   if (logErr) console.log(`activity log not written: ${logErr.message}`);

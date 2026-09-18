@@ -151,6 +151,22 @@ To close that gap, add `xlsx-js-style` as a dependency and port
 `downloadDSSExcel()` server-side, shimming `XLSX.writeFile` to capture the
 workbook instead of writing it.
 
+### Payment Access Control (shop-wise switches)
+
+`/payment-access` (admin only) sets, per shop, whether the **DSS** and the
+**Statements** need paying for — two independent switches
+(`src/lib/payments/gate.ts`, crs_state `__paymentGate`, written only by the
+admin-only `/api/payments/gate`, never by `/api/state`). **Unset = Payment
+Required**, i.e. the behaviour before the switches existed. The global
+`payment_settings.enabled` still sits above them: charging off = everything
+free. Enforced on the server: `authorise()` in `/api/statements/render`,
+`/api/payments/access` (`free` = Statements, `dssFree` = DSS — keep them
+apart; Daily Entry's DSS button must read `dssFree`), and order creation
+refuses a shop whose switch is OFF. Switches never touch orders or approvals.
+Each change is an activity-log row (`Payment Access`, `ON → OFF`), bulk ones
+too, one per shop. The Statements page and this page re-read on a live-sync
+change to `__paymentGate`. `npm run verify:payment-gate`.
+
 ### Gotchas
 
 - **The payee VPA is NOT in `__config`.** Any signed-in user can write crs_state

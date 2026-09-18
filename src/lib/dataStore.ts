@@ -50,7 +50,9 @@ export type StoreKey =
   | '__commodityMaster'
   | '__pvOfficers'
   /** Read-only here: which shops have used their one-time Initial Opening (engine/stockInit.ts). Only the server writes it. */
-  | '__stockInit';
+  | '__stockInit'
+  /** Read-only here: Payment Access Control switches (payments/gate.ts). Only /api/payments/gate writes it. */
+  | '__paymentGate';
 
 export type DataStatus = 'idle' | 'loading' | 'ready' | 'error';
 

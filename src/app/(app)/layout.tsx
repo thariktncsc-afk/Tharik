@@ -41,11 +41,12 @@ const ADMIN = [
   { href: '/messages', icon: '📣', label: 'Messages' },
   { href: '/pv-officers', icon: '🧑‍💼', label: 'PV Officers' },
   { href: '/users', icon: '👥', label: 'Users' },
+  { href: '/payment-access', icon: '🎛️', label: 'Payment Access Control' },
   { href: '/settings', icon: '⚙️', label: 'Settings' },
   { href: '/audit', icon: '📜', label: 'Activity Log' },
 ];
 // Mirrors adminNavLabels in 07-auth.js — hidden from non-admin roles.
-const ADMIN_ONLY = new Set(['CRS Shops', 'Commodities', 'Users', 'Settings', 'Activity Log', 'Reports', 'PV Officers', 'Messages']);
+const ADMIN_ONLY = new Set(['CRS Shops', 'Commodities', 'Users', 'Settings', 'Activity Log', 'Reports', 'PV Officers', 'Messages', 'Payment Access Control']);
 
 function fmtDate(d: Date) {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');

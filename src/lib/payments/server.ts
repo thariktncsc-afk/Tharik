@@ -14,6 +14,7 @@ import { SESSION_COOKIE, decodeSession, type Session } from '@/lib/session';
 import { CRS_NAMES } from '@/lib/engine/shops';
 import { rebuildMonthlyFromDaily } from '@/lib/engine/monthlyRollup';
 import { DEFAULT_SETTINGS, type PaymentSettings } from './pricing';
+import { GATE_KEY, gateRequired, readGate, type GateKind, type PaymentGate } from './gate';
 import { createStatementEngine } from '@/generated/statements-legacy';
 
 export type Section = {
@@ -71,6 +72,24 @@ export async function readSettings(): Promise<PaymentSettings> {
 export async function chargingActive(): Promise<boolean> {
   const s = await readSettings();
   return s.enabled && s.upiVpa.trim().length > 0;
+}
+
+// ── Payment Access Control (gate.ts) ────────────────────────────────────────
+
+/** The administrators' shop-wise switches. Unset or unreadable = Payment Required. */
+export async function readPaymentGate(): Promise<PaymentGate> {
+  const { data } = await supabaseAdmin().from('crs_state').select('data').eq('scope', 'global').eq('store_key', GATE_KEY).maybeSingle();
+  return readGate(data?.data);
+}
+
+/**
+ * Must this shop pay before opening this kind of document? Charging switched
+ * on globally AND the shop's switch ON. Shop staff only — callers exempt
+ * administrators first.
+ */
+export async function paymentRequired(crsId: number, kind: GateKind): Promise<boolean> {
+  if (!(await chargingActive())) return false;
+  return gateRequired(await readPaymentGate(), crsId, kind);
 }
 
 // ── Entitlement ─────────────────────────────────────────────────────────────
@@ -139,6 +158,10 @@ export async function authorise(
   }
 
   if (!(await chargingActive())) return { ok: true, free: true };
+
+  // The administrators' switch for this shop and kind (Payment Access
+  // Control): OFF opens it without payment. Approvals are untouched either way.
+  if (!gateRequired(await readPaymentGate(), scope.crsId, scope.kind)) return { ok: true, free: true };
 
   if (scope.kind === 'dss') {
     return (await dssPaid(scope))
