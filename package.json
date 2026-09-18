@@ -30,7 +30,8 @@
     "verify:activity-log": "node tools/verify-activity-log.mjs",
     "verify:initial-opening": "node tools/verify-initial-opening.mjs",
     "verify:holidays": "node tools/verify-holidays.mjs",
-    "verify:payment-gate": "node tools/verify-payment-gate.mjs"
+    "verify:payment-gate": "node tools/verify-payment-gate.mjs",
+    "verify:dss-days": "node tools/verify-dss-days.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
