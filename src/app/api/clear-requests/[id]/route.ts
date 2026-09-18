@@ -17,6 +17,7 @@ import { supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { mutateClearDb, type StoredRequest } from '@/lib/clearStore';
 import { executeClear } from '@/lib/clearExecute';
+import { reconcileShops } from '@/lib/stockInitServer';
 import { onClearDecided } from '@/lib/notify/approvals';
 import { clearRequestDraft, clearedDrafts } from '@/lib/activityLog/core';
 import { recordActivity } from '@/lib/activityLog/server';
@@ -111,6 +112,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   try {
     const { cleared, recalculated } = await executeClear(claimed, s.username);
+    // The shop's "started" record follows what is left (engine/stockInit.ts):
+    // clearing its only stock data — a wrong Initial Opening — makes it a new
+    // shop again; clearing its first day moves the first day to the next one.
+    await reconcileShops([claimed.crsId], s.username);
     const doneAt = new Date().toISOString();
     const final = await mutateClearDb(s.username, (db) => {
       const r = db.requests.find((x) => x.id === id)!;

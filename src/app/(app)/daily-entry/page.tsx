@@ -30,7 +30,7 @@ import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/
 import { receiptQtyForDay, receiptRefsForDay, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { dropMonthlyReceipt } from '@/lib/engine/monthlyReceipt';
 import { buildChainIndex, isOpenFixed, openingFor, unsheetedMoves } from '@/lib/engine/stockChain';
-import { initialDate, isInitialized, readStockInit } from '@/lib/engine/stockInit';
+import { firstStockDates, initialDate, isInitialized, readStockInit } from '@/lib/engine/stockInit';
 import PaymentDialog from '@/components/PaymentDialog';
 import { createOrder, fetchAccess, type Order, type Upi } from '@/lib/payments/client';
 import InspectionModal from './InspectionModal';
@@ -215,7 +215,7 @@ export default function DailyEntryPage() {
     (justStarted.includes(crsId) ||
       (stockInitRaw !== undefined
         ? isInitialized(readStockInit(stockInitRaw), crsId)
-        : Object.keys(entryStore).some((k) => Number(k.split('_')[0]) === crsId)));
+        : firstStockDates(entryStore, [crsId]).has(crsId)));
   const firstDay = crsId && stockInitRaw !== undefined ? initialDate(readStockInit(stockInitRaw), crsId) : null;
   /** A shop user may not key a day before the shop's first day — it would re-carry the Initial Opening away. */
   const beforeFirstDay = !isAdmin && shopStarted && !!firstDay && !!date && date < firstDay && !saved;
@@ -811,7 +811,10 @@ export default function DailyEntryPage() {
       : null;
 
   const clearForm = () => {
-    if (savedHasData && user?.role !== 'ADMIN' && clearScope) {
+    // Saved figures are cleared through a request for everyone — raised and
+    // approved at once for an administrator (ClearRequestDialog), so the sheet
+    // is really removed rather than saved over with zeros.
+    if (savedHasData && clearScope) {
       setClearOpen(true);
       return;
     }
@@ -1668,7 +1671,7 @@ export default function DailyEntryPage() {
       )}
       {inspOpen && crsId ? <InspectionModal crsId={crsId} date={date} onClose={() => setInspOpen(false)} /> : null}
       {clearOpen && clearScope ? (
-        <ClearRequestDialog scope={clearScope} onClose={() => setClearOpen(false)} onApprovedClear={resetForm} />
+        <ClearRequestDialog scope={clearScope} onClose={() => setClearOpen(false)} onApprovedClear={resetForm} admin={isAdmin} onEmptyForm={resetForm} />
       ) : null}
       {pendingRemit ? (
         <AdditionalRemitDialog

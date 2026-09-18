@@ -20,8 +20,8 @@ import { logEvent } from '@/lib/clearServer';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 import { diffStateWrite, readHints, refusedDraft } from '@/lib/activityLog/core';
 import { recordActivity } from '@/lib/activityLog/server';
-import { STOCK_INIT_KEY, readStockInit, shopsStartedBy } from '@/lib/engine/stockInit';
-import { markStarted } from '@/lib/stockInitServer';
+import { STOCK_INIT_KEY, shopsTouchedBy } from '@/lib/engine/stockInit';
+import { reconcileShops } from '@/lib/stockInitServer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -318,12 +318,14 @@ export async function POST(req: Request) {
     await recordActivity(session, diffStateWrite(stored, landed, readHints((body as { activity?: unknown }).activity)));
   }
 
-  // A day sheet landed for a shop that had never saved stock: its Initial
-  // Opening is now used, permanently (engine/stockInit.ts). Recorded after the
-  // write, so a refused or conflicting save never uses it up.
+  // Every shop whose day sheets this save changed has its "started" record
+  // brought into line with the stock data it now holds (engine/stockInit.ts):
+  // a first Initial Opening starts it, an earlier one moves its first day, and
+  // an administrator removing its only stock makes it a new shop again. After
+  // the write, so a refused or conflicting save never changes it.
   if ('entryStore' in landed) {
-    const started = shopsStartedBy(readStockInit(stored[STOCK_INIT_KEY]), stored.entryStore, landed.entryStore);
-    if (started.length) await markStarted(started, session.username, 'save');
+    const shops = shopsTouchedBy(stored.entryStore, landed.entryStore);
+    if (shops.length) await reconcileShops(shops, session.username);
   }
 
   if (conflicts.length) {
