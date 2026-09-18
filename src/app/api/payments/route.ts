@@ -7,6 +7,8 @@
  * this route takes are *what* is being bought, never *for how much*.
  */
 import { NextResponse } from 'next/server';
+import { dssDayCount } from '@/lib/engine/dssDays';
+import type { ReceiptRow } from '@/lib/engine/receiptRollup';
 import QRCode from 'qrcode';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import {
@@ -108,23 +110,28 @@ export async function GET(req: Request) {
 // ── Create ──────────────────────────────────────────────────────────────────
 
 /**
- * Days in this shop-month that actually have a daily entry.
+ * Days in this shop-month that get a DSS page.
  *
- * The DSS export writes one sheet per day with entries, so the fee follows the
- * same set. Counting calendar days instead would bill for blank sheets that
- * never reach the file.
+ * The DSS export writes one sheet per page, so the fee follows the same set:
+ * every day sheet, plus every date with receipts and no sheet
+ * (engine/dssDays.ts). Counting calendar days instead would bill for blank
+ * sheets that never reach the file.
  */
 async function daysWithEntries(crsId: number, year: number, month: number): Promise<number> {
   const { data } = await supabaseAdmin()
     .from('crs_state')
-    .select('data')
+    .select('store_key, data')
     .eq('scope', 'global')
-    .eq('store_key', 'entryStore')
-    .maybeSingle();
-
-  const store = (data?.data as Record<string, unknown>) ?? {};
-  const prefix = `${crsId}_${year}-${String(month).padStart(2, '0')}-`;
-  return Object.keys(store).filter((k) => k.startsWith(prefix)).length;
+    .in('store_key', ['entryStore', 'inspectionStore', 'receiptStore']);
+  const get = (k: string) => data?.find((r) => r.store_key === k)?.data;
+  return dssDayCount(
+    (get('entryStore') as Record<string, unknown>) ?? {},
+    (get('inspectionStore') as Record<string, unknown>) ?? {},
+    (get('receiptStore') as ReceiptRow[]) ?? [],
+    crsId,
+    month,
+    year,
+  );
 }
 
 export async function POST(req: Request) {

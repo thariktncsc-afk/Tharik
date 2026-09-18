@@ -151,6 +151,20 @@ To close that gap, add `xlsx-js-style` as a dependency and port
 `downloadDSSExcel()` server-side, shimming `XLSX.writeFile` to capture the
 workbook instead of writing it.
 
+### Which dates get a DSS page
+
+One page per shop per date (`src/lib/engine/dssDays.ts`): every day sheet,
+plus a page **worked out when the DSS opens** for every date with Receipt
+Register receipts and no sheet — Opening carried from the chain, that date's
+receipts, Sales 0, Closing = Total. Never stored, so a receipt added, edited or
+deleted, or Sales saved on that date later, changes it at once and cannot
+duplicate (saving Sales makes the real sheet, which already carries the
+register receipt, the one page). Skipped: months keyed on Monthly Entry (the
+projection already states them) and receipts before a shop's first sheet. The
+DSS fee (`daysWithEntries` in `/api/payments`) counts the same set, so a shop
+pays for exactly the pages it gets. The legacy DSS builder is unchanged — it
+is handed the augmented entryStore. `npm run verify:dss-days`.
+
 ### Payment Access Control (shop-wise switches)
 
 `/payment-access` (admin only) sets, per shop, whether the **DSS** and the
