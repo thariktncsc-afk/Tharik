@@ -138,6 +138,7 @@ export const MODULES = [
   'Allotment',
   'Clear Request',
   'Payment',
+  'Payment Access',
   'Statements',
   'DSS',
   'Reports',

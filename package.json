@@ -29,7 +29,8 @@
     "verify:chain-rebuild": "node tools/verify-chain-rebuild.mjs",
     "verify:activity-log": "node tools/verify-activity-log.mjs",
     "verify:initial-opening": "node tools/verify-initial-opening.mjs",
-    "verify:holidays": "node tools/verify-holidays.mjs"
+    "verify:holidays": "node tools/verify-holidays.mjs",
+    "verify:payment-gate": "node tools/verify-payment-gate.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

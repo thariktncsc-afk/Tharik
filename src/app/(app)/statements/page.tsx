@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { appAlert } from '@/components/dialog';
 import PaymentDialog from '@/components/PaymentDialog';
 import { useAuth } from '@/lib/authClient';
-import { crsData, useDataStatus } from '@/lib/dataStore';
+import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
 import { formatRupees, quoteStatement } from '@/lib/payments/pricing';
 import {
@@ -89,9 +89,13 @@ export default function StatementsPage() {
     }
   }, [crsId, month, year]);
 
+  // Payment Access Control: an administrator switching this shop's Statement
+  // payment ON or OFF reaches here by live sync (the __paymentGate row), and
+  // the page asks the server again — no refresh or re-login.
+  const gateRow = useStore<unknown>('__paymentGate');
   useEffect(() => {
     void refreshAccess();
-  }, [refreshAccess]);
+  }, [refreshAccess, gateRow]);
 
   const sections = access?.sections ?? [];
   const avail = access?.avail ?? null;

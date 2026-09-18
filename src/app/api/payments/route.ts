@@ -11,6 +11,7 @@ import QRCode from 'qrcode';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import {
   chargingActive,
+  paymentRequired,
   isAdmin,
   loadStatementEngine,
   paidSections,
@@ -146,6 +147,11 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const kind = body.kind === 'dss' ? 'dss' : 'statement';
   const crsId = session.crsId;
+  // Payment Access Control: a shop set to Free Access for this kind is never
+  // billed for it.
+  if (!(await paymentRequired(crsId, kind))) {
+    return NextResponse.json({ error: `No payment is needed — ${kind === 'dss' ? 'the DSS' : 'Statements'} are free for this shop.` }, { status: 400 });
+  }
   const month = Math.trunc(Number(body.month));
   const year = Math.trunc(Number(body.year));
 
