@@ -45,6 +45,7 @@ import type { ClearScope } from '@/lib/clearClient';
 import { RICE_DAILY_REQUIRED, RICE_INVALID, checkRiceBoxes, hasRiceFields, riceBox, withRice, type RiceBoxError } from '@/lib/engine/crs29Rice';
 import { confirmMonthlySalesClose } from '@/lib/monthCloseConfirm';
 import { rechainAndRepublish } from '@/lib/engine/rechain';
+import { withReceiptOnlyDays } from '@/lib/engine/dssDays';
 
 type ShopRec = { name: string };
 
@@ -864,10 +865,15 @@ export default function DailyEntryPage() {
     }).catch(() => undefined);
 
     const { createDssEngine } = await import('@/generated/dss-legacy');
+    // One page per shop per date: the day sheets, plus a page worked out from
+    // the chain for every date with receipts and no sheet (engine/dssDays.ts).
+    // From the stores as they stand now, so a receipt or sale changed a moment
+    // ago is already in it.
+    const dssInsp = crsData.get<Record<string, unknown>>('inspectionStore') ?? {};
     const engine = createDssEngine({
       stores: {
-        entryStore: crsData.get('entryStore') ?? {},
-        inspectionStore: crsData.get('inspectionStore') ?? {},
+        entryStore: withReceiptOnlyDays(crsData.get<Record<string, unknown>>('entryStore') ?? {}, dssInsp, crsData.get<ReceiptRow[]>('receiptStore') ?? [], Number(crsVal), dssMonth, dssYear),
+        inspectionStore: dssInsp,
       },
       CRS_LIST: shops,
       APP_CONFIG: crsData.get('__config') ?? {},
