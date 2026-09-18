@@ -10,10 +10,17 @@
  *
  * This dialog is courtesy, not security — /api/state refuses the write either
  * way. It exists so the refusal arrives before the user retypes a day's work.
+ *
+ * AN ADMINISTRATOR (`admin`) clears through the very same request: raised and
+ * approved in one step, so the saved figures are really removed by the clear
+ * executor (clearExecute.ts) — snapshot, chain rebuild, the shop's "started"
+ * record recalculated, activity log and all — rather than a form emptied and
+ * saved over them, which leaves a sheet of zeros behind that still counts as
+ * the shop's first day. "Just empty the form" is there for retyping.
  */
 import { useEffect, useState } from 'react';
 import { crsData, useLiveRevision } from '@/lib/dataStore';
-import { findLatest, listRequests, requestClear, type ClearRequest, type ClearScope } from '@/lib/clearClient';
+import { decideRequest, findLatest, listRequests, requestClear, type ClearRequest, type ClearScope } from '@/lib/clearClient';
 
 const overlay: React.CSSProperties = {
   position: 'fixed',
@@ -49,11 +56,17 @@ export default function ClearRequestDialog({
   scope,
   onClose,
   onApprovedClear,
+  admin = false,
+  onEmptyForm,
 }: {
   scope: ClearScope;
   onClose: () => void;
   /** Called when an approval is already in hand, so the caller may clear now. */
   onApprovedClear?: () => void;
+  /** An administrator: clear now, through the request, instead of asking. */
+  admin?: boolean;
+  /** An administrator's other choice: empty the form and keep the saved data. */
+  onEmptyForm?: () => void;
 }) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -87,8 +100,15 @@ export default function ClearRequestDialog({
     setErr('');
     try {
       const req = await requestClear(scope, reason);
-      setSent(req);
       setWatching(req.id);
+      if (admin) {
+        // Raised and approved by the same administrator: the clear runs now.
+        const done = await decideRequest(req.id, 'approve', `Cleared directly by the administrator: ${reason.trim()}`);
+        setSent(done);
+        setExisting(done);
+        return;
+      }
+      setSent(req);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -100,7 +120,7 @@ export default function ClearRequestDialog({
     <div style={overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}>
         <div style={{ background: tone, padding: '16px 20px', color: '#fff' }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>🔒 Admin approval required</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>{admin ? '🗑 Clear saved entry' : '🔒 Admin approval required'}</div>
           <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
             CRS {scope.crsId} — {scope.shopName} • {scope.scopeLabel}
           </div>
@@ -121,7 +141,7 @@ export default function ClearRequestDialog({
   // A request cleared BEFORE this dialog opened is history: the entry has been
   // keyed again since (the dialog only opens over saved figures), so it must
   // be possible to ask again. Only the request followed here reports "cleared".
-  const followed = existing && existing.id === watching ? existing : null;
+  const followed = (existing && existing.id === watching ? existing : null) ?? (sent?.status === 'cleared' ? sent : null);
   const current = followed ?? sent ?? existing;
 
   if (followed?.status === 'cleared') {
@@ -129,7 +149,7 @@ export default function ClearRequestDialog({
     return card(
       <>
         <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.6 }}>
-          The administrator approved this request and <strong>the data has been cleared</strong>
+          {admin ? 'The saved data has been' : 'The administrator approved this request and'} <strong>{admin ? 'cleared' : 'the data has been cleared'}</strong>
           {followed.decidedBy ? ` (${followed.decidedBy})` : ''}. There is nothing left to remove — this {scope.scopeKind === 'month' ? 'month' : 'day'} is ready to be keyed again.
         </div>
         {followed.clearedRecords?.length ? (
@@ -192,7 +212,9 @@ export default function ClearRequestDialog({
   return card(
     <>
       <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.6 }}>
-        This entry already contains saved data. Admin approval is required to clear or reset this entry.
+        {admin
+          ? 'This entry contains saved data. Clearing it removes the saved figures from the database, recalculates later days, and — if it held the shop’s only stock — lets the shop enter its Initial Opening Balance again. It is recorded as an approved clear.'
+          : 'This entry already contains saved data. Admin approval is required to clear or reset this entry.'}
       </div>
       {scopeNote(scope) ? (
         <div style={{ marginTop: 10, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>
@@ -218,6 +240,19 @@ export default function ClearRequestDialog({
       {err ? <div style={{ marginTop: 10, fontSize: 12, color: '#B91C1C' }}>{err}</div> : null}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
         {closeBtn('Cancel')}
+        {admin && onEmptyForm ? (
+          <button
+            type="button"
+            onClick={() => {
+              onEmptyForm();
+              onClose();
+            }}
+            title="Empty the boxes on screen only — the saved data stays until you save over it"
+            style={{ background: '#fff', border: '1px solid #CBD5E1', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 600, color: '#475569', cursor: 'pointer' }}
+          >
+            Just empty the form
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={busy || reason.trim().length < 5}
@@ -228,7 +263,7 @@ export default function ClearRequestDialog({
             cursor: busy || reason.trim().length < 5 ? 'not-allowed' : 'pointer',
           }}
         >
-          {busy ? 'Sending…' : 'Request Admin Approval'}
+          {busy ? (admin ? 'Clearing…' : 'Sending…') : admin ? 'Clear saved data' : 'Request Admin Approval'}
         </button>
       </div>
     </>,

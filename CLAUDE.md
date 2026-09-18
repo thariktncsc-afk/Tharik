@@ -338,15 +338,24 @@ it — do not add a formula anywhere else.
   They also may not key a day before the shop's first day (it would re-carry
   the Initial Opening away), nor change a saved remittance's amount, date,
   account or reason (rule 1b — adding and removing deposits is unchanged).
-- **"Started" is persistent**: crs_state `__stockInit`, one entry per shop
-  (`{date, at, by, source}`). Not in `ALLOWED_KEYS`, so no client writes it; the
-  server adds a shop when a day sheet for it lands (`shopsStartedBy` compares
-  stored vs landed, so another shop's untouched sheet in the same store does
-  not count), and entries are never removed. It never reads `__shops.active` /
-  `__crsMaster.status`, so Active → Inactive → Active cannot hand out a second
-  Initial Opening, and an approved clear of every sheet leaves the shop
-  started. Before the row exists at all the guard treats any shop with stored
-  sheets as started.
+- **"Started" = the shop holds stock data**, recorded in crs_state
+  `__stockInit` (`{date, at, by, source}`) and **recalculated from what
+  remains** (`reconcileStockInit`) after every landed save that touches a
+  shop's sheets (`shopsTouchedBy`) and after every approved clear
+  (`stockInitServer.reconcileShops`). A sheet counts only if some figure is
+  non-zero or it is a Monthly Entry projection (`sheetHasStock`) — a form
+  emptied and saved is not a start. Clear the only stock and the record goes
+  (a new shop again: the Initial Opening can be keyed on any date); clear the
+  first day and it moves to the next sheet; clear a later day and nothing
+  changes. Not in `ALLOWED_KEYS`, so no client writes it. It never reads
+  `__shops.active` / `__crsMaster.status`, so Active → Inactive → Active
+  changes nothing. `node tools/reconcile-stock-init.mjs [--write]` applies the
+  rule to every shop (it fixed CRS 20, whose 18 Sep Initial Opening had been
+  saved over with zeros while the record kept 18 Sep).
+- **An administrator's Clear on a saved day or month** goes through the clear
+  request — raised and approved at once (`ClearRequestDialog admin`) — so the
+  executor really removes it, rebuilds the chain and reconciles the record.
+  "Just empty the form" keeps the old behaviour for retyping.
 - Seeded with `node tools/seed-stock-init.mjs --crs=7,19,30 --write` (the office
   named them; CRS 16 holds a 1 Sep sheet but was listed as not started, so it
   was deliberately left out). The tool only adds.

@@ -36,7 +36,7 @@ import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { dropMonthlyReceipt, monthlyReceiptNo, planMonthlyReceipt } from '@/lib/engine/monthlyReceipt';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { buildChainIndex, openingFor } from '@/lib/engine/stockChain';
-import { isInitialized, readStockInit } from '@/lib/engine/stockInit';
+import { firstStockDates, isInitialized, readStockInit } from '@/lib/engine/stockInit';
 import ClearRequestDialog from '@/components/ClearRequestDialog';
 import { hasData } from '@/lib/clearGuard';
 import { openingLocked } from '@/lib/stockGuard';
@@ -121,7 +121,7 @@ export default function MonthlyEntryPage() {
     (justStarted.includes(crsId) ||
       (stockInitRaw !== undefined
         ? isInitialized(readStockInit(stockInitRaw), crsId)
-        : Object.keys(entryStore).some((k) => Number(k.split('_')[0]) === crsId) || Object.keys(meManualStore).some((k) => Number(k.split('_')[0]) === crsId)));
+        : firstStockDates(entryStore, [crsId]).has(crsId) || Object.keys(meManualStore).some((k) => Number(k.split('_')[0]) === crsId)));
   const chain = useMemo(
     () => (crsId ? buildChainIndex(entryStore, inspectionStore, receiptStore, crsId) : null),
     [entryStore, inspectionStore, receiptStore, crsId],
@@ -396,7 +396,9 @@ export default function MonthlyEntryPage() {
     : null;
 
   const clearMonth = () => {
-    if (monthSaved && user?.role !== 'ADMIN' && clearScope) {
+    // As on Daily Entry: saved figures go through a clear request, approved at
+    // once for an administrator.
+    if (monthSaved && clearScope) {
       setClearOpen(true);
       return;
     }
@@ -1105,7 +1107,7 @@ export default function MonthlyEntryPage() {
           </div>
 
           {clearOpen && clearScope ? (
-            <ClearRequestDialog scope={clearScope} onClose={() => setClearOpen(false)} onApprovedClear={() => setEdits({})} />
+            <ClearRequestDialog scope={clearScope} onClose={() => setClearOpen(false)} onApprovedClear={() => setEdits({})} admin={isAdmin} onEmptyForm={() => setEdits({})} />
           ) : null}
 
           {inspOpen ? (

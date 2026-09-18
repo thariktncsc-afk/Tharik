@@ -82,9 +82,12 @@ console.log('\nOpening locks once saved');
 {
   // The Opening is typed once, when the shop starts (engine/stockInit.ts). A
   // started shop's stored zero is its answer; before it starts, it is keyable.
-  const before = { entryStore: { [DAY]: sheet(row(0, 0, 0)) } };
-  const after = { entryStore: { [DAY]: sheet(row(500, 0, 0)) } };
+  // A zero Opening with a receipt on the day: the shop holds stock data.
+  const before = { entryStore: { [DAY]: sheet(row(0, 100, 0)) } };
+  const after = { entryStore: { [DAY]: sheet(row(500, 100, 0)) } };
   check('a started shop cannot re-key even a stored zero Opening', kinds(judge(before, after)).includes('opening-locked'));
+  const blank = { entryStore: { [DAY]: sheet(row(0, 0, 0)) } };
+  check('a sheet with every figure at zero is not a start — its Initial Opening is still open', judge(blank, { entryStore: { [DAY]: sheet(row(500, 0, 0)) } }).length === 0);
   check('a shop that has not started still types its Initial Opening', judge({ ...before, __stockInit: {} }, after).length === 0);
 }
 {
