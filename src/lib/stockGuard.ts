@@ -17,9 +17,10 @@
  *      from that point on is wrong with nothing on screen to show it.
  *
  *      A shop that has never started its stock chain (engine/stockInit.ts)
- *      may type its Initial Opening Balance. Once it has started — recorded
- *      persistently, never reset by Active/Inactive — every Opening a shop
- *      user saves must be the carried balance, or the figure already stored
+ *      may type its Initial Opening Balance. Once it has started — it holds
+ *      stock data; Active/Inactive never resets that, an approved clear of all
+ *      its stock does — every Opening a shop user saves must be the carried
+ *      balance, or the figure already stored
  *      where nothing carries into it, and no shop user may key a day earlier
  *      than the shop's first day (that would re-carry the Initial Opening
  *      away). A row marked `openFixed` keeps its stored Opening; only an
@@ -59,7 +60,7 @@
 import { receiptQtyForDay, receiptQtyForMonth, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { isProjectedSheet } from '@/lib/engine/monthProjection';
 import { buildChainIndex, isOpenFixed, openingFor, type ChainIndex } from '@/lib/engine/stockChain';
-import { initialDate, isInitialized, readStockInit, STOCK_INIT_KEY, type StockInit } from '@/lib/engine/stockInit';
+import { firstStockDates, initialDate, isInitialized, readStockInit, STOCK_INIT_KEY, type StockInit } from '@/lib/engine/stockInit';
 import { txnsOf } from '@/lib/engine/remittance';
 
 /** Kilos carry three decimals; anything under half a gram is float noise. */
@@ -285,23 +286,18 @@ export function inspectStockWrite(
   const out: StockViolation[] = [];
   const receipts = (incoming.receiptStore ?? stored.receiptStore) as ReceiptRow[] | undefined;
 
-  // Has the shop started? The persistent record when it exists
-  // (engine/stockInit.ts; /api/state reads it alongside the stores). Before it
-  // exists at all, a shop with any stored sheet or manual month counts as
-  // started, and its earliest sheet as its first day — the safe reading.
+  // Has the shop started? The record when it exists (engine/stockInit.ts;
+  // /api/state reads it alongside the stores). Before it exists at all, the
+  // same rule it is kept by: a shop holding stock data has started, from its
+  // earliest sheet that does.
   const initRow = stored[STOCK_INIT_KEY];
   const init: StockInit | null = initRow !== undefined ? readStockInit(initRow) : null;
-  const storedShopDates = (crsId: number) =>
-    Object.keys(isObj(stored.entryStore) ? stored.entryStore : {})
-      .map((k) => DAY_KEY.exec(k))
-      .filter((m): m is RegExpExecArray => !!m && Number(m[1]) === crsId)
-      .map((m) => m[2])
-      .sort();
+  const firsts = init ? null : firstStockDates(stored.entryStore);
   const started = (crsId: number): boolean =>
     init
       ? isInitialized(init, crsId)
-      : storedShopDates(crsId).length > 0 || Object.keys(isObj(stored.meManualStore) ? stored.meManualStore : {}).some((k) => Number(k.split('_')[0]) === crsId);
-  const firstDay = (crsId: number): string | null => (init ? initialDate(init, crsId) : storedShopDates(crsId)[0] ?? null);
+      : firsts!.has(crsId) || Object.keys(isObj(stored.meManualStore) ? stored.meManualStore : {}).some((k) => Number(k.split('_')[0]) === crsId);
+  const firstDay = (crsId: number): string | null => (init ? initialDate(init, crsId) : firsts!.get(crsId) ?? null);
 
   // The stock chain as it will stand once this write lands, one index per shop,
   // built the first time a shop's carried Opening is asked for.
