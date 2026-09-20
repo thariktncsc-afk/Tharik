@@ -24,6 +24,7 @@ import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 // named `utils` gets undefined under Node's ESM interop.
 import XLSX from 'xlsx-js-style';
 import { parseStatement, type Cell, type Grid } from '@/lib/statements/sheetModel';
+import { ALWAYS_LANDSCAPE } from '@/lib/statements/printDoc';
 
 export type ExportSection = { id: string; label: string; html: string };
 
@@ -92,7 +93,9 @@ export function planSheet(section: ExportSection, taken: Set<string>): SheetPlan
     name: sheetName(section.label, taken),
     grid,
     widths: columnWidths(grid),
-    orientation: grid.cols > LANDSCAPE_COLUMNS ? 'landscape' : 'portrait',
+    // The same rule the printed sheet uses, so a statement does not arrive
+    // portrait in Excel and landscape on paper.
+    orientation: ALWAYS_LANDSCAPE.has(section.id) || grid.cols > LANDSCAPE_COLUMNS ? 'landscape' : 'portrait',
     headerRows: grid.headerRows,
   };
 }

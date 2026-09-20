@@ -94,10 +94,24 @@ console.log('\nPDF — A4, not A3');
   check('…but our A4 page rules come last, so they win',
     ourCss > doc.indexOf(daily.html) && /@page stmtP\{size:A4 portrait/.test(doc.slice(ourCss)) && /@page stmtL\{size:A4 landscape/.test(doc.slice(ourCss)));
   check('…and the body font it forces for print is put back', /@media print\{body\{font-size:11px/.test(doc));
-  check('a narrow statement stays portrait', P.orientationOf(load('crs19_card_details.html')) === 'portrait', String(P.columnCount(load('crs19_card_details.html'))));
+  check('a narrow statement stays portrait', P.orientationOf(load('crs19_sale_tax.html'), 'sale_tax') === 'portrait', String(P.columnCount(load('crs19_sale_tax.html'))));
   check('a wide one does not (gunny is 11 columns)', P.orientationOf(load('crs19_gunny.html')) === 'landscape');
   check('a 22-column statement is laid on its side', P.orientationOf(daily.html) === 'landscape', String(P.columnCount(daily.html)));
   check('…and says so on its own sheet', /stmt-sheet--landscape[^>]*data-section="crs19_crs_daily_sale"/.test(doc));
+  // Three sheets the office files on their side whatever their width: each is
+  // just under the column count that would turn it by itself.
+  for (const [id, cols] of [['crs_police', 9], ['card_details', 8], ['rbi', 8]]) {
+    const html = load(`crs19_${id}.html`);
+    check(`${id} is landscape because the office says so (only ${cols} columns wide)`,
+      P.orientationOf(html, id) === 'landscape' && P.orientationOf(html) === 'portrait' && P.columnCount(html) === cols,
+      `${P.columnCount(html)} cols, ${P.orientationOf(html, id)}`);
+  }
+  check('…and they say so on their own sheets',
+    ['crs_police', 'card_details', 'rbi'].every((id) =>
+      new RegExp(`stmt-sheet--landscape[^>]*data-section="${id}"`).test(P.buildPrintDocument('T', '', [sectionOf(`crs19_${id}.html`)].map((s) => ({ ...s, id }))))));
+  check('a statement NOT on that list is still measured', P.orientationOf(load('crs19_sale_tax.html'), 'sale_tax') === 'portrait');
+  check('the preview shows the same sheet the printer will', /stmt-sheet--landscape/.test(P.buildPreviewSheet(load('crs19_rbi.html'), 'rbi')) && /stmt-sheet--portrait/.test(P.buildPreviewSheet(load('crs19_rbi.html'))));
+
   check('the header row repeats on a continuation page', /thead\{display:table-header-group\}/.test(doc));
   check('a row is never split across two pages', /tr\{break-inside:avoid/.test(doc));
   check('the screen scroller cannot hide the right-hand columns on paper', /overflow:visible!important/.test(doc));
@@ -183,6 +197,10 @@ console.log('\nExcel — print-ready');
   const narrow = [{ id: 'n', label: 'Card Details', html: load('crs19_card_details.html') }];
   check('a wide report prints landscape', W.planWorkbook(wide)[0].orientation === 'landscape');
   check('a narrow one prints portrait', W.planWorkbook(narrow)[0].orientation === 'portrait');
+  check('the three the office files on their side are landscape in Excel too, as on paper',
+    ['crs_police', 'card_details', 'rbi'].every(
+      (id) => W.planWorkbook([{ id, label: id, html: load(`crs19_${id}.html`) }])[0].orientation === 'landscape',
+    ));
 
   const bytes = W.buildStatementsXlsx([...wide, ...narrow]);
   const zip = unzipSync(bytes);
