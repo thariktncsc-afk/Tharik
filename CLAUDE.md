@@ -482,6 +482,10 @@ output. `npm run verify:statement-export` drives both exports over all 306.
 - **Orientation is measured, not listed**: `columnCount` reads the parsed
   grid, so a builder that gains a column keeps printing right. Over 9 columns
   goes landscape (Receipt is 37, Daily Sale 22, CRS Page 1 only 2).
+  `ALWAYS_LANDSCAPE` is the exception the office asked for: **CRS Police,
+  Card Details and RBI** are filed on their side whatever their width (they
+  are 9, 8 and 8 columns, just under the threshold). It applies to the
+  preview, the printed sheet and the Excel page setup alike.
 - **Excel: one statement, one WORKSHEET**, in one .xlsx. It used to be the
   statements' HTML with a `.xls` name — Excel opened it as a single sheet,
   and the flex-laid-out statements collapsed on top of each other.
