@@ -33,15 +33,21 @@
     "verify:payment-gate": "node tools/verify-payment-gate.mjs",
     "verify:dss-days": "node tools/verify-dss-days.mjs",
     "verify:save-success": "node tools/verify-save-success.mjs",
-    "verify:remittance-admin": "node tools/verify-remittance-admin.mjs"
+    "verify:remittance-admin": "node tools/verify-remittance-admin.mjs",
+    "verify:month-close": "node tools/verify-month-close.mjs",
+    "verify:statement-export": "node tools/verify-statement-export.mjs",
+    "verify:receipt-rows": "node tools/verify-receipt-rows.mjs",
+    "verify:gunny-rows": "node tools/verify-gunny-rows.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
     "@types/qrcode": "^1.5.6",
+    "fflate": "^0.8.3",
     "next": "^16.2.11",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -51,7 +51,7 @@ export type ActivityItem = {
 const INTERESTING = new Set([
   'entryStore', 'inspectionStore', 'monthlyStore', 'meManualStore',
   'meRemitStore', 'meGunnyStore', 'meCardStore', 'meAllotStore',
-  'meAdvanceStore', 'meCardConfirmed', 'salesCloseStore', 'receiptStore',
+  'meAdvanceStore', 'meCardConfirmed', 'meAllotConfirmed', 'salesCloseStore', 'receiptStore',
 ]);
 
 /**

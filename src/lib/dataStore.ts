@@ -39,6 +39,7 @@ export type StoreKey =
   | 'receiptStore'
   | 'meAllotStore'
   | 'meCardConfirmed'
+  | 'meAllotConfirmed'
   | 'meAdvanceStore'
   | '__counters'
   | '__config'

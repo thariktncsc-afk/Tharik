@@ -8,17 +8,30 @@
  * Save or No Change adopts them. Allotment is re-issued every month and is
  * never carried. Advance Load (24-coll.js) is typed beside the allotment and
  * only ever reduces what the COLL statement reports as received.
+ *
+ * EACH SECTION IS SAVED SEPARATELY, FOR ITS MONTH. Save Card Details and Save
+ * Allotment each set that month's marker (meCardConfirmed / meAllotConfirmed,
+ * keyed crsId_month_year), and editing a figure clears it again. A month-close
+ * asks for both markers, because a carried-forward count on screen looks
+ * exactly like a saved one and is not one (monthly-entry/lib.ts). Nothing here
+ * ever writes another month: last month's card details and allotment are read
+ * for the draft and left alone.
  */
 import { useMemo, useState } from 'react';
 import { appConfirm } from '@/components/dialog';
+import { saveSuccess } from '@/components/SaveSuccess';
+import { allotmentSaved, cardDetailsSaved } from '@/lib/saveSuccess';
 import { crsData } from '@/lib/dataStore';
 import { useAllotItems } from '@/lib/masters';
 import {
   ME_CARD_TYPES,
   ME_MONTH_NAMES,
   allotHasValues,
+  applySectionFlag,
+  cardDraft,
   mePrevKey,
   monthlyHasCounts,
+  sectionSaved,
   type CardRec,
   type MonthCtx,
 } from './lib';
@@ -31,6 +44,7 @@ export default function CardAllot({
   allot,
   advance,
   confirmed,
+  allotConfirmed,
   subtitle,
 }: {
   ctx: MonthCtx;
@@ -38,19 +52,27 @@ export default function CardAllot({
   allot: Record<string, Record<string, number>>;
   advance: Record<string, Record<string, number>>;
   confirmed: Record<string, boolean>;
+  allotConfirmed: Record<string, boolean>;
   subtitle: string;
 }) {
   const [status, setStatus] = useState<Status>(null);
+  const cardsSaved = sectionSaved(confirmed, ctx.key);
+  const allotSaved = sectionSaved(allotConfirmed, ctx.key);
+
+  /**
+   * Each section is saved for ITS month, and editing a figure puts it back to
+   * unsaved — the month-close asks whether this month was reviewed and saved,
+   * so a change made after the save has to be saved again before it counts.
+   * Only the flag for this `crsId_month_year` is touched; last month's saved
+   * card details and allotment are never written by anything here.
+   */
+  const markSaved = (store: 'meCardConfirmed' | 'meAllotConfirmed', saved: boolean) => {
+    crsData.update<Record<string, boolean>>(store, (d) => applySectionFlag(d, ctx.key, saved));
+  };
 
   const own = cards[ctx.key];
   const prev = cards[mePrevKey(ctx.crsId, ctx.month, ctx.year)];
-  const carried = (!own || !Object.keys(own).length) && !!prev && Object.keys(prev).length > 0;
-  const shown = useMemo(() => {
-    if (!carried) return own ?? {};
-    const draft: Record<string, CardRec> = {};
-    for (const [id, d] of Object.entries(prev!)) draft[id] = { count: parseInt(String(d.count)) || 0 };
-    return draft;
-  }, [own, prev, carried]);
+  const { shown, carried } = useMemo(() => cardDraft(cards, ctx.crsId, ctx.month, ctx.year), [cards, ctx.crsId, ctx.month, ctx.year]);
 
   const monthAllot = allot[ctx.key] ?? {};
   const monthAdv = advance[ctx.key] ?? {};
@@ -63,7 +85,7 @@ export default function CardAllot({
 
   const defaultStatus: Status = carried
     ? { msg: `Showing ${prevName}’s counts — not saved for ${moName} yet. Press No Change to keep them, or edit and Save.`, tone: 'warn' }
-    : confirmed[ctx.key]
+    : cardsSaved
       ? { msg: `✓ Card details saved for ${moName} ${ctx.year}.`, tone: 'ok' }
       : monthlyHasCounts(own)
         ? { msg: 'Not saved yet — press Save to store these counts.', tone: 'warn' }
@@ -80,6 +102,7 @@ export default function CardAllot({
 
   const setCount = (id: string, val: string) => {
     commitCarry();
+    markSaved('meCardConfirmed', false);
     crsData.update<Record<string, Record<string, CardRec>>>('meCardStore', (d) => {
       const m = { ...(d[ctx.key] ?? {}) };
       m[id] = { count: val === '' ? '' : parseInt(val) || 0 };
@@ -89,6 +112,7 @@ export default function CardAllot({
   };
 
   const setAllot = (id: string, val: string) => {
+    markSaved('meAllotConfirmed', false);
     crsData.update<Record<string, Record<string, number>>>('meAllotStore', (d) => {
       const m = { ...(d[ctx.key] ?? {}) };
       const v = parseFloat(val);
@@ -133,32 +157,39 @@ export default function CardAllot({
       for (const [id, rec] of Object.entries(freshPrev)) m[id] = { count: parseInt(String(rec.count)) || 0 };
       d[ctx.key] = m;
     });
-    crsData.update<Record<string, boolean>>('meCardConfirmed', (d) => {
-      d[ctx.key] = true;
-    });
-    void crsData.save();
-    setStatus({ msg: `✓ Copied ${prevName}’s card details into ${moName} ${ctx.year}.`, tone: 'ok' });
+    markSaved('meCardConfirmed', true);
+    if (await crsData.saveConfirmed()) saveSuccess(cardDetailsSaved(ctx.crsId, ctx.month, ctx.year));
+    setStatus({ msg: `✓ Copied ${prevName}’s card details into ${moName} ${ctx.year} and saved them.`, tone: 'ok' });
   };
 
-  const save = () => {
+  /**
+   * Card Details and Allotment are saved SEPARATELY, each for this month.
+   * Carried-forward counts are not saved counts: pressing Save here is what
+   * makes them this month's, which is exactly what the month-close asks about.
+   */
+  const saveCards = async () => {
     commitCarry();
     const cur = crsData.get<Record<string, Record<string, CardRec>>>('meCardStore')?.[ctx.key];
     if (!monthlyHasCounts(cur)) {
-      setStatus({ msg: '⚠ Enter at least one card count before saving.', tone: 'warn' });
+      setStatus({ msg: '⚠ Enter at least one card count before saving the Card Details.', tone: 'warn' });
       return;
     }
-    crsData.update<Record<string, boolean>>('meCardConfirmed', (d) => {
-      d[ctx.key] = true;
-    });
-    void crsData.save();
+    markSaved('meCardConfirmed', true);
     const total = Object.values(cur!).reduce((t, d) => t + (parseInt(String(d.count)) || 0), 0);
-    const allotN = allotHasValues(crsData.get<Record<string, Record<string, number>>>('meAllotStore')?.[ctx.key], items)
-      ? Object.values(crsData.get<Record<string, Record<string, number>>>('meAllotStore')![ctx.key]).filter((v) => (Number(v) || 0) > 0).length
-      : 0;
-    setStatus({
-      msg: `✓ Saved for ${moName} ${ctx.year} — ${total} cards${allotN ? `, ${allotN} commodities allotted.` : '. Allotment is still empty.'}`,
-      tone: allotN ? 'ok' : 'warn',
-    });
+    setStatus({ msg: `✓ Card Details saved for ${moName} ${ctx.year} — ${total} cards.`, tone: 'ok' });
+    if (await crsData.saveConfirmed()) saveSuccess(cardDetailsSaved(ctx.crsId, ctx.month, ctx.year));
+  };
+
+  const saveAllot = async () => {
+    const cur = crsData.get<Record<string, Record<string, number>>>('meAllotStore')?.[ctx.key];
+    if (!allotHasValues(cur, items)) {
+      setStatus({ msg: '⚠ Enter at least one allotment quantity before saving the Allotment.', tone: 'warn' });
+      return;
+    }
+    markSaved('meAllotConfirmed', true);
+    const n = Object.entries(cur!).filter(([id, v]) => items.some((c) => c.id === id) && (Number(v) || 0) > 0).length;
+    setStatus({ msg: `✓ Allotment saved for ${moName} ${ctx.year} — ${n} ${n === 1 ? 'commodity' : 'commodities'}.`, tone: 'ok' });
+    if (await crsData.saveConfirmed()) saveSuccess(allotmentSaved(ctx.crsId, ctx.month, ctx.year));
   };
 
   const th = { padding: '9px 10px', textAlign: 'center' as const, fontSize: 10, fontWeight: 700, color: '#0F766E', borderBottom: '2px solid #99F6E4' };
@@ -277,13 +308,28 @@ export default function CardAllot({
         </div>
       </div>
 
+      {/* Where each section stands for THIS month — what the month-close
+          reads. Said plainly, because a carried-forward figure on screen
+          looks exactly like a saved one. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: cardsSaved ? '#15803D' : '#B45309', background: cardsSaved ? '#DCFCE7' : '#FFFBEB', border: `1px solid ${cardsSaved ? '#86EFAC' : '#FDE68A'}`, borderRadius: 7, padding: '4px 10px' }}>
+          {cardsSaved ? '✅' : '❌'} Card Details — {cardsSaved ? 'Saved' : 'Not Saved'} for {moName} {ctx.year}
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: allotSaved ? '#15803D' : '#B45309', background: allotSaved ? '#DCFCE7' : '#FFFBEB', border: `1px solid ${allotSaved ? '#86EFAC' : '#FDE68A'}`, borderRadius: 7, padding: '4px 10px' }}>
+          {allotSaved ? '✅' : '❌'} Allotment — {allotSaved ? 'Saved' : 'Not Saved'} for {moName} {ctx.year}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
         {shownStatus ? <span style={{ fontSize: 11, fontWeight: 600, color: toneColor[shownStatus.tone] }}>{shownStatus.msg}</span> : null}
-        <button type="button" onClick={() => void noChange()} title="Copy last month's card counts into this month" style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #99F6E4', color: '#0F766E', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+        <button type="button" onClick={() => void noChange()} title="Copy last month's card counts into this month and save them" style={{ marginLeft: 'auto', background: '#fff', border: '1px solid #99F6E4', color: '#0F766E', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
           ↶ No Change
         </button>
-        <button type="button" onClick={save} title="Store these card counts and allotment for this month" style={{ background: 'linear-gradient(135deg,#0F766E,#14B8A6)', color: '#fff', border: 'none', padding: '9px 22px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(20,184,166,.3)' }}>
-          💾 Save
+        <button type="button" onClick={() => void saveCards()} title="Save the card counts for this month" style={{ background: 'linear-gradient(135deg,#0F766E,#14B8A6)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(20,184,166,.3)' }}>
+          💾 Save Card Details
+        </button>
+        <button type="button" onClick={() => void saveAllot()} title="Save the allotment quantities for this month" style={{ background: 'linear-gradient(135deg,#0F766E,#14B8A6)', color: '#fff', border: 'none', padding: '9px 18px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(20,184,166,.3)' }}>
+          💾 Save Allotment
         </button>
       </div>
     </div>

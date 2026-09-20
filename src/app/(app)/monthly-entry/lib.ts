@@ -105,5 +105,84 @@ export type MonthlyStores = {
   meAllotStore: Record<string, Record<string, number>>;
   meAdvanceStore: Record<string, Record<string, number>>;
   meCardConfirmed: Record<string, boolean>;
+  meAllotConfirmed: Record<string, boolean>;
   salesCloseStore: Record<string, SalesClose>;
 };
+
+/**
+ * Is this month's section SAVED — not merely filled?
+ *
+ * Card counts carry forward from last month as a draft, so a month can show
+ * 500 RICE CARD having had nothing done to it. The month-close therefore asks
+ * whether the person pressed Save (or No Change) FOR THIS MONTH, which is what
+ * `meCardConfirmed` / `meAllotConfirmed` record, one flag per `crsId_month_year`
+ * — never whether figures happen to sit in the boxes. Editing a figure clears
+ * the flag again, so a review that changed something is saved before it counts.
+ */
+export const sectionSaved = (flags: Record<string, boolean> | undefined, key: string): boolean => flags?.[key] === true;
+
+/**
+ * Set or clear one month's saved marker, leaving every other month alone —
+ * last month's saved card details and allotment are never touched by this
+ * month's work. Cleared by removing the key, so an unsaved month reads the
+ * same as a month that has never been saved.
+ */
+export function applySectionFlag(flags: Record<string, boolean>, key: string, saved: boolean): void {
+  if (saved) flags[key] = true;
+  else delete flags[key];
+}
+
+/**
+ * What the card panel shows for a month, and whether it is only a carry
+ * forward: a month with no counts of its own PREVIEWS last month's as a draft,
+ * which rendering never writes. The draft is adopted by the first edit, Save
+ * or No Change — until then the month has nothing saved, however filled the
+ * boxes look, and `monthCloseBlock` says so.
+ */
+export function cardDraft(
+  cards: Record<string, Record<string, CardRec>> | undefined,
+  crsId: number,
+  month: number,
+  year: number,
+): { shown: Record<string, CardRec>; carried: boolean } {
+  const own = cards?.[`${crsId}_${month}_${year}`];
+  const prev = cards?.[mePrevKey(crsId, month, year)];
+  const carried = (!own || !Object.keys(own).length) && !!prev && Object.keys(prev).length > 0;
+  if (!carried) return { shown: own ?? {}, carried: false };
+  const draft: Record<string, CardRec> = {};
+  for (const [id, d] of Object.entries(prev!)) draft[id] = { count: parseInt(String(d.count)) || 0 };
+  return { shown: draft, carried: true };
+}
+
+export type MonthCloseBlock = { title: string; message: string; missing: ('cards' | 'allotment')[] };
+
+/**
+ * What stops a month-close, in the office's own words. `null` when both
+ * sections are saved and the month may close.
+ *
+ * An administrator is warned rather than stopped (monthly-entry/page.tsx):
+ * months imported before this rule existed have no saved marker, and a
+ * correction to one of those must not be walled off.
+ */
+export function monthCloseBlock(cardsSaved: boolean, allotSaved: boolean): MonthCloseBlock | null {
+  if (cardsSaved && allotSaved) return null;
+  if (!cardsSaved && !allotSaved) {
+    return {
+      title: 'Monthly Details Not Saved',
+      message: 'Please save Card Details and Allotment for this month before completing Monthly Sales.',
+      missing: ['cards', 'allotment'],
+    };
+  }
+  if (!cardsSaved) {
+    return {
+      title: 'Card Details Not Saved',
+      message: 'Please review and save the Card Details for this month before completing Monthly Sales.',
+      missing: ['cards'],
+    };
+  }
+  return {
+    title: 'Allotment Not Saved',
+    message: 'Please review and save the Allotment for this month before completing Monthly Sales.',
+    missing: ['allotment'],
+  };
+}

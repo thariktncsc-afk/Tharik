@@ -62,7 +62,7 @@ import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
 import GunnyTable from './GunnyTable';
 import RemitTable from './RemitTable';
-import { ME_GUNNY_TO_COMM, ME_MONTH_NAMES, NO_GUNNY, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
+import { ME_GUNNY_TO_COMM, ME_MONTH_NAMES, NO_GUNNY, monthCloseBlock, sectionSaved, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
 
 type ShopRec = { name: string };
 type InspDay = { a?: Record<string, { excess?: number; shortage?: number; transfer?: number }>; b?: Record<string, { excess?: number; shortage?: number; transfer?: number }> };
@@ -86,6 +86,7 @@ export default function MonthlyEntryPage() {
   const meAllotStore = useStore<Record<string, Record<string, number>>>('meAllotStore') ?? {};
   const meAdvanceStore = useStore<Record<string, Record<string, number>>>('meAdvanceStore') ?? {};
   const meCardConfirmed = useStore<Record<string, boolean>>('meCardConfirmed') ?? {};
+  const meAllotConfirmed = useStore<Record<string, boolean>>('meAllotConfirmed') ?? {};
   const salesCloseStore = useStore<Record<string, SalesClose>>('salesCloseStore') ?? {};
   const receiptStore = useStore<ReceiptRow[]>('receiptStore') ?? [];
 
@@ -131,6 +132,30 @@ export default function MonthlyEntryPage() {
 
   /** Month-close, with the Initial Opening confirmation the first time a shop user saves stock. */
   const closeMonth = async () => {
+    // Card Details and Allotment must have been SAVED for this month — not
+    // merely showing figures, which card counts do on their own by carrying
+    // forward. Asked before the month-close confirmation, so the confirmation
+    // never appears for a month that cannot close.
+    const block = ctx ? monthCloseBlock(sectionSaved(meCardConfirmed, ctx.key), sectionSaved(meAllotConfirmed, ctx.key)) : null;
+    if (block) {
+      // An administrator is warned, not stopped: months keyed before this rule
+      // existed carry no saved marker, and a correction to one of those must
+      // not be walled off.
+      if (!isAdmin) {
+        await appAlert({ title: block.title, tone: 'warning', icon: '⚠️', message: block.message });
+        return;
+      }
+      const go = await appConfirm({
+        title: block.title,
+        tone: 'warning',
+        icon: '⚠️',
+        confirmLabel: 'Close anyway',
+        cancelLabel: 'Go back',
+        defaultCancel: true,
+        message: `${block.message}\n\nYou are an administrator, so you may close the month as it stands.`,
+      });
+      if (!go) return;
+    }
     if (!(await confirmMonthlySalesClose())) return;
     const initial = !isAdmin && !shopStarted && !!crsId;
     if (initial) {
@@ -1108,7 +1133,7 @@ export default function MonthlyEntryPage() {
 
               <RemitTable ctx={ctx} remit={meRemitStore} entryStore={entryStore} subtitle={subtitle} />
               <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} onIssuesToMonthly={issuesToMonthly} subtitle={subtitle} />
-              <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} subtitle={subtitle} />
+              <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} allotConfirmed={meAllotConfirmed} subtitle={subtitle} />
             </div>
           </div>
 
