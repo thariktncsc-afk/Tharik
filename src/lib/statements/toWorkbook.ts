@@ -25,6 +25,7 @@ import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 import XLSX from 'xlsx-js-style';
 import { parseStatement, type Cell, type Grid } from '@/lib/statements/sheetModel';
 import { ALWAYS_LANDSCAPE } from '@/lib/statements/printDoc';
+import { inTemplate, printFor, type SheetPrint } from '@/lib/statements/pageSetup';
 
 export type ExportSection = { id: string; label: string; html: string };
 
@@ -40,6 +41,8 @@ export type SheetPlan = {
   grid: Grid;
   widths: number[];
   orientation: 'portrait' | 'landscape';
+  /** The office workbook's own page setup for this sheet, where it has one. */
+  print: SheetPrint;
   /** Rows to freeze on screen and repeat at the top of every printed page. */
   headerRows: number;
 };
@@ -89,13 +92,21 @@ export function columnWidths(grid: Grid): number[] {
 /** Everything about one statement's worksheet, worked out before Excel is involved. */
 export function planSheet(section: ExportSection, taken: Set<string>): SheetPlan {
   const grid = parseStatement(section.html);
+  // The office workbook's own settings for this sheet where it has them,
+  // so the exported file prints as the office's file prints. Measuring the
+  // statement's width is only the fallback.
+  const print = inTemplate(section.id)
+    ? printFor(section.id)
+    : {
+        ...printFor(section.id),
+        orientation: (ALWAYS_LANDSCAPE.has(section.id) || grid.cols > LANDSCAPE_COLUMNS ? 'landscape' : 'portrait') as 'portrait' | 'landscape',
+      };
   return {
     name: sheetName(section.label, taken),
     grid,
     widths: columnWidths(grid),
-    // The same rule the printed sheet uses, so a statement does not arrive
-    // portrait in Excel and landscape on paper.
-    orientation: ALWAYS_LANDSCAPE.has(section.id) || grid.cols > LANDSCAPE_COLUMNS ? 'landscape' : 'portrait',
+    orientation: print.orientation,
+    print,
     headerRows: grid.headerRows,
   };
 }
@@ -172,8 +183,11 @@ export function sheetOf(plan: SheetPlan): XLSX.WorkSheet {
   ws['!merges'] = merges;
   ws['!cols'] = plan.widths.slice(0, Math.max(1, maxCol)).map((wch) => ({ wch }));
   ws['!rows'] = rowHeights;
-  // Narrow margins: these statements are wide, and the office files them punched.
-  ws['!margins'] = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
+  // The office's own margins for this sheet, in inches, from its workbook.
+  // (Written again as XML in applyPrintSetup, beside the page setup — this is
+  // what the library itself emits, and the two must not disagree.)
+  const m = plan.print.margins;
+  ws['!margins'] = { left: m.left, right: m.right, top: m.top, bottom: m.bottom, header: 0, footer: 0 };
   return ws;
 }
 
@@ -201,9 +215,17 @@ export function workbookOf(plans: SheetPlan[]): XLSX.WorkBook {
 
 // ── Print setup, patched into the written file ──────────────────────────────
 
-const xmlSheetPr = '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>';
-const xmlPageSetup = (orientation: string) =>
-  `<pageSetup paperSize="9" orientation="${orientation}" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>`;
+/**
+ * The office's own print settings for the sheet: A4, its orientation, and
+ * either its scale (CRS Police 145%, RBI 120%) or fit-to-one-page, exactly as
+ * `CRS 19 AUG'26.xlsx` has them.
+ */
+const xmlSheetPr = (p: SheetPrint) => `<sheetPr><pageSetUpPr${p.fitToPage ? ' fitToPage="1"' : ''}/></sheetPr>`;
+const xmlPageSetup = (p: SheetPrint) =>
+  `<pageSetup paperSize="9" orientation="${p.orientation}" ` +
+  (p.fitToPage ? 'fitToWidth="1" fitToHeight="0" ' : `scale="${p.scale}" `) +
+  'horizontalDpi="600" verticalDpi="600"/>';
+const xmlPrintOptions = (p: SheetPrint) => (p.centred ? '<printOptions horizontalCentered="1"/>' : '');
 
 /** `<sheetViews>` with the header rows frozen, so they stay put while scrolling. */
 const xmlSheetViews = (headerRows: number) =>
@@ -226,7 +248,7 @@ export function applyPrintSetup(xlsx: Uint8Array, plans: SheetPlan[]): Uint8Arra
     const raw = files[path];
     if (!raw) return;
     let xml = strFromU8(raw);
-    if (!/<sheetPr\b/.test(xml)) xml = xml.replace(/(<worksheet\b[^>]*>)/, `$1${xmlSheetPr}`);
+    if (!/<sheetPr\b/.test(xml)) xml = xml.replace(/(<worksheet\b[^>]*>)/, `$1${xmlSheetPr(plan.print)}`);
     const views = xmlSheetViews(plan.headerRows);
     if (views) {
       // The writer always emits a bare `<sheetViews><sheetView .../></sheetViews>`,
@@ -239,7 +261,13 @@ export function applyPrintSetup(xlsx: Uint8Array, plans: SheetPlan[]): Uint8Arra
           : xml.replace(/(<worksheet\b[^>]*>(?:<sheetPr>[\s\S]*?<\/sheetPr>)?)/, `$1${views}`);
     }
     if (!/<pageSetup\b/.test(xml)) {
-      xml = xml.replace(/<\/worksheet>\s*$/, `${xmlPageSetup(plan.orientation)}</worksheet>`);
+      // Excel's order at the foot of a sheet: printOptions, pageMargins,
+      // pageSetup. The margins are the office's own, in inches.
+      const m = plan.print.margins;
+      xml = xml.replace(
+        /<\/worksheet>\s*$/,
+        `${xmlPrintOptions(plan.print)}<pageMargins left="${m.left}" right="${m.right}" top="${m.top}" bottom="${m.bottom}" header="0" footer="0"/>${xmlPageSetup(plan.print)}</worksheet>`,
+      );
     }
     files[path] = strToU8(xml);
   });
