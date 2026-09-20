@@ -446,6 +446,7 @@ const MONTH_STORE_MODULE: Record<string, string> = {
   meAllotStore: 'Allotment',
   meAdvanceStore: 'Allotment',
   meCardConfirmed: 'Card Details',
+  meAllotConfirmed: 'Allotment',
 };
 
 const MASTER_LABEL: Record<string, string> = {

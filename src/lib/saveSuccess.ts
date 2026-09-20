@@ -55,6 +55,24 @@ export function monthlySaved(crsId: number | string, month: number, year: number
   };
 }
 
+/** The month's card counts, saved for that month — what a month-close checks. */
+export function cardDetailsSaved(crsId: number | string, month: number, year: number): SaveSuccessRequest {
+  return {
+    title: 'Card Details Saved Successfully',
+    detail: `Card Details for ${monthLabel(month, year)} have been saved successfully.`,
+    key: `cards:${crsId}:${month}:${year}`,
+  };
+}
+
+/** The month's allotment quantities, saved for that month. */
+export function allotmentSaved(crsId: number | string, month: number, year: number): SaveSuccessRequest {
+  return {
+    title: 'Allotment Saved Successfully',
+    detail: `Allotment for ${monthLabel(month, year)} has been saved successfully.`,
+    key: `allot:${crsId}:${month}:${year}`,
+  };
+}
+
 /** An administrator's remittance correction, written straight to the day sheet. */
 export function remittanceSaved(crsId: number | string, salesDate: string, ref = ''): SaveSuccessRequest {
   return {

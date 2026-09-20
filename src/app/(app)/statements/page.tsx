@@ -22,6 +22,7 @@ import { useAuth } from '@/lib/authClient';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
 import { formatRupees, quoteStatement } from '@/lib/payments/pricing';
+import { buildPreviewSheet, buildPrintDocument } from '@/lib/statements/printDoc';
 import {
   ApiError,
   createOrder,
@@ -151,13 +152,18 @@ export default function StatementsPage() {
     }
   };
 
-  const openPrintWindow = (title: string, css: string, html: string) => {
+  /**
+   * `doc` is a whole document built by printDoc.ts — every statement on a
+   * sheet of its own, A4, with the page rules appended last so they beat the
+   * A3 rule one builder carries. Nothing is concatenated here any more.
+   */
+  const openPrintWindow = (doc: string) => {
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) {
       void appAlert('The print window was blocked by the browser. Allow pop-ups for this site and try again.');
       return;
     }
-    win.document.write(`<html><head><title>${title}</title><style>${css}</style></head><body>${html}</body></html>`);
+    win.document.write(doc);
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 600);
@@ -178,26 +184,36 @@ export default function StatementsPage() {
   const printSelected = async () => {
     const out = await render(selectedIds, 'print');
     if (!out) return;
-    let html = '';
-    for (const s of out.sections) for (let i = 0; i < s.copies; i++) html += s.html;
-    openPrintWindow(`TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`, out.css, html);
+    openPrintWindow(buildPrintDocument(`TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`, out.css, out.sections));
     out.sections.forEach((s) => record(s.label));
   };
 
+  /**
+   * One .xlsx, one worksheet per selected statement. The workbook builder is
+   * loaded only when someone exports — it carries the spreadsheet writer, and
+   * that has no business in the bundle of a page most people only preview
+   * from.
+   */
   const excelSelected = async () => {
     const out = await render(selectedIds, 'excel');
     if (!out) return;
-    let html = '<html><head><meta charset="UTF-8"/></head><body>';
-    for (const s of out.sections) html += `<h2>${s.label}</h2>` + s.html + '<br><br>';
-    html += '</body></html>';
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `TNCSC_CRS${crsId}_${MONTHS[month]}_${year}_Statements.xls`;
-    a.click();
-    URL.revokeObjectURL(url);
-    out.sections.forEach((s) => record(s.label));
+    setBusy('excel');
+    try {
+      const { buildStatementsXlsx } = await import('@/lib/statements/toWorkbook');
+      const bytes = buildStatementsXlsx(out.sections.map((s) => ({ id: s.id, label: s.label, html: s.html })));
+      const blob = new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `TNCSC_CRS${crsId}_${MONTHS[month]}_${year}_Statements.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      out.sections.forEach((s) => record(s.label));
+    } catch (e) {
+      void appAlert(e instanceof Error ? e.message : 'Could not build the Excel file.');
+    } finally {
+      setBusy('');
+    }
   };
 
   // ── Payment ───────────────────────────────────────────────────────────────
@@ -511,9 +527,13 @@ export default function StatementsPage() {
                 </button>
                 <button
                   onClick={() => {
-                    let html = '';
-                    for (let i = 0; i < preview.section.copies; i++) html += preview.html;
-                    openPrintWindow(`${preview.section.label} - CRS ${crsId} ${MONTHS[month]} ${year}`, '', html);
+                    // The same sheet-per-copy document as Print, for the one
+                    // statement on screen: two copies print as two pages.
+                    openPrintWindow(
+                      buildPrintDocument(`${preview.section.label} - CRS ${crsId} ${MONTHS[month]} ${year}`, '', [
+                        { id: preview.section.id, label: preview.section.label, copies: preview.section.copies, html: preview.html },
+                      ]),
+                    );
                     // Printed from a preview already on screen — no server call
                     // happens, so it is reported for the activity log.
                     void fetch('/api/activity', {
@@ -529,7 +549,10 @@ export default function StatementsPage() {
               </div>
             </div>
             <div className="card-body" style={{ padding: 20 }}>
-              <div style={{ fontFamily: "'Courier New',monospace", fontSize: 12, lineHeight: 1.6, overflowX: 'auto' }} dangerouslySetInnerHTML={{ __html: preview.html }} />
+              {/* Shown as the sheet it prints on (printDoc.ts), so a wide
+                  statement such as the Receipt is previewed landscape at its
+                  real width instead of squeezed into the screen. */}
+              <div style={{ overflowX: 'auto', background: '#E2E8F0', padding: 8 }} dangerouslySetInnerHTML={{ __html: buildPreviewSheet(preview.html) }} />
             </div>
           </div>
         </div>

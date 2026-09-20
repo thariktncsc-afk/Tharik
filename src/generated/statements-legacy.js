@@ -1432,9 +1432,15 @@ function buildReceipt(d){
     return total;
   }
 
-  // Build data rows from receipts (max 7 per batch + total, then second batch)
+  // The sheet's two blocks: the first seven receipts, then the rest.
+  //
+  // The second block used to stop at three (`slice(7,10)`), which was the
+  // number of ruled lines on the paper form — so an eleventh receipt in a
+  // month was simply not printed, and the statement's TOTAL did not include
+  // it either. With the lines following the entries there is nothing to run
+  // out of, and no recorded receipt is left off.
   var batch1 = d.receipts.slice(0,7);
-  var batch2 = d.receipts.slice(7,10);
+  var batch2 = d.receipts.slice(7);
 
   // CSS - matching Excel landscape receipt format
   var css = [
@@ -1504,15 +1510,22 @@ function buildReceipt(d){
     return '<tr><td class="sl-col total-row"></td><td class="date-col total-row" style="font-weight:bold;font-size:9px">TOTAL</td>'+cells+'</tr>';
   }
 
-  // Build 7 empty rows for batch if not enough data
-  var b1Rows = '';
-  for(var i=0;i<7;i++){
-    b1Rows += buildDataRow(i+1, batch1[i]||null);
-  }
-  var b2Rows = '';
-  for(var j=0;j<3;j++){
-    b2Rows += buildDataRow(j+1, batch2[j]||null);
-  }
+  // One row per receipt actually recorded — no reserved blank lines.
+  //
+  // The sheet this reproduces has 7 ruled lines then a TOTAL, then 3 more and
+  // a second TOTAL, and the builder used to emit all ten whether or not there
+  // was anything to put on them: a month with two receipts printed two rows
+  // and eight empty ones, and a month with none printed ten empty rows under
+  // the headings. The office asked for the lines to follow the entries, so an
+  // empty batch prints neither its rows NOR its TOTAL, and a month with no
+  // receipts at all leaves the headings standing alone.
+  //
+  // Nothing about a row's own content changes: buildDataRow and buildTotalRow
+  // are untouched, so a recorded receipt prints exactly as it always has.
+  var b1Rows = batch1.map(function(r, i){ return buildDataRow(i+1, r); }).join('');
+  var b2Rows = batch2.map(function(r, j){ return buildDataRow(j+1, r); }).join('');
+  var b1Total = batch1.length ? buildTotalRow(batch1) : '';
+  var b2Total = batch2.length ? buildTotalRow(batch2) : '';
 
   // ── Gunny report: live from the Gunny Stock module (meGunnyStore); falls
   //    back to the Monthly Entry gunny sub-columns when nothing was keyed. ──
@@ -1568,14 +1581,12 @@ function buildReceipt(d){
       '<tr>' + commHdrRow2 + '</tr>' +
     '</thead>' +
     '<tbody>' +
-      // Rows 5-11: Data entry rows (7 rows for first batch)
+      // A row per receipt recorded, then that batch's TOTAL — both left out
+      // entirely when the batch is empty.
       b1Rows +
-      // Row 12: TOTAL
-      buildTotalRow(batch1) +
-      // Rows 13-15: Second batch (3 rows)
+      b1Total +
       b2Rows +
-      // Row 15: Second TOTAL
-      buildTotalRow(batch2) +
+      b2Total +
     '</tbody>' +
     '</table>' +
     '</div>' +
@@ -2022,12 +2033,21 @@ function buildGunny(d){
     if(v===0 || v==null || v==='') return showZero ? '0' : '';
     return String(v);
   }
-  // type: 'grain' fills the WITH-GRAINS sub-col; 'empty' fills the EMPTY sub-col.
-  function cells(type, vals){
+  // Every variety's figures go in the EMPTY GUNNY sub-column of its group,
+  // and the GUNNY WITH GRAINS sub-column is left blank.
+  //
+  // 50KG SS used to be written into the WITH GRAINS sub-column while POLY and
+  // C. BOX went into EMPTY, so the figures sat in different cells down the
+  // sheet and read as scattered. The office asked for one column, EMPTY
+  // GUNNY, for all three (2026-09-20) — which is also where the Receipt
+  // statement's own gunny report puts them, so the two sheets now agree.
+  // Which figure belongs to which variety and stage is unchanged; only the
+  // cell it is printed in moved.
+  function cells(vals){
     var out='';
     vals.forEach(function(v,idx){
       var txt = num(v, idx===4); // closing balance shows 0 explicitly
-      out += (type==='grain') ? (C(txt)+C('')) : (C('')+C(txt));
+      out += C('')+C(txt);
     });
     return out;
   }
@@ -2067,12 +2087,15 @@ function buildGunny(d){
     '<tr>'+ subPair+subPair+subPair+subPair+subPair +'</tr>'+
     '</thead>';
 
+  // The three varieties the shop holds, and nothing else. There used to be a
+  // fourth row of eleven empty cells under them — a spare ruled line from the
+  // paper form, which printed as a blank row on every statement. A variety
+  // with no figures still prints its row, with its cells empty: a stock
+  // statement that leaves a variety out reads as if none was ever held.
   var body =
-    '<tr>'+L('50KG SS')+cells('grain',[ssOB,ssRec,ssTot,ssIss,ssCB])+'</tr>'+
-    '<tr>'+L('POLY')+cells('empty',[polyOB,polyRec,polyTot,polyIss,polyCB])+'</tr>'+
-    '<tr>'+L('C. BOX')+cells('empty',[cbxOB,cbxRec,cbxTot,cbxIss,cbxCB])+'</tr>'+
-    '<tr>'+L('')+
-      C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+'</tr>';
+    '<tr>'+L('50KG SS')+cells([ssOB,ssRec,ssTot,ssIss,ssCB])+'</tr>'+
+    '<tr>'+L('POLY')+cells([polyOB,polyRec,polyTot,polyIss,polyCB])+'</tr>'+
+    '<tr>'+L('C. BOX')+cells([cbxOB,cbxRec,cbxTot,cbxIss,cbxCB])+'</tr>';
 
   return '<style>'+css+'</style>'+
     '<div class="gy-wrap">'+
