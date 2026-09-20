@@ -148,6 +148,82 @@ export function amounts(t: RemitRow): { nc: number; ce: number } {
   return { nc: t.amount, ce: 0 };
 }
 
+/**
+ * What a deposit IS, as the one choice an administrator makes: the account it
+ * went into, or — for an additional deposit against the same sales date — the
+ * reason it was banked separately.
+ *
+ * They are one choice because they are not independent: an additional deposit
+ * sits in Non-Cereal by rule, so "Cereal A/C with a reason" is not a thing
+ * that exists. Keeping the two in one control is what stops a correction
+ * producing it. The classification rules themselves are unchanged — this only
+ * names them.
+ */
+export type RemitType = 'nc' | 'ce' | RemitReason;
+
+export const REMIT_TYPE_LABEL: Record<RemitType, string> = {
+  nc: 'Non-Cereal A/C',
+  ce: 'Cereal A/C',
+  Missed: 'Missed',
+  Tea: 'Tea',
+  Salt: 'Salt',
+  'C.Box': 'C.Box',
+};
+
+/** The type a stored deposit reads as — a reason, else its account. */
+export function remitTypeOf(t: { account?: unknown; reason?: unknown }): RemitType {
+  if (isReason(t.reason)) return t.reason;
+  return t.account === 'ce' ? 'ce' : 'nc';
+}
+
+/**
+ * One deposit set to a type, with account and reason kept in step: a reason
+ * always lands in Non-Cereal, and an account always clears the reason. The
+ * `reason` key is REMOVED rather than set to undefined, so a corrected row
+ * compares equal to a plain one (stockGuard and the stores compare by JSON).
+ */
+export function applyRemitType<T extends { account: RemitAcct; reason?: RemitReason }>(txn: T, type: RemitType): T {
+  const next = { ...txn };
+  if (isReason(type)) {
+    next.account = 'nc';
+    next.reason = type;
+    return next;
+  }
+  next.account = type;
+  delete next.reason;
+  return next;
+}
+
+/**
+ * The deposits a shop user may still remove: the ones this screen has added
+ * and not saved yet. A deposit already in the database is an administrator's
+ * to remove — otherwise "delete and add it again" is a way around the rule
+ * that a saved remittance keeps its amount, date and account (stockGuard rule
+ * 1b), and the same refusal would arrive from the server anyway.
+ */
+export function canRemoveRemit(isAdmin: boolean, savedIds: ReadonlySet<string>, id: string): boolean {
+  return isAdmin || !savedIds.has(id);
+}
+
+/**
+ * A stored transaction, from the row the screens read — the fields that
+ * belong on the sheet and nothing else (`salesDate` and `additional` are
+ * worked out on the way out, not kept). Writing a sheet back through this is
+ * what lets a screen edit a deposit without inventing a second record of it.
+ */
+export function toTxn(r: RemitRow): RemitTxn {
+  const t: RemitTxn = { id: r.id, amount: r.amount, date: r.date, account: r.account };
+  if (r.reason) t.reason = r.reason;
+  if (r.createdBy) t.createdBy = r.createdBy;
+  if (r.createdAt) t.createdAt = r.createdAt;
+  return t;
+}
+
+/** The ids of the deposits stored on a sheet — what `canRemoveRemit` locks. */
+export function savedRemitIds(sheet: SheetLike | undefined, salesDate: string): Set<string> {
+  return new Set(txnsOf(sheet, salesDate).map((t) => t.id));
+}
+
 /** What the day sheet stores alongside the transactions, kept consistent. */
 export function sheetTotals(list: RemitTxn[]): {
   remitAmount: number;

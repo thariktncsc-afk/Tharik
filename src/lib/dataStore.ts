@@ -66,6 +66,10 @@ type WatchedTopic = Exclude<LiveTopic, 'clears'>;
 
 const POLL_MS = 5000;
 const LIVE_MS = 4000;
+/** saveConfirmed(): how long it waits for a save already in flight — 25 × 120 ms = 3 s. */
+const FLUSH_TRIES = 25;
+const FLUSH_WAIT_MS = 120;
+
 /** A save that keeps meeting fresh conflicts gives up after this many rounds. */
 const REBASE_ROUNDS = 3;
 
@@ -222,6 +226,33 @@ class CrsDataStore {
       any = true;
     }
     return any ? { stores, versions } : null;
+  }
+
+  /**
+   * Save, and answer the question a save CONFIRMATION has to ask: is what is
+   * on this screen now in the database?
+   *
+   * `save()` answers false for three different things — a refusal, a save
+   * already in flight, and nothing left to send — and only the first is a
+   * failure. The autosave beat runs every 5 s, so a clerk pressing save can
+   * easily land on one of the other two and be told their day was not saved
+   * when it was. So this waits for an in-flight save to finish and then asks
+   * again; "nothing left to send" at that point means another round carried
+   * these records, which is stored (unless it came back refused, which leaves
+   * the reason in lastError).
+   *
+   * Nothing else changes: the save path itself is untouched.
+   */
+  async saveConfirmed(): Promise<boolean> {
+    for (let i = 0; i < FLUSH_TRIES; i++) {
+      if (this.status !== 'ready') return false;
+      if (!this.saving) {
+        if (!this.collectChanged()) return !this.lastError;
+        return await this.save();
+      }
+      await new Promise((r) => setTimeout(r, FLUSH_WAIT_MS));
+    }
+    return false;
   }
 
   async save(opts?: { keepalive?: boolean }): Promise<boolean> {

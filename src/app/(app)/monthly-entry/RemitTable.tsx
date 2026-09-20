@@ -5,11 +5,12 @@
  * with the day sheets' deposits folded in.
  *
  * A day that was keyed in Daily Sales Entry shows its deposits here
- * automatically, one row per transaction, READ-ONLY — nobody keys the same
- * remittance twice, and because the rows are derived rather than copied they
- * cannot duplicate on a re-save or drift from the day sheet. Correct them on
- * the Daily Entry page. A day with no sheet keeps the hand-keyed inputs it
- * always had, so the imported months and the monthly-only shops are unchanged.
+ * automatically, one row per transaction, and read-only for shop staff —
+ * nobody keys the same remittance twice, and because the rows are derived
+ * rather than copied they cannot duplicate on a re-save or drift from the day
+ * sheet. Shop staff correct them on the Daily Entry page. A day with no sheet
+ * keeps the hand-keyed inputs it always had, so the imported months and the
+ * monthly-only shops are unchanged.
  *
  * A sales date can carry several deposits: the first is the ordinary one, and
  * each later one is an additional remittance with a reason (Missed / Tea /
@@ -17,9 +18,37 @@
  * where a plain row shows a Cereal figure. That substitution is display only —
  * see src/lib/engine/remittance.ts — so the Cereal total below, and the Cereal
  * column on the statutory statement, stay totals of money.
+ *
+ * ADMINISTRATORS may correct a derived row here rather than going to Daily
+ * Entry for it: ✎ changes the amount, the deposit date or the account, ✕
+ * removes it and ➕ adds another deposit to the same sales date. Every one of
+ * those writes the DAY SHEET the row came from, by id, and recomputes the
+ * sheet's own remittance totals (sheetTotals) — the rows here stay derived,
+ * so a correction cannot duplicate a deposit or leave this table disagreeing
+ * with Daily Entry, the DSS or the statements. It saves immediately; nothing
+ * waits for the month-close. Shop users see the table exactly as before.
  */
+import { useState } from 'react';
 import { crsData } from '@/lib/dataStore';
-import { amounts, monthTxns, type RemitRow, type SheetLike } from '@/lib/engine/remittance';
+import { useAuth } from '@/lib/authClient';
+import { appAlert, appConfirm } from '@/components/dialog';
+import { saveSuccess } from '@/components/SaveSuccess';
+import { remittanceSaved } from '@/lib/saveSuccess';
+import {
+  REMIT_REASONS,
+  REMIT_TYPE_LABEL,
+  amounts,
+  applyRemitType,
+  monthTxns,
+  newRemitId,
+  remitTypeOf,
+  sheetTotals,
+  toTxn,
+  txnsOf,
+  type RemitRow,
+  type RemitType,
+  type SheetLike,
+} from '@/lib/engine/remittance';
 import type { MonthCtx, RemitDay, RemitExtra, RemitMonth } from './lib';
 
 const inr = (n: number) => '₹' + n.toFixed(2);
@@ -35,9 +64,71 @@ export default function RemitTable({
   entryStore: Record<string, SheetLike>;
   subtitle: string;
 }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+  /** The deposit being corrected, or a new one being added to a sales date. */
+  const [edit, setEdit] = useState<null | { salesDate: string; id: string | null; amount: string; date: string; type: RemitType }>(null);
+
   const month = remit[ctx.key] ?? {};
   const daysInMonth = new Date(ctx.year, ctx.month, 0).getDate();
   const extra = (month['extra'] ?? {}) as RemitExtra;
+
+  /**
+   * Rewrite one day sheet's deposits and save at once.
+   *
+   * The sheet is re-read from the store rather than from this render: the
+   * table is derived, and a deposit may have moved on a live-sync beat while
+   * the editor sat open. `sheetTotals` keeps `remitAmount` / `remitDate` /
+   * `remitNonCereal` / `remitCereal` in step, which is what the statements
+   * read — the classification rules themselves are untouched.
+   */
+  const commit = async (salesDate: string, mutate: (list: ReturnType<typeof toTxn>[]) => ReturnType<typeof toTxn>[], ref: string) => {
+    const key = `${ctx.crsId}_${salesDate}`;
+    const sheet = (crsData.get<Record<string, SheetLike>>('entryStore') ?? {})[key];
+    if (!sheet) {
+      void appAlert('That day sheet is no longer there — reopen the month and try again.');
+      return;
+    }
+    const list = mutate(txnsOf(sheet, salesDate).map(toTxn));
+    crsData.markEdited('entryStore', key);
+    crsData.update<Record<string, SheetLike>>('entryStore', (d) => {
+      d[key] = { ...(d[key] as SheetLike), remits: list, ...sheetTotals(list) };
+    });
+    setEdit(null);
+    if (await crsData.saveConfirmed()) saveSuccess(remittanceSaved(ctx.crsId, salesDate, ref));
+  };
+
+  const applyEdit = () => {
+    if (!edit) return;
+    const amount = parseFloat(edit.amount);
+    if (!(amount > 0) || !edit.date) {
+      void appAlert('Enter an amount above zero and a remittance date.');
+      return;
+    }
+    const { salesDate, id, date, type } = edit;
+    void commit(
+      salesDate,
+      (list) =>
+        id
+          ? list.map((t) => (t.id !== id ? t : applyRemitType({ ...t, amount, date }, type)))
+          : [...list, applyRemitType({ id: newRemitId(), amount, date, account: 'nc', createdBy: user?.username, createdAt: new Date().toISOString() }, type)],
+      id ?? 'new',
+    );
+  };
+
+  const removeTxn = async (t: RemitRow, onlyOne: boolean) => {
+    const ok = await appConfirm({
+      title: 'Remove remittance',
+      tone: 'danger',
+      confirmLabel: 'Remove',
+      message:
+        `Remove the ₹${t.amount.toFixed(2)} deposit dated ${t.date.split('-').reverse().join('/')} from ${t.salesDate.split('-').reverse().join('/')}?` +
+        (onlyOne ? '\n\nIt is the only deposit recorded for that sales date, which will be left with none.' : '') +
+        '\n\nThis cannot be undone.',
+    });
+    if (!ok) return;
+    await commit(t.salesDate, (list) => list.filter((x) => x.id !== t.id), t.id);
+  };
 
   // Deposits recorded on this month's day sheets, grouped by the sales date
   // they belong to — an additional deposit banked in October still belongs to
@@ -100,19 +191,91 @@ export default function RemitTable({
     </span>
   );
 
+  const actBtn = (bg: string, fg: string, bd: string): React.CSSProperties => ({
+    background: bg, color: fg, border: `1px solid ${bd}`, borderRadius: 6,
+    padding: '3px 8px', fontSize: 11, fontWeight: 800, cursor: 'pointer', marginLeft: 4,
+  });
+  const act = {
+    edit: actBtn('#FAF5FF', '#5B21B6', '#A78BFA'),
+    del: actBtn('#FEE2E2', '#B91C1C', '#FCA5A5'),
+    add: actBtn('#ECFDF5', '#047857', '#6EE7B7'),
+  };
+
+  /**
+   * One deposit open for correction, or a new one for a sales date. It stands
+   * in the row's own place so the table does not jump, and it writes only when
+   * ✓ is pressed.
+   */
+  const editRow = (key: string, no: number, salesLabel: string, dow: string) => (
+    <tr key={key} style={{ background: '#FAF5FF' }}>
+      <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--muted)', fontSize: 11, borderBottom: '1px solid #EFF6FF' }}>{no}</td>
+      <td style={{ padding: '6px 12px', fontSize: 12, borderBottom: '1px solid #EFF6FF', whiteSpace: 'nowrap' }}>
+        <span style={{ fontWeight: 600 }}>{salesLabel}</span>
+        <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{dow}</span>
+      </td>
+      <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF', textAlign: 'center' }}>
+        <input
+          type="date"
+          aria-label="Remittance date"
+          value={edit!.date}
+          onChange={(e) => setEdit({ ...edit!, date: e.target.value })}
+          style={{ border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 7px', fontSize: 11, width: 130 }}
+        />
+      </td>
+      <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
+        <input
+          type="number"
+          min={0}
+          step={0.01}
+          placeholder="0.00"
+          aria-label="Amount"
+          value={edit!.amount}
+          onChange={(e) => setEdit({ ...edit!, amount: e.target.value })}
+          style={{ width: '100%', border: '1px dashed #A78BFA', borderRadius: 6, padding: '5px 8px', fontSize: 12, textAlign: 'right', fontWeight: 700 }}
+        />
+      </td>
+      <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
+        {/* Account and reason are one choice — an additional deposit is
+            Non-Cereal by rule, so the two can never contradict each other. */}
+        <select
+          value={edit!.type}
+          onChange={(e) => setEdit({ ...edit!, type: e.target.value as RemitType })}
+          aria-label="Account or reason"
+          style={{ width: '100%', border: '1px dashed #A78BFA', borderRadius: 6, padding: '5px 8px', fontSize: 12, background: '#fff' }}
+        >
+          {(['nc', 'ce', ...REMIT_REASONS] as RemitType[]).map((x) => (
+            <option key={x} value={x}>{REMIT_TYPE_LABEL[x]}</option>
+          ))}
+        </select>
+      </td>
+      <td style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '1px solid #EFF6FF', background: '#EFF6FF' }}>
+        <span style={{ fontWeight: 800, color: '#0369A1', fontSize: 12 }}>{inr(parseFloat(edit!.amount) || 0)}</span>
+      </td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', borderBottom: '1px solid #EFF6FF', whiteSpace: 'nowrap' }}>
+        <button type="button" onClick={applyEdit} title="Save this correction" style={act.edit}>✓</button>
+        <button type="button" onClick={() => setEdit(null)} title="Cancel" style={actBtn('#fff', '#475569', '#CBD5E1')}>↺</button>
+      </td>
+    </tr>
+  );
+
   for (let day = 1; day <= daysInMonth; day++) {
     const dateObj = new Date(ctx.year, ctx.month - 1, day);
     const salesLabel = `${String(day).padStart(2, '0')}/${String(ctx.month).padStart(2, '0')}/${ctx.year}`;
     const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dateObj.getDay()];
     const txns = byDay.get(day);
 
-    // ── Days keyed in Daily Entry: one read-only row per deposit ───────────
+    // ── Days keyed in Daily Entry: one row per deposit ─────────────────────
+    // Read-only, except for an administrator's ✎ / ✕ / ➕ (editRow below).
     if (txns?.length) {
-      txns.forEach((t) => {
+      txns.forEach((t, ti) => {
         const { nc, ce } = amounts(t);
         totNC += nc;
         totCE += ce;
         serial++;
+        if (isAdmin && edit && edit.id === t.id) {
+          dayRows.push(editRow(`${day}-${t.id}`, serial, salesLabel, dow));
+          return;
+        }
         dayRows.push(
           <tr key={`${day}-${t.id}`} style={{ background: stripe() }}>
             <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--muted)', fontSize: 11, borderBottom: '1px solid #EFF6FF' }}>{serial}</td>
@@ -138,9 +301,25 @@ export default function RemitTable({
             <td style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '1px solid #EFF6FF', background: '#EFF6FF' }}>
               <span style={{ fontWeight: 800, color: '#0369A1', fontSize: 12 }}>{inr(nc + ce)}</span>
             </td>
+            {isAdmin ? (
+              <td style={{ padding: '4px 8px', textAlign: 'right', borderBottom: '1px solid #EFF6FF', whiteSpace: 'nowrap' }}>
+                <button type="button" onClick={() => setEdit({ salesDate: t.salesDate, id: t.id, amount: String(t.amount), date: t.date, type: remitTypeOf(t) })} title="Correct this remittance — amount, deposit date or account" style={act.edit}>✎</button>
+                <button type="button" onClick={() => void removeTxn(t, (byDay.get(day) ?? []).length === 1)} title="Remove this remittance" style={act.del}>✕</button>
+                {/* On the date's last deposit only, so one date offers one
+                    place to add another one. */}
+                {ti === (byDay.get(day) ?? []).length - 1 ? (
+                  <button type="button" onClick={() => setEdit({ salesDate: t.salesDate, id: null, amount: '', date: t.date, type: REMIT_REASONS[0] })} title="Add another remittance for this sales date" style={act.add}>➕</button>
+                ) : null}
+              </td>
+            ) : null}
           </tr>,
         );
       });
+      // The new deposit being added for this date sits under its own rows.
+      if (isAdmin && edit && !edit.id && edit.salesDate === `${ctx.year}-${String(ctx.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`) {
+        serial++;
+        dayRows.push(editRow(`${day}-new`, serial, salesLabel, dow));
+      }
       continue;
     }
 
@@ -184,6 +363,9 @@ export default function RemitTable({
         <td style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '1px solid #EFF6FF', background: '#EFF6FF' }}>
           <span style={{ fontWeight: 800, color: '#0369A1', fontSize: 12 }}>{nonCereal !== '' || cereal !== '' ? inr(rowTotal) : '—'}</span>
         </td>
+        {/* A date with no day sheet is keyed here as it always was; the
+            actions column is empty for it. */}
+        {isAdmin ? <td style={{ borderBottom: '1px solid #EFF6FF' }} /> : null}
       </tr>,
     );
   }
@@ -236,6 +418,7 @@ export default function RemitTable({
         <td style={{ padding: '6px 8px', textAlign: 'right', borderBottom: bd, background: amber ? '#FEF3C7' : '#EFF6FF' }}>
           <span style={{ fontWeight: 800, color: inputCol, fontSize: 12 }}>{nc !== undefined || ce !== undefined ? inr(tot) : '—'}</span>
         </td>
+        {isAdmin ? <td style={{ borderBottom: bd }} /> : null}
       </tr>
     );
   };
@@ -262,6 +445,7 @@ export default function RemitTable({
               <th style={{ ...th, textAlign: 'right' }}>Non-Cereal A/C (₹)</th>
               <th style={{ ...th, textAlign: 'right' }}>Cereal A/C (₹)</th>
               <th style={{ ...th, textAlign: 'right', color: '#0369A1', background: '#DBEAFE' }}>Total Amount (₹)</th>
+              {isAdmin ? <th style={{ ...th, textAlign: 'right' }} title="Administrator: correct, remove or add a deposit">Edit</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -274,6 +458,7 @@ export default function RemitTable({
               <td style={{ padding: '8px 10px', fontWeight: 800, fontSize: 13, color: '#fff', textAlign: 'right' }}>{inr(totNC)}</td>
               <td style={{ padding: '8px 10px', fontWeight: 800, fontSize: 13, color: '#fff', textAlign: 'right' }}>{inr(totCE)}</td>
               <td style={{ padding: '8px 10px', fontWeight: 900, fontSize: 14, color: '#FDE68A', textAlign: 'right' }}>{inr(totNC + totCE)}</td>
+              {isAdmin ? <td /> : null}
             </tr>
           </tfoot>
         </table>

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { AuthProvider } from '@/lib/authClient';
 import DialogHost from '@/components/dialog';
+import SaveSuccessHost from '@/components/SaveSuccess';
 import './globals.css';
 import './responsive.css';
 import './dashboard-marquee.css';
@@ -60,6 +61,7 @@ export default function RootLayout({
       <body suppressHydrationWarning data-clarity-mask="True">
         <AuthProvider>{children}</AuthProvider>
         <DialogHost />
+        <SaveSuccessHost />
         {CLARITY_ID && /^[a-z0-9]+$/i.test(CLARITY_ID) ? (
           <Script id="ms-clarity" strategy="afterInteractive">
             {`(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script",${JSON.stringify(CLARITY_ID)});`}

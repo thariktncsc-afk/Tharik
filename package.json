@@ -31,7 +31,9 @@
     "verify:initial-opening": "node tools/verify-initial-opening.mjs",
     "verify:holidays": "node tools/verify-holidays.mjs",
     "verify:payment-gate": "node tools/verify-payment-gate.mjs",
-    "verify:dss-days": "node tools/verify-dss-days.mjs"
+    "verify:dss-days": "node tools/verify-dss-days.mjs",
+    "verify:save-success": "node tools/verify-save-success.mjs",
+    "verify:remittance-admin": "node tools/verify-remittance-admin.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
