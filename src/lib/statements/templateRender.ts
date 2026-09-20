@@ -33,7 +33,18 @@ export type TemplateStyle = {
   fmt: string;
 };
 
-export type TemplateCell = { s: number; kind: 'static' | 'data'; v?: string; t?: string };
+export type TemplateCell = {
+  /** Index into the workbook's cell styles. */
+  s: number;
+  kind: 'static' | 'data';
+  /** The form's own words, on a cell that is all form. */
+  v?: string;
+  /** The caption a data cell keeps — "RICE CARD        : " — with the office's own spacing. */
+  p?: string;
+  /** The formula the office put here, kept so an export adds up as its file does. */
+  f?: string;
+  t?: string;
+};
 
 export type TemplateSheet = {
   name: string;
@@ -138,8 +149,14 @@ const edge = (style?: string) => (style ? (BORDER_PX[style] ?? '1px solid #000')
 const ALIGN: Record<string, string> = { left: 'left', right: 'right', center: 'center', centerContinuous: 'center', justify: 'justify', general: '' };
 const VALIGN: Record<string, string> = { top: 'top', center: 'middle', bottom: 'bottom' };
 
-/** One cell's CSS — the workbook's own formatting, nothing added. */
-export function cellCss(st: TemplateStyle, numeric: boolean): string {
+/**
+ * One cell's CSS — the workbook's own formatting, nothing added.
+ *
+ * `spill` is Excel's own behaviour: text longer than its column runs on over
+ * the next cell when that cell is empty, and is clipped when it is not. Without
+ * it "NAME OF THE P.K.R: Rahamathullakhan" reads as "…Rahamathu".
+ */
+export function cellCss(st: TemplateStyle, numeric: boolean, spill = false): string {
   const parts = [
     `font-family:'${st.font}',Calibri,Arial,sans-serif`,
     `font-size:${st.size}pt`,
@@ -155,7 +172,7 @@ export function cellCss(st: TemplateStyle, numeric: boolean): string {
     // Excel's default: text left, numbers right, unless the cell says otherwise.
     `text-align:${ALIGN[st.h ?? ''] || (numeric ? 'right' : 'left')}`,
     `vertical-align:${VALIGN[st.v ?? ''] ?? 'bottom'}`,
-    st.wrap ? 'white-space:pre-wrap;word-break:break-word' : 'white-space:nowrap;overflow:hidden',
+    st.wrap ? 'white-space:pre-wrap;word-break:break-word' : `white-space:nowrap;overflow:${spill ? 'visible' : 'hidden'}`,
     st.rotate ? `writing-mode:vertical-rl;transform:rotate(${st.rotate === 90 ? 180 : 0}deg)` : '',
     'padding:0 2px',
   ];
@@ -235,14 +252,26 @@ export function renderSheet(model: TemplateModel, sheet: TemplateSheet, values: 
       const cell = sheet.cells[ref];
       const st = model.styles[cell?.s ?? 0] ?? model.styles[0];
       const span = spans.get(ref);
-      // A static cell keeps the form's own words; a data cell takes the
-      // statement's figure, and shows nothing when there is none.
-      const raw = cell?.kind === 'data' ? values[ref] : (cell?.v ?? (ref in values ? values[ref] : ''));
+      // A static cell keeps the form's own words. A data cell keeps its
+      // caption — "RICE CARD        : ", the office's spacing and all — and
+      // takes the statement's figure after it; with no figure it prints the
+      // bare caption, which is what the office's own sheet does.
+      const filled = values[ref];
+      const raw =
+        cell?.kind === 'data'
+          ? cell.p
+            ? `${cell.p}${filled ?? ''}`
+            : (filled ?? '')
+          : (cell?.v ?? (ref in values ? values[ref] : ''));
       const numeric = typeof raw === 'number';
       const shown = formatValue(raw, st?.fmt ?? 'General');
+      // Excel spills a long entry into the next cell when that cell is empty.
+      const nextRef = refOf(r, c + (span?.cols ?? 1));
+      const next = sheet.cells[nextRef];
+      const nextEmpty = !covered.has(nextRef) && !(next?.v || next?.p || values[nextRef]);
       cells.push(
         `<td${span ? `${span.rows > 1 ? ` rowspan="${span.rows}"` : ''}${span.cols > 1 ? ` colspan="${span.cols}"` : ''}` : ''}` +
-          ` style="${cellCss(st ?? ({} as TemplateStyle), numeric)}">${escapeHtml(shown)}</td>`,
+          ` style="${cellCss(st ?? ({} as TemplateStyle), numeric, nextEmpty && !numeric)}">${escapeHtml(shown)}</td>`,
       );
     }
     rows.push(`<tr style="height:${heights[r]}px">${cells.join('')}</tr>`);

@@ -30,8 +30,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcUrl = pathToFileURL(join(root, 'src') + '/').href;
 register(
   `data:text/javascript,${encodeURIComponent(`
+const SRC_URL = ${JSON.stringify(srcUrl ?? (pathToFileURL(join(root,"src")+"/").href))};
 export async function resolve(spec, ctx, next) {
-  if (spec.startsWith('@/')) return next(${JSON.stringify(srcUrl)} + spec.slice(2) + '.ts', ctx);
+  if (spec.startsWith('@/')) {
+    const base = SRC_URL + spec.slice(2);
+    // A JSON module needs its import attribute stating under Node's ESM
+    // loader; the bundler infers it from the extension.
+    if (base.endsWith('.json')) return { url: base, shortCircuit: true, importAttributes: { type: 'json' } };
+    return next(base + '.ts', ctx);
+  }
   return next(spec, ctx);
 }`)}`,
   import.meta.url,

@@ -40,6 +40,9 @@
 
 import { parseStatement } from '@/lib/statements/sheetModel';
 import { inTemplate, mm, printFor } from '@/lib/statements/pageSetup';
+import TEMPLATE from '@/generated/statement-template.json';
+import { CAPTION_FILLED, SHEET_FOR, fillByCaption, linesOf } from '@/lib/statements/templateFill';
+import { TEMPLATE_CSS, pageCssFor, renderSheet, type TemplateModel } from '@/lib/statements/templateRender';
 
 export type PrintSection = { id: string; label: string; copies: number; html: string };
 
@@ -178,10 +181,32 @@ export function buildPrintDocument(title: string, baseCss: string, sections: Pri
  * whatever the screen happens to be.
  */
 export function buildPreviewSheet(html: string, sectionId?: string): string {
+  // Where the office's workbook has the sheet and this statement's figures can
+  // be placed in it, the preview IS that sheet — the same page the export
+  // writes, so the two cannot show different documents.
+  const office = sectionId ? templateSheetPreview(sectionId, html) : null;
+  if (office) return office;
   return (
     `<style>${pageCss(sectionId ? [sectionId] : [])}</style>` +
     `<div class="stmt-sheet stmt-sheet--${orientationOf(html, sectionId)}" data-section="${sectionId ?? ''}">${html}</div>`
   );
+}
+
+/**
+ * This statement drawn on the office's own sheet, where the workbook has one
+ * and the figures can be placed in it by caption — otherwise null, and the
+ * statement is shown as our own markup.
+ */
+export function templateSheetPreview(sectionId: string, html: string): string | null {
+  const name = SHEET_FOR[sectionId];
+  if (!name || !CAPTION_FILLED.has(sectionId)) return null;
+  const model = TEMPLATE as unknown as TemplateModel;
+  const sheet = model.sheets.find((s) => s.name === name);
+  if (!sheet) return null;
+  const { values } = fillByCaption(sheet, linesOf(html));
+  const pageId = 'tpl' + sectionId.replace(/[^a-z0-9]/gi, '');
+  return `<style>${TEMPLATE_CSS}
+${pageCssFor(sheet, pageId)}</style>` + renderSheet(model, sheet, values, pageId);
 }
 
 /** How many sheets a selection prints — one per copy, in order. */
