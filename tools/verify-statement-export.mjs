@@ -98,14 +98,27 @@ console.log('\nPDF — A4, not A3');
   check('a wide one does not (gunny is 11 columns)', P.orientationOf(load('crs19_gunny.html')) === 'landscape');
   check('a 22-column statement is laid on its side', P.orientationOf(daily.html) === 'landscape', String(P.columnCount(daily.html)));
   check('…and says so on its own sheet', /stmt-sheet--landscape[^>]*data-section="crs19_crs_daily_sale"/.test(doc));
-  // Three sheets the office files on their side whatever their width: each is
-  // just under the column count that would turn it by itself.
+  // Orientation now comes from the office's own workbook, sheet by sheet
+  // (pageSetup.ts, read from CRS 19 AUG'26.xlsx) — not from counting columns.
+  for (const [id, want] of Object.entries({
+    crs_page1: 'portrait', receipt: 'landscape', crs_daily_sale: 'landscape', crs_page2: 'landscape',
+    gunny: 'landscape', free_com: 'landscape', cost_com: 'landscape', crs_police: 'landscape',
+    remittance: 'portrait', coll: 'portrait', sale_tax: 'portrait', b6: 'landscape',
+    card_details: 'landscape', rbi: 'landscape',
+  })) {
+    check(`${id} prints ${want}, as the workbook's sheet does`, P.orientationOf(load(`crs19_${id}.html`), id) === want);
+  }
   for (const [id, cols] of [['crs_police', 9], ['card_details', 8], ['rbi', 8]]) {
     const html = load(`crs19_${id}.html`);
-    check(`${id} is landscape because the office says so (only ${cols} columns wide)`,
-      P.orientationOf(html, id) === 'landscape' && P.orientationOf(html) === 'portrait' && P.columnCount(html) === cols,
-      `${P.columnCount(html)} cols, ${P.orientationOf(html, id)}`);
+    check(`…${id} landscape comes from the workbook, not its width (only ${cols} columns)`,
+      P.orientationOf(html) === 'portrait' && P.columnCount(html) === cols, `${P.columnCount(html)} cols`);
   }
+  check('each sheet carries its own margins from the workbook',
+    /@page stmtcrspolice\{size:A4 landscape;margin:6\.35mm 6\.35mm 0mm 6\.35mm\}/.test(P.buildPrintDocument('T', '', [{ ...sectionOf('crs19_crs_police.html'), id: 'crs_police' }])),
+    (P.pageCss(['crs_police']).match(/@page stmtcrspolice[^\n]*/) ?? ['none'])[0]);
+  check('…and the sheets the office centres are centred',
+    /\.stmt-sheet\[data-section="crs_police"\]\{page:stmtcrspolice;margin-left:auto/.test(P.pageCss(['crs_police'])) &&
+      !/margin-left:auto/.test(P.pageCss(['coll'])));
   check('…and they say so on their own sheets',
     ['crs_police', 'card_details', 'rbi'].every((id) =>
       new RegExp(`stmt-sheet--landscape[^>]*data-section="${id}"`).test(P.buildPrintDocument('T', '', [sectionOf(`crs19_${id}.html`)].map((s) => ({ ...s, id }))))));
@@ -208,6 +221,22 @@ console.log('\nExcel — print-ready');
   const s2 = strFromU8(zip['xl/worksheets/sheet2.xml']);
   check('sheet 1 is set to landscape, fitted to one page wide', /orientation="landscape"/.test(s1) && /fitToWidth="1"/.test(s1) && /fitToHeight="0"/.test(s1));
   check('sheet 2 is set to portrait', /orientation="portrait"/.test(s2));
+
+  // The office's own page setup, per sheet, in the exported file.
+  const office = W.buildStatementsXlsx([
+    { id: 'crs_police', label: 'CRS Police', html: load('crs19_crs_police.html') },
+    { id: 'sale_tax', label: 'Sale Tax', html: load('crs19_sale_tax.html') },
+  ]);
+  const oz = unzipSync(office);
+  const police = strFromU8(oz['xl/worksheets/sheet1.xml']);
+  const saleTax = strFromU8(oz['xl/worksheets/sheet2.xml']);
+  check('CRS Police exports at the office\'s 145%, landscape, not fitted',
+    /orientation="landscape"/.test(police) && /scale="145"/.test(police) && !/fitToWidth/.test(police), (police.match(/<pageSetup[^>]*>/) ?? ['none'])[0]);
+  check('…with its own margins (0.25 / 0.25 / 0.25 / 0) and centred',
+    /left="0\.25" right="0\.25" top="0\.25" bottom="0"/.test(police) && /horizontalCentered="1"/.test(police), (police.match(/<pageMargins[^>]*>/) ?? ['none'])[0]);
+  check('Sale Tax exports portrait, fitted to one page, with its own margins',
+    /orientation="portrait"/.test(saleTax) && /fitToWidth="1"/.test(saleTax) && /left="1\.181"/.test(saleTax), (saleTax.match(/<pageSetup[^>]*>/) ?? ['none'])[0]);
+  check('…and the file still opens as a workbook', XLSX.read(office, { type: 'array' }).SheetNames.length === 2);
   check('fit-to-page is switched on for the sheet', /<pageSetUpPr fitToPage="1"\/>/.test(s1));
   check('A4 paper', /paperSize="9"/.test(s1) && /paperSize="9"/.test(s2));
   check('the header rows are frozen', /state="frozen"/.test(s1), (s1.match(/<pane[^>]*>/) ?? ['none'])[0]);
