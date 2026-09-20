@@ -25,13 +25,21 @@
  *   Everything squeezed. The same block sets `body{font-size:8px}` for print,
  *   which reached every section. The appended sheet puts the body back.
  *
- * Orientation is worked out from the statement itself — how many columns wide
- * it is — so a builder that gains a column keeps printing correctly without
- * anything here being edited. `ALWAYS_LANDSCAPE` is the short list of sheets
- * the office files on their side whatever their width.
+ * HOW EACH STATEMENT PRINTS COMES FROM THE OFFICE'S OWN WORKBOOK
+ * (`pageSetup.ts`, read from `CRS 19 AUG'26.xlsx`): orientation, margins and
+ * centring, sheet by sheet. That workbook is the master, so it decides —
+ * measuring the statement's width is only the fallback for a section it has no
+ * sheet for.
+ *
+ * Not yet carried across from it: the print SCALE (the office prints CRS
+ * Police at 145% and RBI at 120%, and fits the rest to one page), because
+ * these statements are our HTML rather than the workbook's own grid, so a
+ * percentage of it would mean nothing. That arrives with the template-driven
+ * rendering.
  */
 
 import { parseStatement } from '@/lib/statements/sheetModel';
+import { inTemplate, mm, printFor } from '@/lib/statements/pageSetup';
 
 export type PrintSection = { id: string; label: string; copies: number; html: string };
 
@@ -48,7 +56,10 @@ export const LANDSCAPE_COLUMNS = 9;
  */
 export const ALWAYS_LANDSCAPE = new Set(['crs_police', 'card_details', 'rbi']);
 
-/** A4, in millimetres, with the margin the office's filing punch needs. */
+/** A CSS @page name for a section id (letters only: `crs_page1` → `stmtcrspage1`). */
+const pageName = (id: string) => 'stmt' + id.replace(/[^a-z0-9]/gi, '');
+
+/** A4, in millimetres, for a section the workbook has no sheet for. */
 const MARGIN_MM = 8;
 
 /**
@@ -61,10 +72,15 @@ export function columnCount(html: string): number {
 }
 
 /**
- * Portrait unless the statement is too wide across A4 to stay readable — or
- * it is one of the few the office always files on its side (`sectionId`).
+ * How this statement prints.
+ *
+ * The office's own workbook decides, sheet by sheet (`pageSetup.ts`, read from
+ * `CRS 19 AUG'26.xlsx`): that is the master, and it states orientation,
+ * margins, scale and centring for each one. Measuring the statement's width is
+ * only the fallback, for a section the workbook has no sheet for.
  */
 export function orientationOf(html: string, sectionId?: string): 'portrait' | 'landscape' {
+  if (sectionId && inTemplate(sectionId)) return printFor(sectionId).orientation;
   if (sectionId && ALWAYS_LANDSCAPE.has(sectionId)) return 'landscape';
   return columnCount(html) > LANDSCAPE_COLUMNS ? 'landscape' : 'portrait';
 }
@@ -76,14 +92,25 @@ export function orientationOf(html: string, sectionId?: string): 'portrait' | 'l
  * own fonts, borders or column widths — the statements must keep looking
  * exactly as the office knows them.
  */
-export function pageCss(): string {
+export function pageCss(sectionIds: string[] = []): string {
+  // A named page per section the workbook covers, carrying that sheet's own
+  // margins and centring, so a statement prints on the paper the office set
+  // for it rather than on one house style.
+  const perSection: string[] = [];
+  for (const id of new Set(sectionIds)) {
+    if (!inTemplate(id)) continue;
+    const p = printFor(id);
+    perSection.push(`@page ${pageName(id)}{size:A4 ${p.orientation};margin:${mm(p.margins.top)}mm ${mm(p.margins.right)}mm ${mm(p.margins.bottom)}mm ${mm(p.margins.left)}mm}`);
+    perSection.push(`.stmt-sheet[data-section="${id}"]{page:${pageName(id)}${p.centred ? ';margin-left:auto;margin-right:auto' : ''}}`);
+  }
   return [
-    // Named pages: one for each orientation, so a wide statement can be laid
-    // on its side without taking every other statement with it.
+    // Named pages: one for each orientation, for anything the workbook has no
+    // sheet for; the per-section rules below override them where it does.
     `@page stmtP{size:A4 portrait;margin:${MARGIN_MM}mm}`,
     `@page stmtL{size:A4 landscape;margin:${MARGIN_MM}mm}`,
     '.stmt-sheet--portrait{page:stmtP}',
     '.stmt-sheet--landscape{page:stmtL}',
+    ...perSection,
     // One statement, one sheet. The last one takes no break after it, or every
     // print job ends on a blank page.
     '.stmt-sheet{break-after:page;page-break-after:always;break-inside:auto}',
@@ -137,8 +164,9 @@ export function buildPrintDocument(title: string, baseCss: string, sections: Pri
     `<style>${baseCss}</style>` +
     '</head><body>' +
     sheets +
-    // Last, so these page rules win over the ones a builder carries.
-    `<style>${pageCss()}</style>` +
+    // Last, so these page rules win over the ones a builder carries — and
+    // carrying each section's own page setup from the office's workbook.
+    `<style>${pageCss(sections.map((s) => s.id))}</style>` +
     '</body></html>'
   );
 }
@@ -150,7 +178,10 @@ export function buildPrintDocument(title: string, baseCss: string, sections: Pri
  * whatever the screen happens to be.
  */
 export function buildPreviewSheet(html: string, sectionId?: string): string {
-  return `<style>${pageCss()}</style><div class="stmt-sheet stmt-sheet--${orientationOf(html, sectionId)}">${html}</div>`;
+  return (
+    `<style>${pageCss(sectionId ? [sectionId] : [])}</style>` +
+    `<div class="stmt-sheet stmt-sheet--${orientationOf(html, sectionId)}" data-section="${sectionId ?? ''}">${html}</div>`
+  );
 }
 
 /** How many sheets a selection prints — one per copy, in order. */
