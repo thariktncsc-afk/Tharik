@@ -238,16 +238,25 @@ function checkRow(ctx: Ctx, sec: 'a' | 'b', id: string, before: unknown, after: 
 
 /**
  * Rule 1b. A deposit already saved on a day sheet keeps its amount, date,
- * account and reason when a shop user saves. Adding and removing deposits are
- * the existing workflow and pass; compared by id through the same reader the
- * screens use, so sheets saved before deposits had ids compare too.
+ * account and reason when a shop user saves — and stays there: removing one is
+ * an administrator's to do, or "delete it and add it again" would be a way
+ * around the rule. ADDING a deposit is the existing workflow and passes, as
+ * does removing one this screen has not saved yet (it is not in `prev`).
+ * Compared by id through the same reader the screens use, so sheets saved
+ * before deposits had ids compare too.
  */
 function remittanceCheck(store: string, key: string, crsId: number, dateIso: string, prev: unknown, rec: unknown, out: StockViolation[]) {
   if (!isObj(prev) || !isObj(rec)) return;
   const now = new Map(txnsOf(rec, dateIso).map((t) => [t.id, t]));
   for (const was of txnsOf(prev, dateIso)) {
     const t = now.get(was.id);
-    if (!t) continue;
+    if (!t) {
+      out.push({
+        store, key, crsId, section: 'a', commodity: 'Remittance', kind: 'remittance-locked',
+        detail: `A saved remittance of ₹${was.amount.toFixed(2)} dated ${was.date.split('-').reverse().join('-')} was removed. Only an administrator can remove a saved remittance.`,
+      });
+      continue;
+    }
     const moved = !near(was.amount, t.amount) || was.date !== t.date || was.account !== t.account || (was.reason ?? '') !== (t.reason ?? '');
     if (moved) {
       out.push({

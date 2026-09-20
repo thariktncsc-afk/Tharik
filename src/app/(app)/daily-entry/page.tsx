@@ -37,7 +37,7 @@ import InspectionModal from './InspectionModal';
 import { dropProjectedAdjustments, dropProjectedSheet, isProjectedSheet } from '@/lib/engine/monthProjection';
 import ClearRequestDialog from '@/components/ClearRequestDialog';
 import AdditionalRemitDialog from '@/components/AdditionalRemitDialog';
-import { REMIT_REASONS, newRemitId, sheetTotals, txnsOf, type RemitAcct, type RemitReason, type RemitTxn } from '@/lib/engine/remittance';
+import { REMIT_REASONS, REMIT_TYPE_LABEL, applyRemitType, canRemoveRemit, newRemitId, remitTypeOf, savedRemitIds, sheetTotals, txnsOf, type RemitAcct, type RemitReason, type RemitTxn, type RemitType } from '@/lib/engine/remittance';
 import { hasData } from '@/lib/clearGuard';
 import { openingLocked, receiptLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
@@ -46,6 +46,8 @@ import { RICE_DAILY_REQUIRED, RICE_INVALID, checkRiceBoxes, hasRiceFields, riceB
 import { confirmMonthlySalesClose } from '@/lib/monthCloseConfirm';
 import { rechainAndRepublish } from '@/lib/engine/rechain';
 import { withReceiptOnlyDays } from '@/lib/engine/dssDays';
+import { saveSuccess } from '@/components/SaveSuccess';
+import { dailySaved, monthlySaved } from '@/lib/saveSuccess';
 
 type ShopRec = { name: string };
 
@@ -468,6 +470,13 @@ export default function DailyEntryPage() {
   const remitNC = remits.reduce((t, r) => (r.account === 'ce' ? t : t + r.amount), 0);
   const remitCE = remits.reduce((t, r) => (r.account === 'ce' ? t + r.amount : t), 0);
   const remitTotal = remitNC + remitCE;
+  /**
+   * The deposits the database already holds for this day. A shop user may add
+   * deposits and take back ones they have not saved yet, but a saved one is an
+   * administrator's to change or remove — /api/state refuses the rest
+   * (stockGuard rule 1b), so this only keeps the screen honest about it.
+   */
+  const savedRemits = useMemo(() => savedRemitIds(saved, date), [saved, date]);
 
   const anyAdj = (['excess', 'shortage', 'transfer'] as const).filter((f) =>
     [...lists.a.map((c) => adjFor('a', c.id)), ...lists.b.map((c) => adjFor('b', c.id))].some((a) => a[f] !== 0),
@@ -515,6 +524,15 @@ export default function DailyEntryPage() {
     return list;
   };
 
+  /**
+   * Which account a NEW deposit goes into. Shop staff never see this — every
+   * deposit they key is Non-Cereal, exactly as before. An administrator may
+   * record a Cereal A/C deposit, which the office banks alongside the
+   * Non-Cereal takings for the same date; a Cereal deposit is its own kind of
+   * row, not an "additional" Non-Cereal one, so it is never asked for a reason.
+   */
+  const [remitAcct, setRemitAcct] = useState<RemitAcct>('nc');
+
   const addRemit = () => {
     setRemitErr({});
     const amt = parseFloat(remitAmt.trim());
@@ -526,12 +544,15 @@ export default function DailyEntryPage() {
       return;
     }
     // The first deposit of a sales date is the ordinary one. Every later one
-    // is an additional remittance and must say why.
-    if (remits.length) {
+    // is an additional remittance and must say why — except a Cereal A/C
+    // deposit, which is a separate account rather than a second Non-Cereal
+    // payment, and so carries no reason.
+    const acct = isAdmin ? remitAcct : 'nc';
+    if (remits.length && acct !== 'ce') {
       setPendingRemit({ amount: amt, date: remitDate, account: 'nc' });
       return;
     }
-    setRemits((r) => [...r, { id: newRemitId(), amount: amt, date: remitDate, account: 'nc', createdBy: user?.username, createdAt: new Date().toISOString() }]);
+    setRemits((r) => [...r, { id: newRemitId(), amount: amt, date: remitDate, account: acct, createdBy: user?.username, createdAt: new Date().toISOString() }]);
     setRemitAmt('');
   };
 
@@ -543,7 +564,7 @@ export default function DailyEntryPage() {
    * the day sheets, so they follow on save. /api/state refuses the same change
    * from shop staff (stockGuard.ts, rule 1b).
    */
-  const [remitEdit, setRemitEdit] = useState<{ id: string; amount: string; date: string; reason: string } | null>(null);
+  const [remitEdit, setRemitEdit] = useState<{ id: string; amount: string; date: string; type: RemitType } | null>(null);
   const applyRemitEdit = () => {
     if (!remitEdit) return;
     const amount = parseFloat(remitEdit.amount);
@@ -555,7 +576,7 @@ export default function DailyEntryPage() {
       list.map((t) =>
         t.id !== remitEdit.id
           ? t
-          : { ...t, amount, date: remitEdit.date, ...(remitEdit.reason ? { reason: remitEdit.reason as RemitReason } : {}) },
+          : applyRemitType({ ...t, amount, date: remitEdit.date }, remitEdit.type),
       ),
     );
     setRemitEdit(null);
@@ -571,8 +592,12 @@ export default function DailyEntryPage() {
     setRemitAmt('');
   };
 
-  /** Save the sheet; returns true when written. */
-  const save = async (): Promise<boolean> => {
+  /**
+   * Save the sheet; returns true when written. `quiet` leaves the success
+   * popup to the caller — the month-close saves the day sheet on its way and
+   * confirms the month, not the day.
+   */
+  const save = async (opts?: { quiet?: boolean }): Promise<boolean> => {
     if (!crsVal || !date) return false;
     // Rice first — it sits above Remittance — but both are checked, so one
     // press marks every box still to fill. Blank is refused; 0 is an answer.
@@ -731,9 +756,15 @@ export default function DailyEntryPage() {
         (later.length ? ` — Opening recalculated on ${later.length} later day${later.length === 1 ? '' : 's'} (${later.map(fmtDay).join(', ')})` : ''),
     );
     setTimeout(() => setSavedMsg(''), 5000);
-    void crsData.save();
     // The Initial Opening is used: lock it on this screen now, not a sync beat later.
     if (initialSave) setJustStarted((s) => [...s, Number(crsVal)]);
+    // The tick is the clerk's evidence that the day is stored, so it waits for
+    // the write to land in the database — a refused or conflicting save shows
+    // nothing. Everything above this line is unchanged.
+    const stored = await crsData.saveConfirmed();
+    if (stored && !opts?.quiet) {
+      saveSuccess(dailySaved(crsVal, date));
+    }
     return true;
   };
 
@@ -745,7 +776,9 @@ export default function DailyEntryPage() {
       void appAlert('Select a CRS shop and date first.');
       return;
     }
-    const ok = await save();
+    // The day sheet is saved on the way; the month's own tick comes below,
+    // once the Sales Close mark itself is stored.
+    const ok = await save({ quiet: true });
     if (!ok) return;
     const [y, m, lastDay] = date.split('-').map(Number);
     // Aggregate the month's sales (kgs) per commodity up to this date, from
@@ -768,8 +801,8 @@ export default function DailyEntryPage() {
     crsData.update<Record<string, SalesClose>>('salesCloseStore', (d) => {
       d[scKey] = { date, ...agg, updatedAt: new Date().toISOString() };
     });
-    void crsData.save();
-    void appAlert({
+    const stored = await crsData.saveConfirmed();
+    await appAlert({
       title: 'Sales Close marked',
       tone: 'primary',
       icon: '🔒',
@@ -778,6 +811,11 @@ export default function DailyEntryPage() {
         (prev && prev.date !== date ? `\n(previous mark on ${prev.date.split('-').reverse().join('/')} was replaced)` : '') +
         `\n\nMonth totals up to this date:\n  Sales Gunny = ${agg.gunny}  → 50 KG SS Receipt\n  Sales Poly  = ${agg.poly}  → POLY Receipt\n  Sales C.Box = ${agg.cbox}  → C.BOX Receipt`,
     });
+    // After the figures have been read and the dialog dismissed, so the tick
+    // is not hidden behind it.
+    if (stored) {
+      saveSuccess(monthlySaved(crsVal, m, y));
+    }
   };
 
   const resetForm = () => {
@@ -1452,13 +1490,30 @@ export default function DailyEntryPage() {
                   🏭 Remittance Details <span style={{ color: '#DC2626' }}>*</span>
                   <span style={{ fontWeight: 400, fontSize: 9, color: 'var(--muted)', marginLeft: 6 }}>(required — deposit amount &amp; date; add more than one for the same day if the takings were banked in parts)</span>
                 </div>
-                {/* No account chooser. Every deposit keyed here goes to the
-                    Non-Cereal account; the Cereal A/C column on Monthly
-                    Remittance carries the REASON for a second or later deposit
-                    (Missed / Tea / Salt / C.Box), not a second account to pay
-                    into. Offering the choice here put money in a column that
-                    is not a money column. */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 14, alignItems: 'start' }}>
+                {/* No account chooser for shop staff. Every deposit they key
+                    goes to the Non-Cereal account; the Cereal A/C column on
+                    Monthly Remittance carries the REASON for a second or later
+                    deposit (Missed / Tea / Salt / C.Box), not a second account
+                    to pay into, and offering the choice there put money in a
+                    column that is not a money column. An administrator does
+                    get the choice, for the Cereal deposits the office banks
+                    against the same date. */}
+                <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? 'auto 1fr 1fr auto' : '1fr 1fr auto', gap: 14, alignItems: 'start' }}>
+                  {isAdmin ? (
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>Account</label>
+                      <select
+                        value={remitAcct}
+                        onChange={(e) => setRemitAcct(e.target.value as RemitAcct)}
+                        aria-label="Remittance account"
+                        title="Administrator: which account this deposit goes into"
+                        style={{ border: `2px solid ${ACCT[remitAcct].bd}`, borderRadius: 8, padding: '9px 10px', fontSize: 13, fontWeight: 700, color: ACCT[remitAcct].fg, background: ACCT[remitAcct].bg, outline: 'none' }}
+                      >
+                        <option value="nc">{REMIT_TYPE_LABEL.nc}</option>
+                        <option value="ce">{REMIT_TYPE_LABEL.ce}</option>
+                      </select>
+                    </div>
+                  ) : null}
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                       Remittance Amount (₹) <span style={{ color: '#DC2626' }}>*</span>
@@ -1561,20 +1616,22 @@ export default function DailyEntryPage() {
                               <tr key={i} style={{ background: '#FAF5FF' }}>
                                 <td style={{ padding: '6px 10px', fontSize: 11, color: 'var(--muted)', textAlign: 'center', borderBottom: '1px solid #F1F5F9' }}>{i + 1}</td>
                                 <td style={{ padding: '4px 6px', textAlign: 'center', borderBottom: '1px solid #F1F5F9' }}>
-                                  {i > 0 || r.reason ? (
-                                    <select
-                                      value={remitEdit.reason}
-                                      onChange={(e) => setRemitEdit({ ...remitEdit, reason: e.target.value })}
-                                      aria-label="Reason"
-                                      style={{ border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 6px', fontSize: 12, background: '#fff' }}
-                                    >
-                                      {REMIT_REASONS.map((x) => (
-                                        <option key={x} value={x}>{x}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <span style={{ fontSize: 10, fontWeight: 800, color: ACCT[r.account].fg }}>{ACCT[r.account].label}</span>
-                                  )}
+                                  {/* Account and reason are one choice, because
+                                      they are not independent: an additional
+                                      deposit is Non-Cereal by rule, so picking
+                                      a reason puts it there and picking an
+                                      account clears the reason
+                                      (applyRemitType). */}
+                                  <select
+                                    value={remitEdit.type}
+                                    onChange={(e) => setRemitEdit({ ...remitEdit, type: e.target.value as RemitType })}
+                                    aria-label="Account or reason"
+                                    style={{ border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 6px', fontSize: 12, background: '#fff' }}
+                                  >
+                                    {(['nc', 'ce', ...REMIT_REASONS] as RemitType[]).map((x) => (
+                                      <option key={x} value={x}>{REMIT_TYPE_LABEL[x]}</option>
+                                    ))}
+                                  </select>
                                 </td>
                                 <td style={{ padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }}>
                                   <input
@@ -1621,14 +1678,23 @@ export default function DailyEntryPage() {
                                 {isAdmin ? (
                                   <button
                                     type="button"
-                                    onClick={() => setRemitEdit({ id: r.id, amount: String(r.amount), date: r.date, reason: r.reason ?? (i > 0 ? REMIT_REASONS[0] : '') })}
-                                    title="Administrator: correct this remittance's amount, date or reason"
+                                    onClick={() => setRemitEdit({ id: r.id, amount: String(r.amount), date: r.date, type: remitTypeOf(r) })}
+                                    title="Administrator: correct this remittance's amount, date or account"
                                     style={{ background: '#FAF5FF', color: '#5B21B6', border: '1px dashed #A78BFA', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 800, cursor: 'pointer', marginRight: 4 }}
                                   >
                                     ✎
                                   </button>
                                 ) : null}
-                                <button type="button" onClick={() => setRemits((list) => list.filter((_, j) => j !== i))} title="Remove this remittance" style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>✕</button>
+                                {/* A deposit already in the database is an
+                                    administrator's to remove; a shop user may
+                                    still take back one they have added here
+                                    and not saved (stockGuard rule 1b refuses
+                                    the rest anyway). */}
+                                {canRemoveRemit(isAdmin, savedRemits, r.id) ? (
+                                  <button type="button" onClick={() => setRemits((list) => list.filter((_, j) => j !== i))} title="Remove this remittance" style={{ background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>✕</button>
+                                ) : (
+                                  <span title="Saved remittance — only an administrator can change or remove it" style={{ fontSize: 11, color: 'var(--muted)' }}>🔒</span>
+                                )}
                               </td>
                             </tr>
                             ),
