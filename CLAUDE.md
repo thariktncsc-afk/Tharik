@@ -403,6 +403,43 @@ it — do not add a formula anywhere else.
 
 `npm run verify:initial-opening` has the office's scenarios A–H.
 
+## Gunny figures: the screen's rule is the only rule
+
+`src/legacy/42-gunny-live.js` wraps `stmtGetData` and rebuilds `d.gunny`, so
+the statements resolve gunny exactly as **Gunny Stock Management** displays it.
+
+**The bug.** The screen worked Opening / Receipt / Total / Closing out on every
+render but only WROTE them to `meGunnyStore` when somebody edited a row, and
+`stmtGetData` used that stored record whenever any field in it was non-zero.
+The statements therefore printed whatever the figures were the last time a row
+was touched. CRS 19, September 2026: the screen showed Receipt 205 and Total
+496 for 50 KG SS and 14 and 57 for POLY and C. BOX; the statement printed
+Receipt 10 and Total 301, and nothing at all for the other two — the stored row
+dated 11 Sep, and POLY/C. BOX never touched, so they fell through to a
+different derivation again (the `EMPTY_BAG` / `EMPTY_BOX` monthly rows, which
+are not where those bags come from).
+
+**The rule**, per item, matching `GunnyTable.tsx`:
+
+| | |
+| --- | --- |
+| Opening | this month's own figure, else last month's Closing carried, else 0 |
+| Receipt | `receiptImported` (the office's workbook), else the month's Sales Close totals for that pack type, else the bag counts on the month's own sales rows (`g_sales`, over `SC_PACK_TYPES`) |
+| Issues | as keyed, else 0 |
+| Total | Opening + Receipt |
+| Closing | Total − Issues |
+
+- **The stored `receipt`, `total` and `closing` are never read.** They are
+  derived copies, and reading them is what let the statement drift.
+- Keyed figures — Opening, Issues, an imported Receipt — are still the
+  office's and still win. A keyed Opening of `0` counts as keyed.
+- Both the Gunny statement and the gunny report at the foot of the Receipt
+  statement read `d.gunny`, so both were wrong together and are right together.
+- The wrapper swallows its own errors and leaves the earlier resolution in
+  place: a statement is never lost over this.
+
+`npm run verify:gunny-rows` has the live CRS 19 case and each source in turn.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -482,6 +519,10 @@ output. `npm run verify:statement-export` drives both exports over all 306.
 - **Orientation is measured, not listed**: `columnCount` reads the parsed
   grid, so a builder that gains a column keeps printing right. Over 9 columns
   goes landscape (Receipt is 37, Daily Sale 22, CRS Page 1 only 2).
+  `ALWAYS_LANDSCAPE` is the exception the office asked for: **CRS Police,
+  Card Details and RBI** are filed on their side whatever their width (they
+  are 9, 8 and 8 columns, just under the threshold). It applies to the
+  preview, the printed sheet and the Excel page setup alike.
 - **Excel: one statement, one WORKSHEET**, in one .xlsx. It used to be the
   statements' HTML with a `.xls` name — Excel opened it as a single sheet,
   and the flex-laid-out statements collapsed on top of each other.

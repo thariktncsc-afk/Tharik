@@ -552,7 +552,7 @@ export default function StatementsPage() {
               {/* Shown as the sheet it prints on (printDoc.ts), so a wide
                   statement such as the Receipt is previewed landscape at its
                   real width instead of squeezed into the screen. */}
-              <div style={{ overflowX: 'auto', background: '#E2E8F0', padding: 8 }} dangerouslySetInnerHTML={{ __html: buildPreviewSheet(preview.html) }} />
+              <div style={{ overflowX: 'auto', background: '#E2E8F0', padding: 8 }} dangerouslySetInnerHTML={{ __html: buildPreviewSheet(preview.html, preview.section.id) }} />
             </div>
           </div>
         </div>

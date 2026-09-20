@@ -25,9 +25,10 @@
  *   Everything squeezed. The same block sets `body{font-size:8px}` for print,
  *   which reached every section. The appended sheet puts the body back.
  *
- * Orientation is worked out from the statement itself — the widest row's cell
- * count — rather than a list of section ids, so a builder that gains a column
- * keeps printing correctly without anything here being edited.
+ * Orientation is worked out from the statement itself — how many columns wide
+ * it is — so a builder that gains a column keeps printing correctly without
+ * anything here being edited. `ALWAYS_LANDSCAPE` is the short list of sheets
+ * the office files on their side whatever their width.
  */
 
 import { parseStatement } from '@/lib/statements/sheetModel';
@@ -36,6 +37,16 @@ export type PrintSection = { id: string; label: string; copies: number; html: st
 
 /** More columns than this and the statement is laid on its side. */
 export const LANDSCAPE_COLUMNS = 9;
+
+/**
+ * Statements the office prints landscape whatever their width.
+ *
+ * CRS Police, Card Details and RBI are each just under the column count that
+ * would turn them by itself, and the office files all three on their side
+ * (2026-09-20). Measuring still decides everything else, so a builder that
+ * gains a column is still handled without anyone editing this.
+ */
+export const ALWAYS_LANDSCAPE = new Set(['crs_police', 'card_details', 'rbi']);
 
 /** A4, in millimetres, with the margin the office's filing punch needs. */
 const MARGIN_MM = 8;
@@ -49,8 +60,12 @@ export function columnCount(html: string): number {
   return parseStatement(html).cols;
 }
 
-/** Portrait unless the statement is too wide across A4 to stay readable. */
-export function orientationOf(html: string): 'portrait' | 'landscape' {
+/**
+ * Portrait unless the statement is too wide across A4 to stay readable — or
+ * it is one of the few the office always files on its side (`sectionId`).
+ */
+export function orientationOf(html: string, sectionId?: string): 'portrait' | 'landscape' {
+  if (sectionId && ALWAYS_LANDSCAPE.has(sectionId)) return 'landscape';
   return columnCount(html) > LANDSCAPE_COLUMNS ? 'landscape' : 'portrait';
 }
 
@@ -95,7 +110,7 @@ export function pageCss(): string {
 
 /** One sheet: the statement's own HTML, wrapped so it owns a page. */
 function sheet(section: PrintSection, copy: number, copies: number): string {
-  const orient = orientationOf(section.html);
+  const orient = orientationOf(section.html, section.id);
   const label = copies > 1 ? `${section.label} (copy ${copy} of ${copies})` : section.label;
   return (
     `<div class="stmt-sheet stmt-sheet--${orient}" data-section="${section.id}" data-copy="${copy}" aria-label="${label}">` +
@@ -134,8 +149,8 @@ export function buildPrintDocument(title: string, baseCss: string, sections: Pri
  * the Receipt is seen landscape, at its real width, rather than squeezed into
  * whatever the screen happens to be.
  */
-export function buildPreviewSheet(html: string): string {
-  return `<style>${pageCss()}</style><div class="stmt-sheet stmt-sheet--${orientationOf(html)}">${html}</div>`;
+export function buildPreviewSheet(html: string, sectionId?: string): string {
+  return `<style>${pageCss()}</style><div class="stmt-sheet stmt-sheet--${orientationOf(html, sectionId)}">${html}</div>`;
 }
 
 /** How many sheets a selection prints — one per copy, in order. */
