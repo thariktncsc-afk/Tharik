@@ -176,7 +176,10 @@ function classify(value, type) {
   // the caption back with it. A caption with nothing after it — "NOTE:",
   // "LOF SUGAR CARD :" — is just the form.
   if (/:\s*\S/.test(t)) return 'data';
-  if (/^\d/.test(t)) return 'data';
+  // A figure, a count, a serial number — but "50KG SS", "1ST WEEK" and
+  // "50 KG SS BAGS" are the form's own words, which happen to start with a
+  // digit. Letters mean it is a label.
+  if (/^\d/.test(t) && !/[A-Za-z]{2,}/.test(t)) return 'data';
   // A phone number, or anything else that is mostly digits.
   if ((t.match(/\d/g) ?? []).length >= 6) return 'data';
   return 'static';

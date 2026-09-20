@@ -6411,11 +6411,13 @@
     },
     "B19": {
      "s": 5,
-     "kind": "data"
+     "kind": "static",
+     "v": "1. The quantity of the commodities sold and the amount realised under each variety should be tallied with the quantity made in the statement I and 'c' register"
     },
     "B20": {
      "s": 63,
-     "kind": "data"
+     "kind": "static",
+     "v": "2. The total quantity furnished in the statement should be tallied with the receipt shown in statement IV"
     },
     "C24": {
      "s": 18,
@@ -9319,7 +9321,8 @@
     },
     "C23": {
      "s": 52,
-     "kind": "data"
+     "kind": "static",
+     "v": "50KG SS"
     },
     "D23": {
      "s": 124,
@@ -16184,7 +16187,8 @@
     },
     "B7": {
      "s": 78,
-     "kind": "data"
+     "kind": "static",
+     "v": "50KG  SS"
     },
     "C7": {
      "s": 78,
@@ -20854,7 +20858,8 @@
     },
     "D6": {
      "s": 22,
-     "kind": "data"
+     "kind": "static",
+     "v": "22CA005PN"
     },
     "F6": {
      "s": 66,
@@ -26418,7 +26423,8 @@
     },
     "G6": {
      "s": 249,
-     "kind": "data"
+     "kind": "static",
+     "v": "50 KG SS"
     },
     "H6": {
      "s": 154,
