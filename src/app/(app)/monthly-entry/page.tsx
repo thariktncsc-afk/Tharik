@@ -38,6 +38,8 @@ import { appAlert, appConfirm } from '@/components/dialog';
 import { buildChainIndex, openingFor } from '@/lib/engine/stockChain';
 import { firstStockDates, isInitialized, readStockInit } from '@/lib/engine/stockInit';
 import ClearRequestDialog from '@/components/ClearRequestDialog';
+import { saveSuccess } from '@/components/SaveSuccess';
+import { monthlySaved } from '@/lib/saveSuccess';
 import { hasData } from '@/lib/clearGuard';
 import { openingLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
@@ -144,7 +146,7 @@ export default function MonthlyEntryPage() {
       });
       if (!ok) return;
     }
-    save();
+    await save();
     // Saved when the month-close wrote its sheet for this shop.
     if (initial && Object.keys(crsData.get<Record<string, unknown>>('entryStore') ?? {}).some((k) => Number(k.split('_')[0]) === crsId)) {
       setJustStarted((s) => [...s, crsId!]);
@@ -405,7 +407,7 @@ export default function MonthlyEntryPage() {
     setEdits({});
   };
 
-  const save = () => {
+  const save = async () => {
     if (!ctx) return;
     // CRS 29 keyed by month: the month-close writes the last-day sheet, and a
     // CRS 29 day sheet is not complete without its rice. Keyed by day, the day
@@ -571,7 +573,11 @@ export default function MonthlyEntryPage() {
       lists,
     );
     for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
-    void crsData.save();
+    // The tick waits for the write to land — a refused or conflicting save
+    // shows nothing. Nothing above this line changed.
+    if (await crsData.saveConfirmed()) {
+      saveSuccess(monthlySaved(ctx.crsId, ctx.month, ctx.year));
+    }
     setCloseNote(note);
     setSaved(true);
     setTimeout(() => setSaved(false), 6000);

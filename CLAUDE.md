@@ -366,8 +366,8 @@ it — do not add a formula anywhere else.
   Balance, before it has *started*. After that every Opening they save must be
   the carried balance, or the figure already stored where nothing carries in.
   They also may not key a day before the shop's first day (it would re-carry
-  the Initial Opening away), nor change a saved remittance's amount, date,
-  account or reason (rule 1b — adding and removing deposits is unchanged).
+  the Initial Opening away), nor change or remove a saved remittance (rule 1b
+  — see "Remittance", below; adding a deposit is unchanged).
 - **"Started" = the shop holds stock data**, recorded in crs_state
   `__stockInit` (`{date, at, by, source}`) and **recalculated from what
   remains** (`reconcileStockInit`) after every landed save that touches a
@@ -403,6 +403,43 @@ it — do not add a formula anywhere else.
 
 `npm run verify:initial-opening` has the office's scenarios A–H.
 
+## Remittance — who may change what
+
+One sales date, many deposits, all on the day sheet's `remits` array
+(`engine/remittance.ts`). Monthly Remittance **derives** its rows from that
+array; it never holds a copy, which is what stops a deposit duplicating or
+drifting.
+
+- **Rule 1b, in `stockGuard.ts`, is the whole permission model** and it is
+  enforced in `/api/state`, not in the screens: a shop user may ADD deposits
+  and take back one they have not saved yet, but a deposit already in the
+  database keeps its amount, date, account and reason **and stays there**.
+  Removal is refused too — otherwise "delete it and add it again" is a way
+  round the lock, which is exactly how a saved date could be changed before.
+- **Administrators** may correct a deposit's amount, deposit date and account,
+  remove it, and add another to the same date — on **Daily Entry** (✎) and on
+  **Monthly Remittance** (✎ / ✕ / ➕). The Monthly controls write the DAY SHEET
+  the row came from, by id, and recompute `sheetTotals`; the rows stay derived.
+  They save immediately (`saveConfirmed`), not at the month-close.
+- **Account and reason are one choice** (`RemitType`, `applyRemitType`): a
+  reason always lands in Non-Cereal, an account always clears the reason. So
+  "Cereal A/C with a reason" — money in a column that is not a money column —
+  cannot be produced by any correction. The classification rules themselves
+  are unchanged.
+- **Cereal A/C is admin-only and asks no reason.** A Cereal deposit is a
+  separate account, not a second Non-Cereal payment, so it skips the
+  additional-remittance dialog even when it is not the date's first deposit.
+  Shop staff still key Non-Cereal only.
+- The date's total is simply every deposit on it (`sheetTotals.remitAmount`);
+  `remitDate` is the earliest of them, which is what the statements read.
+- A sheet saved before deposits had ids converts to one deposit, same money,
+  when an administrator corrects it — `txnsOf` already read it that way.
+- Days with **no day sheet** (a month keyed by month) keep their hand-keyed
+  Monthly Remittance row for everyone, as before: that is the month's own
+  entry, not a saved deposit, and locking it would stop shops keying a month.
+
+`npm run verify:remittance-admin`.
+
 ## Clear requests — what a day and a month take
 
 `clearExecute.ts`. A **day** clear removes that shop and date only: the sheet
@@ -425,6 +462,33 @@ near-simultaneous saves. Clear requests and payment orders are not stores: they
 move a revision (`useLiveRevision`) that the screens showing them re-fetch on.
 Not Supabase Realtime, for the same RLS reason as notifications.
 `verify:live-sync` drives the real data layer against a stand-in server.
+
+## The save-success tick
+
+One popup for all three saves — Daily Sales, Monthly Sales and a Receipt.
+`src/components/SaveSuccess.tsx` is the host (mounted once in the root layout,
+beside `DialogHost`); `src/lib/saveSuccess.ts` holds the wording and the
+duplicate rule, so both can be checked without a browser.
+
+- **It is evidence, not decoration: it appears only once the write has landed
+  in the database.** The gate is `crsData.saveConfirmed()`, not `save()` —
+  `save()` returns false for a refusal, for a save already in flight AND for
+  nothing left to send, and only the first is a failure. With the autosave
+  beat every 5 s, gating on `save()` would hide the tick on days that saved
+  perfectly and send the clerk to key them again. `saveConfirmed()` waits out
+  an in-flight save (3 s at most), then treats "nothing left to send" as
+  stored unless a refusal left its reason in `lastError`.
+- Each confirmation names the date the DATA belongs to (`16-09-2026`,
+  `September 2026`), never today.
+- **A repeat of the same save shows once.** The key is per shop and date or
+  month (`daily:7:2026-09-16`), so a double-tapped button is one popup while a
+  genuine later save of the same day is a new one.
+- The month-close beside Daily Sales saves the day sheet `quiet`, then
+  confirms the month — one tick per press, not two.
+- The popup never takes the pointer and sits above the modals (z 9900 over
+  9800), so it blocks nothing and is never hidden behind a dialog.
+
+`npm run verify:save-success`.
 
 ## Activity log (admin only)
 
@@ -511,6 +575,8 @@ npm run verify:statements    306 golden statements, byte-for-byte
 npm run verify:rollup        roll-up at dev vs working tree, every live month + two-mode rules
 npm run verify:crs29-rice    CRS 29 Free/Cost Rice: entry rules, server guard, C RICE mapping
 npm run verify:crs29-sales   CRS 29 Sales Report against the office's own PDF: figures, headings, geometry
+npm run verify:save-success  save-success tick: wording, one press one popup, and that it waits for the database
+npm run verify:remittance-admin  remittance: what a shop user may change, what an admin may, and that a correction never duplicates
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
 node tools/seed-masters.mjs

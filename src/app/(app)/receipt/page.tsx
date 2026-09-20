@@ -20,6 +20,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { crsData, useStore } from '@/lib/dataStore';
 import { appAlert, appConfirm } from '@/components/dialog';
+import { saveSuccess } from '@/components/SaveSuccess';
+import { receiptSaved } from '@/lib/saveSuccess';
 import { commodityListsFor, useCommodityLists, useCommodityMaster, useShops } from '@/lib/masters';
 import { useAuth } from '@/lib/authClient';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
@@ -307,6 +309,9 @@ export default function ReceiptPage() {
     setFormOpen(false);
     setBanner('✓ Receipt saved — Daily and Monthly Entry updated.');
     setTimeout(() => setBanner(''), 4000);
+    // Only here: the refusal above returns before it, so the tick never stands
+    // for a receipt the database did not take.
+    saveSuccess(receiptSaved(rec.id, date));
   };
 
   /** Clear one commodity's row in the form (qty, packing and manual flags). */
