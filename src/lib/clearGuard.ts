@@ -40,6 +40,7 @@ export const PROTECTED_STORES = [
   'meAllotStore',
   'meAdvanceStore',
   'meCardConfirmed',
+  'meAllotConfirmed',
   'salesCloseStore',
   'receiptStore',
 ] as const;
@@ -61,6 +62,7 @@ export const STORE_LABEL: Record<string, string> = {
   meAllotStore: 'Allotment',
   meAdvanceStore: 'Allotment',
   meCardConfirmed: 'Card Details',
+  meAllotConfirmed: 'Allotment',
   salesCloseStore: 'Sales Close',
   receiptStore: 'Receipt',
 };

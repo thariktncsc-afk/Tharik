@@ -58,6 +58,7 @@ const MONTH_STORES = [
   'meAllotStore',
   'meAdvanceStore',
   'meCardConfirmed',
+  'meAllotConfirmed',
   'salesCloseStore',
   'monthlyStore',
   'meSourceStore',

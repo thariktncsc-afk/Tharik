@@ -147,9 +147,9 @@ and that is the check that matters after touching anything here.
 styled .xlsx needs `xlsx-js-style`'s borders and fonts, which the `xlsx` in this
 project cannot write, and shipping a DSS with its formatting stripped is a worse
 regression than a weaker gate. Its check is server-verified but client-enforced.
-To close that gap, add `xlsx-js-style` as a dependency and port
-`downloadDSSExcel()` server-side, shimming `XLSX.writeFile` to capture the
-workbook instead of writing it.
+`xlsx-js-style` is now a dependency (the statement Excel export uses it), so
+closing that gap is just a matter of porting `downloadDSSExcel()` server-side,
+shimming `XLSX.writeFile` to capture the workbook instead of writing it.
 
 ### Which dates get a DSS page
 
@@ -403,6 +403,140 @@ it — do not add a formula anywhere else.
 
 `npm run verify:initial-opening` has the office's scenarios A–H.
 
+## The Gunny statement: three rows, one column
+
+`buildGunny` in `12-statement-builders.js`. Two things the office asked for
+(2026-09-20), both changing what prints:
+
+- **The spare fourth row is gone.** A row of eleven empty cells printed under
+  50KG SS / POLY / C. BOX on every statement — a ruled line from the paper
+  form. The three varieties always print, a variety with no figures keeping
+  its row with its cells empty: a stock statement that leaves a variety out
+  reads as if none was ever held.
+- **Every variety's figures print in the EMPTY GUNNY sub-column**, leaving
+  GUNNY WITH GRAINS blank. 50KG SS used to be written into WITH GRAINS while
+  POLY and C. BOX went into EMPTY, so the figures sat in different cells down
+  the sheet and read as scattered. The office named EMPTY GUNNY as the column
+  for all three. **Which figure belongs to which variety and stage is
+  unchanged** — only the cell it prints in moved.
+- That is also where the Receipt statement's own gunny report (`gRow` in
+  `buildReceipt`) has always put them, so the two sheets now agree — which is
+  a reason to believe the column is right.
+- A closing balance of zero still prints `0`; every other zero still prints
+  blank. That rule is untouched.
+
+`npm run verify:gunny-rows` states the whole table cell by cell at one, two
+and three varieties with figures, and at none.
+
+## The Receipt statement's rows follow its receipts
+
+`buildReceipt` in `12-statement-builders.js` reproduces a paper form with ten
+ruled lines — seven, a TOTAL, three more, a second TOTAL — and it used to emit
+all ten whether or not there was anything to put on them. A month with two
+receipts printed two rows and eight empty ones; a month with none printed ten
+empty rows under the headings. **The office asked for the lines to follow the
+entries** (2026-09-20), so:
+
+- one row per receipt recorded, and nothing reserved;
+- a batch's TOTAL only when that batch has rows, so a month with no receipts
+  leaves the headings standing alone above the gunny report;
+- the second block is no longer capped at three (`slice(7,10)` → `slice(7)`):
+  an **eleventh receipt in a month used to be left off the statement
+  altogether**, and off its TOTAL with it.
+
+`buildDataRow` and `buildTotalRow` are untouched, so a recorded receipt prints
+exactly as it always has. **This is an intended change to a statutory format,
+so the `*_receipt.html` goldens no longer match** — as is true of
+`*_gunny.html` above. Both must be regenerated
+and the diff shown to the office once `public/golden-stores.json` is refreshed
+(see below). It was proved instead by rendering every shop's receipt section
+before and after the change from the same data
+(`node tools/render-section.mjs receipt <dir>`): the only difference is the
+removed blank rows. `npm run verify:receipt-rows` covers 0, 1, 2, 4, 7, 8, 10,
+12 and 25 receipts through the real engine.
+
+**`public/golden-stores.json` is stale** (re-dumped from live on 2026-09-17,
+after the Initial OB entries), so `verify:statements` already fails 285 of 306
+on `dev` for reasons that have nothing to do with any of this. Until it is
+refreshed — `node tools/dump-golden-stores.mjs`, then re-render and review —
+that check cannot see anything, receipt sections included.
+
+## Exporting statements — PDF and Excel
+
+`src/lib/statements/`. The builders are NOT involved: they still produce
+exactly what the 306 goldens hold, and everything here is assembly of that
+output. `npm run verify:statement-export` drives both exports over all 306.
+
+- **Print (and so Save as PDF): one statement, one sheet.** `printDoc.ts`
+  wraps each section — and each COPY of a `copies: 2` section — in its own
+  `.stmt-sheet`, and appends its page rules AFTER every section's own
+  `<style>`. Three faults lived here: nothing ever broke a page
+  (`STMT_PRINT_CSS` breaks on `.stmt-page`, a class no builder emits); the
+  Daily Sales builder's `@media print{@page{size:A3 landscape}}` is a
+  DOCUMENT rule, so one wide statement put every other one on A3, which an A4
+  printer then shrank; and its `body{font-size:8px}` reached everything.
+- **Named pages are what keep them apart**: `@page stmtP` / `stmtL` (A4
+  portrait and landscape, 8 mm margins), assigned per sheet. A named page
+  beats the builder's unnamed `@page` for the elements that use it, so the
+  A3 rule can stay where it is and the goldens stay byte-identical.
+- **Orientation is measured, not listed**: `columnCount` reads the parsed
+  grid, so a builder that gains a column keeps printing right. Over 9 columns
+  goes landscape (Receipt is 37, Daily Sale 22, CRS Page 1 only 2).
+- **Excel: one statement, one WORKSHEET**, in one .xlsx. It used to be the
+  statements' HTML with a `.xls` name — Excel opened it as a single sheet,
+  and the flex-laid-out statements collapsed on top of each other.
+  `sheetModel.ts` parses a statement into a grid (tables, and the flex rows
+  that CRS Page 1 is made of), `toWorkbook.ts` writes the sheets.
+- Parsed from the markup string, NOT through DOMParser, so the same code runs
+  in the browser and under Node in the verify script.
+- Numbers are written as numbers with the decimals the statement printed
+  (`4750.000` stays three places); anything else stays text, so a date or
+  `998 & 59` is never reinterpreted.
+- `xlsx-js-style` writes cells, styles, merges, widths, heights, margins and
+  defined names but has NO writer for freeze panes or page setup, so
+  `applyPrintSetup` unzips the file and edits each sheet's XML (fflate).
+  Order matters: `sheetPr` first, `pageSetup` last, or Excel calls the file
+  corrupt — and the writer already emits a `<sheetViews>`, so the freeze pane
+  must REPLACE it rather than be added beside it.
+- Header rows repeat on every printed page through `_xlnm.Print_Titles`, and
+  each sheet gets a `_xlnm.Print_Area`, A4, fit to one page wide.
+- `node tools/sample-statement-export.mjs crs19 <outDir>` builds both files
+  from the goldens — no database, nothing live — for looking at the format.
+
+## Monthly Sales Close needs both sections SAVED
+
+A month closes only once **Card Details** and **Allotment** have been saved for
+that month — checked before the month-close confirmation, so the confirmation
+never appears for a month that cannot close (`monthCloseBlock`,
+`monthly-entry/lib.ts`).
+
+- **Saved, not filled.** Card counts carry forward from last month as a draft
+  (`cardDraft`), so a month nobody has touched can show 500 RICE CARD. The
+  check reads each section's marker — `meCardConfirmed` / `meAllotConfirmed`,
+  one flag per `crsId_month_year` — set by **Save Card Details** and **Save
+  Allotment**, which are now two separate buttons with their own ticks.
+  Editing a figure clears that month's flag again (`applySectionFlag`), so a
+  change made after a save is saved again before it counts.
+- **Administrators are warned, not stopped.** Months keyed before this rule
+  carry no marker, and a correction to one of those must not be walled off.
+  Shop staff are stopped, with the office's wording:
+  *Card Details Not Saved* / *Allotment Not Saved* / *Monthly Details Not
+  Saved*.
+- **Nothing here writes another month.** Last month's card details and
+  allotment are read for the draft and left alone; each month's figures and
+  markers stand on their own key.
+- `meAllotConfirmed` is a new crs_state store: it is in `ALLOWED_KEYS`, the
+  clear lists and the activity log's store labels, beside `meCardConfirmed`.
+- **Allotment is still not carried forward** — it is re-issued by the
+  department every month, and prefilling last month's figures would put a
+  government quantity on a month it was never issued for. Only its *save* is
+  new. Card counts carry as they always have.
+- Daily Entry's own **மாத விற்பனை நிறைவு** (the Sales Close mark) is NOT gated
+  by this: it marks the last sales day from the daily screen, where card and
+  allotment figures are not shown.
+
+`npm run verify:month-close`.
+
 ## Remittance — who may change what
 
 One sales date, many deposits, all on the day sheet's `remits` array
@@ -577,6 +711,11 @@ npm run verify:crs29-rice    CRS 29 Free/Cost Rice: entry rules, server guard, C
 npm run verify:crs29-sales   CRS 29 Sales Report against the office's own PDF: figures, headings, geometry
 npm run verify:save-success  save-success tick: wording, one press one popup, and that it waits for the database
 npm run verify:remittance-admin  remittance: what a shop user may change, what an admin may, and that a correction never duplicates
+npm run verify:month-close   month-close needs Card Details and Allotment SAVED for that month (not merely filled)
+npm run verify:statement-export  PDF sheets and one-worksheet-per-statement Excel, over all 306 goldens
+npm run verify:receipt-rows  Receipt statement: a row per receipt, none reserved, none dropped
+npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every figure in one column
+node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
 node tools/seed-masters.mjs

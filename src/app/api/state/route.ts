@@ -44,6 +44,10 @@ const ALLOWED_KEYS = new Set([
   // for both apps.
   'meAllotStore',
   'meCardConfirmed',
+  // The month's Allotment, marked saved the same way its card counts are:
+  // a month-close asks whether the person SAVED each section for this month,
+  // not whether figures happen to sit in the boxes (monthly-entry/lib.ts).
+  'meAllotConfirmed',
   'meAdvanceStore',
   // userStore is deliberately absent — users live in their own table with hashed
   // passwords (0002_users.sql) and are served by /api/users. Accepting it here
