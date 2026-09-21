@@ -564,6 +564,12 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   worked out from the office's widths and heights, never below its own
   percentage; on our markup (RBI) it is `fillSheets` measuring in the
   browser. The Excel export keeps the office's own 145% page setup.
+- **Remittance and Sale Tax stretch to the foot of the page**
+  (`stretchesToPage`, office request 2026-09-21). They are fit-to-page,
+  which only shrinks, so `fillSheets` enlarges them as far as the width
+  allows and then gives the height still left to the main table's rows
+  (`data-fill-stretch`) — taller lines, same cells. Printable height is the
+  office's own margins, with 3% spare so nothing tips onto a second page.
 
 ## Monthly Sales Close needs both sections SAVED
 

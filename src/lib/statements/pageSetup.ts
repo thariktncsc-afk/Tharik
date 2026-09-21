@@ -77,8 +77,22 @@ export const mm = (inches: number): number => Math.round(inches * MM_PER_INCH * 
  */
 export function fillsPage(sectionId: string): boolean {
   const p = TEMPLATE_PRINT[sectionId];
-  return !!p && !p.fitToPage && p.scale > 100;
+  return (!!p && !p.fitToPage && p.scale > 100) || stretchesToPage(sectionId);
 }
+
+/**
+ * Statements whose ROWS grow until the table reaches the foot of the page.
+ *
+ * Remittance and Sale Tax are portrait and fit to page, which in Excel only
+ * ever shrinks — so a month's rows stopped two-thirds of the way down, and
+ * the office asked for the sheet to fill the page (2026-09-21). Each is first
+ * enlarged as far as the printable width allows, as Police is (Sale Tax has
+ * room; Remittance is already as wide as the paper); whatever height is then
+ * left goes into the main table's ROWS — the same figures in the same cells,
+ * on taller ruled lines, as a hand-ruled form would be.
+ */
+const STRETCH_TO_PAGE = new Set(['remittance', 'sale_tax']);
+export const stretchesToPage = (sectionId: string): boolean => STRETCH_TO_PAGE.has(sectionId);
 
 const PX_PER_MM = 96 / 25.4;
 /** The preview draws every sheet with 8 mm of paper around it. */

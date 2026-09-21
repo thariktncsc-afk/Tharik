@@ -92,6 +92,19 @@ console.log('\nPDF — one statement, one page');
   check('sheet count is one per copy', P.sheetCount([{ copies: 2 }, { copies: 1 }, { copies: 2 }]) === 5);
 }
 
+console.log('\nPDF — Remittance and Sale Tax fill their page');
+{
+  for (const id of ['remittance', 'sale_tax']) {
+    const s = { ...sectionOf(`crs19_${id}.html`), id };
+    const doc = P.buildPrintDocument('T', '', [s]);
+    check(`${id}: wrapped to stretch its rows to the foot of the page`,
+      /class="stmt-fill"[^>]*data-fill-stretch="1"/.test(doc) && doc.includes(s.html));
+    check(`${id}: …and the print window runs the fill before printing`, /<script>\(function fillSheets[\s\S]*data-fill-stretch/.test(doc));
+  }
+  const b6 = P.buildPrintDocument('T', '', [{ ...sectionOf('crs19_b6.html'), id: 'b6' }]);
+  check('a fit-to-page statement the office did not name is left at its own size', !/stmt-fill/.test(b6));
+}
+
 console.log('\nPDF — A4, not A3');
 {
   const daily = sectionOf('crs19_crs_daily_sale.html');

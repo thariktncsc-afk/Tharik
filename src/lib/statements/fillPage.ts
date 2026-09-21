@@ -35,6 +35,14 @@ export function fillSheets(root: ParentNode): void {
       }
     }
     if (!w || !h || !content) return;
+    // The statement's main table — the one with the most rows — is what a
+    // stretch grows. Put back to its own height before anything is measured.
+    let table: HTMLTableElement | null = null;
+    const tables = content.querySelectorAll('table');
+    for (let i = 0; i < tables.length; i++) {
+      if (!table || tables[i].rows.length > table.rows.length) table = tables[i];
+    }
+    if (table) table.style.height = '';
     // Measure at natural size: a zoom left from an earlier pass would be
     // measured as the statement's own size.
     box.style.zoom = '1';
@@ -43,9 +51,16 @@ export function fillSheets(root: ParentNode): void {
     if (!cw || !ch) return;
     // As big as the page allows in both directions, with a hair to spare so
     // rounding in the printer's driver cannot push a line onto page two.
-    const z = Math.min(w / cw, h / ch) * 0.985;
+    const z = Math.max(1, Math.round(Math.min(w / cw, h / ch) * 0.985 * 1000) / 1000);
     // Only ever enlarge: a statement that already fills its page is left be.
-    box.style.zoom = String(Math.max(1, Math.round(z * 1000) / 1000));
+    box.style.zoom = String(z);
+    // A stretched statement takes whatever height is left on the page into
+    // its table's rows — taller lines, same type, same widths. A table set
+    // taller than its rows shares the extra between them.
+    if (box.getAttribute('data-fill-stretch') && table) {
+      const spare = (h * 0.97) / z - ch;
+      if (spare > 4) table.style.height = `${table.offsetHeight + spare}px`;
+    }
   });
 }
 

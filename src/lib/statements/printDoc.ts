@@ -40,7 +40,7 @@
  */
 
 import { parseStatement } from '@/lib/statements/sheetModel';
-import { fillsPage, inTemplate, mm, printFor, printableBoxPx } from '@/lib/statements/pageSetup';
+import { fillsPage, inTemplate, mm, printFor, printableBoxPx, stretchesToPage } from '@/lib/statements/pageSetup';
 import { FILL_SCRIPT } from '@/lib/statements/fillPage';
 import TEMPLATE from '@/generated/statement-template.json';
 import { CAPTION_FILLED, SHEET_FOR, evaluateFormulas, fillSection } from '@/lib/statements/templateFill';
@@ -150,7 +150,8 @@ export function pageCss(sectionIds: string[] = []): string {
 export function sheetBody(html: string, sectionId?: string): string {
   if (!sectionId || !fillsPage(sectionId)) return html;
   const box = printableBoxPx(sectionId);
-  return `<div class="stmt-fill" data-fill-w="${box.w}" data-fill-h="${box.h}">${html}</div>`;
+  const stretch = stretchesToPage(sectionId) ? ' data-fill-stretch="1"' : '';
+  return `<div class="stmt-fill" data-fill-w="${box.w}" data-fill-h="${box.h}"${stretch}>${html}</div>`;
 }
 
 /** One sheet: the statement's own HTML, wrapped so it owns a page. */
