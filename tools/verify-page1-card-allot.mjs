@@ -101,7 +101,15 @@ console.log('\nThe office sheet has a line for every card and every allotment');
 {
   for (const c of A.PAGE1_CARD_CAPTIONS) check(`card line: ${c}`, (() => { try { refOf(c); return true; } catch { return false; } })());
   for (const c of A.PAGE1_ALLOT_CAPTIONS) check(`allotment line: ${c}`, (() => { try { refOf(c); return true; } catch { return false; } })());
-  check('the office\'s signature rows keep their numbers', sheet.cells.B26?.p?.startsWith('SIGNATURE OF B.C') && sheet.cells.B27?.p?.startsWith('MOBILE NO'));
+  check('the office\'s signature rows keep their numbers', sheet.cells.B26?.p?.startsWith('SIGNATURE OF ') && sheet.cells.B27?.p?.startsWith('MOBILE NO'));
+  {
+    const post = sheet.cells.B6.p.match(/NAME OF THE\s+(.+?)\s*:/)[1];
+    const { html } = page1({});
+    const drawn = P.buildPreviewSheet(html, 'crs_page1').replace(/&amp;/g, '&');
+    check(`the signature line names the same post as the name line: SIGNATURE OF ${post}`,
+      new RegExp(`SIGNATURE OF ${post.replace(/\./g, '\\.')}\\s*:`).test(drawn) && !/SIGNATURE OF B\.C/.test(drawn) === (post !== 'B.C'),
+      (drawn.match(/SIGNATURE OF [^<:]*/g) ?? []).join(' | '));
+  }
   check('…and the NOTE block moved down two, intact', sheet.cells.B20?.p === 'NOTE:' && /^1\. The quantity/.test(sheet.cells.B21?.v ?? '') && /^2\. The total/.test(sheet.cells.B22?.v ?? ''));
 }
 

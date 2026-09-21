@@ -620,6 +620,10 @@ NO" line at 12px (was 10px; office, 2026-09-21).
   LOF AAY CARD (the office's form had no row for it, so its count was in the
   total and nowhere else) and TOTAL CARD DETAILS = `d.cards.total`, the same
   sum Monthly Entry shows. A carried-forward draft nobody saved is not shown.
+- **The signature line names the same post as the name line.** The office's
+  form says NAME OF THE P.K.R at the top and SIGNATURE OF B.C at the foot;
+  the foot now takes its post from the top line's caption (SIGNATURE OF
+  P.K.R), so the two cannot disagree (office, 2026-09-21).
 - The extra rows are added to the office's sheet in code
   (`templateAmend.ts`, `officeSheet()`), not in the extracted JSON, so
   re-extracting the workbook cannot lose them. Preview, Print and Excel all

@@ -83,6 +83,17 @@ function amendPage1(sheet: TemplateSheet): TemplateSheet {
   for (const r of [15, 16, 17, 18]) out.rows[String(r)] = lineH;
   // Lines 6 and 7 span C:D as lines 1–4 do.
   out.merges.push('C14:D14', 'C15:D15');
+
+  // The signature line names the same post as the name line above it. The
+  // office's form says "NAME OF THE P.K.R" at the top and "SIGNATURE OF B.C"
+  // at the foot — one person, two titles (office, 2026-09-21: the foot
+  // follows the top). Taken from the top line's own caption, so if the form
+  // ever says B.C there, the foot says B.C too.
+  const post = (out.cells.B6?.p ?? '').match(/NAME OF THE\s+(.+?)\s*:/i)?.[1];
+  const sig = out.cells.B26;
+  if (post && sig?.p && /^SIGNATURE OF\s/i.test(sig.p)) {
+    out.cells.B26 = { ...sig, p: sig.p.replace(/^(SIGNATURE OF\s+)[^:]*?(\s*:)/i, `$1${post}$2`) };
+  }
   return out;
 }
 
