@@ -715,7 +715,12 @@ function buildCrsPage2(d){
     '.p2-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
     '.p2-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
     '.p2-sub{text-align:center;font-size:10px;margin-bottom:2px}',
-    '.p2-info{display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin:6px 2px 4px}',
+    // Name left, CRS NO centred, mobile right (office, 2026-09-21). A grid of
+    // 1fr | auto | 1fr, not flex space-between, so CRS NO sits on the page's
+    // centre line however long the name or the number is.
+    '.p2-info{display:grid;grid-template-columns:1fr auto 1fr;font-size:12px;font-weight:bold;margin:6px 2px 4px}',
+    '.p2-info>span:nth-child(2){text-align:center}',
+    '.p2-info>span:nth-child(3){text-align:right}',
     '.p2-scroll{overflow-x:auto}',
     '.p2-tbl{width:100%;border-collapse:collapse;font-size:7.5px;table-layout:fixed}',
     '.p2-tbl th,.p2-tbl td{border:1px solid #000;padding:1px 2px;text-align:center;vertical-align:middle;overflow:hidden;white-space:nowrap}',
@@ -767,7 +772,7 @@ function buildCrsPage2(d){
     '<div class="p2-wrap">'+
       '<div class="p2-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="p2-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="p2-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
+      '<div class="p2-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span><span>MOBILE NO : '+(d.bcPhone || STAFF_PHONE_BLANK)+'</span></div>'+
       '<div class="p2-scroll">'+
         '<table class="p2-tbl">'+colgroup+head+'<tbody>'+bodyRows+'</tbody></table>'+
       '</div>'+
