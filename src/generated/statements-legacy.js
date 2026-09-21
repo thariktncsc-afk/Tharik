@@ -3994,7 +3994,12 @@ buildColl = function(d){
     '.cl-info{text-align:center;font-size:13px;font-weight:bold;margin:4px 2px}',
     '.cl-tbl{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed;margin-top:4px}',
     '.cl-tbl th,.cl-tbl td{border:1px solid #000;padding:3px 5px;text-align:center;white-space:nowrap;overflow:hidden}',
-    '.cl-tbl th{font-weight:bold;background:#fff;line-height:1.15}',
+    // The column headings are shaded and bold (office, 2026-09-21). Colour,
+    // case and spacing are stated here because the app's own `th` rule
+    // (globals.css: muted grey, uppercase, letter-spaced) otherwise reaches
+    // them in the preview and makes the bold read as light. print-color-adjust
+    // so the shade is printed, not dropped as a "background graphic".
+    '.cl-tbl th{font-weight:bold;color:#000;background:#D9D9D9;line-height:1.15;font-size:11px;letter-spacing:normal;text-transform:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
     '.cl-tbl td.l{text-align:left}',
     '.cl-tbl tr.sub td{font-weight:bold;background:#F5F5F5}',
     '.cl-tbl tr.sec td{font-weight:bold;background:#EDEDED;text-align:left}',
@@ -4007,8 +4012,8 @@ buildColl = function(d){
   ].join('');
   var cg='<colgroup><col style="width:22%"><col style="width:13%"><col style="width:11%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col style="width:14%"></colgroup>';
   var head='<thead><tr>'+
-    '<th>COMMODITY</th><th>Opening<br>Balance</th><th>Allotment</th><th>Received from<br>godown</th>'+
-    '<th>Total</th><th>Sales</th><th>Closing<br>Balance</th></tr></thead>';
+    '<th>COMMODITY</th><th>OPENING<br>BALANCE</th><th>ALLOTMENT</th><th>RECEIVED FROM<br>GODOWN</th>'+
+    '<th>TOTAL</th><th>SALES</th><th>CLOSING<br>BALANCE</th></tr></thead>';
 
   return '<style>'+css+'</style>'+
     '<div class="cl-wrap">'+
