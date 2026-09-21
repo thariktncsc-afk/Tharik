@@ -38,6 +38,7 @@ const FILES = [
   '40-crs29-rice.js',     // CRS 29 C RICE: the day's keyed Free Rice / Cost Rice
   '41-crs29-sales-report.js', // CRS 29 SALES REPORT: the office's own date-wise sheet
   '42-gunny-live.js',     // stmtGetData wrapper: gunny resolved as the screen resolves it
+  '43-staff-posts.js',    // stmtGetData wrapper: BC / Packer by their role in the users table
 ];
 
 const PRELUDE = `

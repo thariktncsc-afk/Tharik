@@ -237,7 +237,7 @@ buildColl = function(d){
       '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
       advNote+
       advTbl+
-      '<div class="cl-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="cl-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 };
 

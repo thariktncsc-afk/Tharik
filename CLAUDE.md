@@ -603,6 +603,7 @@ NO" line at 12px (was 10px; office, 2026-09-21).
 ### CRS Page 1 — saved Card Details and saved Allotment, nothing else
 
 `buildCrsPage1` (office, 2026-09-21). `npm run verify:page1-card-allot`.
+npm run verify:staff-posts     B.C / P.K.R by users-table role on every sheet: only BC, only Packer, both, none, role moved
 
 - **Allotment is the saved Allotment (`meAllotStore`) only.** It used to fall
   back to the month's godown receipts when no allotment was saved — and no
@@ -620,10 +621,9 @@ NO" line at 12px (was 10px; office, 2026-09-21).
   LOF AAY CARD (the office's form had no row for it, so its count was in the
   total and nowhere else) and TOTAL CARD DETAILS = `d.cards.total`, the same
   sum Monthly Entry shows. A carried-forward draft nobody saved is not shown.
-- **The signature line names the same post as the name line.** The office's
-  form says NAME OF THE P.K.R at the top and SIGNATURE OF B.C at the foot;
-  the foot now takes its post from the top line's caption (SIGNATURE OF
-  P.K.R), so the two cannot disagree (office, 2026-09-21).
+- **Staff lines follow the shop's roles** — see "Who signs a statement",
+  below. The office's form (worded for CRS 19's Packer) is re-captioned per
+  shop by `officeSheetFor()`; both posts add a name row and a signature block.
 - The extra rows are added to the office's sheet in code
   (`templateAmend.ts`, `officeSheet()`), not in the extracted JSON, so
   re-extracting the workbook cannot lose them. Preview, Print and Excel all
@@ -632,6 +632,28 @@ NO" line at 12px (was 10px; office, 2026-09-21).
   the database, so a save shows on the next preview. Live has no saved Card
   Details or Allotment for any shop (2026-09-21), so Page 1 currently shows
   0 cards and blank allotment everywhere — that is the saved data.
+
+## Who signs a statement — B.C, P.K.R, both or neither
+
+`src/legacy/43-staff-posts.js` (office, 2026-09-21). `npm run verify:staff-posts`.
+
+- **The users table decides**, by role: `BC` prints as B.C / BILL CLERK / BC,
+  `Packer` as P.K.R / PACKER / PKR — each sheet keeps its own wording. Only
+  active users of that shop count; a role changed on the Users screen shows
+  on the next render (the server reads the users table every time).
+- **CRS_MASTER's `bc:`/`packer:` columns no longer name anyone on a
+  statement.** They are spreadsheet columns, not roles: CRS 5, 8, 19, 28 and 29
+  have a Packer in `bc:`, so every sheet called that Packer the Bill Clerk.
+  `23-crs-master.js` still sets `d.bcName`; 43 runs after it and resets it.
+- Only BC → B.C lines only. Only Packer → P.K.R lines only. Both → both, each
+  with its own name and mobile, BC first (a phone line that could be read as
+  either person's says whose it is, e.g. `CONTACT NO (P.K.R)`). Neither →
+  no staff line at all, never an empty label or a ruled blank.
+- Builders print through `staffJoin(d, fn)`, one line per filled post. A
+  shop with only a Bill Clerk renders byte-identical to before (all 182
+  sheets checked); the rest change only in their staff lines.
+- Live, 2026-09-21: only BC 1, 9–12, 14–17, 23, 26, 27, 30; only Packer 5, 8,
+  19, 28, 29; both 7, 20, 24, 25; none 2–4, 6, 13, 18, 21, 22.
 
 ## Monthly Sales Close needs both sections SAVED
 
@@ -906,7 +928,7 @@ phone numbers.
 ## Open items
 
 - Five staff are `bc:` in `CRS_MASTER` but `Packer` in the users table
-  (CRS 5, 8, 19, 28, 29). Those shops therefore have no Bill Clerk, so statements
-  print a blank BC signature line. Needs the office to confirm before switching.
+  (CRS 5, 8, 19, 28, 29). Statements now follow the users table and print them
+  as P.K.R (2026-09-21); the master's column itself is unchanged.
 - Everyone shares the password `pds123`; the audit trail's `updated_by` proves
   little until that changes.

@@ -212,7 +212,9 @@ console.log('\nThe sheet itself is unchanged');
   check('title, shop and month line', /TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION/.test(html) && /GUNNY STOCK STATEMENT FOR THE MONTH OF JUNE'2026/.test(html));
   check('both sub-headings are still printed', (html.match(/GUNNY<br>WITH GRAINS/g) ?? []).length === 5 && (html.match(/EMPTY<br>GUNNY/g) ?? []).length === 5);
   check('the five stage headings are still printed', ['OPENING', 'RECEIPT', 'TOTAL', 'ISSUES', 'CLOSING'].every((h) => html.includes(h)));
-  check('the signature line is unchanged', /BILL CLERK/.test(html) && /AREA SUPERVISOR/.test(html));
+  // This fixture's shop has no staff, so no BILL CLERK label is printed —
+  // never an empty one (43-staff-posts.js; verify:staff-posts has the rest).
+  check('the signature line is still there, with no empty staff label', /class="gy-sig"/.test(html) && /AREA SUPERVISOR/.test(html) && !/BILL CLERKs*:s*</.test(html));
   check('the column widths are unchanged (11 columns across the page)', (html.match(/<col\b/g) ?? []).length === 11);
 }
 

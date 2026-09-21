@@ -84,7 +84,7 @@ function c29head(d, title, sub){
          '<span>' + (sub || (d.mo.toUpperCase() + "'" + d.yr)) + '</span></div>';
 }
 function c29sign(d){
-  return '<div class="c29-sign"><span>SIGNATURE OF B.C : ' + (d.bcName || '') + '</span>' +
+  return '<div class="c29-sign"><span>' + staffJoin(d, function(p){ return 'SIGNATURE OF ' + p.short + ' : ' + p.name; }) + '</span>' +
          '<span>SIGNATURE OF AREA SUPERVISOR</span></div>';
 }
 var CRS29_CSS = [
@@ -126,7 +126,7 @@ function c29CrsPage1(d){
       '<div>NAME OF THE CRS :' + d.crsId + '</div>' +
       '<div>TOTAL NUMBER OF CARDS : ' + d.cards.total + '</div>' +
     '</div>' +
-    '<div style="font-size:13px;font-weight:bold">NAME OF THE B.C : ' + (d.bcName || '') + '</div>' +
+    staffJoin(d, function(p){ return '<div style="font-size:13px;font-weight:bold">NAME OF THE ' + p.short + ' : ' + p.name + '</div>'; }, '') +
     '<div style="font-size:13px;font-weight:bold;margin-bottom:8px">MONTH :' + d.mo.toUpperCase() + "'" + d.yr + '</div>' +
     '<div style="border-top:2px solid #000;border-bottom:1px solid #000;text-align:center;font-size:13px;font-weight:bold;padding:3px 0;margin-bottom:4px">ALLOTMENT</div>' +
     lines +
@@ -134,7 +134,7 @@ function c29CrsPage1(d){
     '<div class="c29-note">1. The quantity of the commodities sold and the amount realised under each variety should be tallied with the quantity made in the statement I and &lsquo;c&rsquo; register</div>' +
     '<div class="c29-note">2. The total quantity furnished in the statement should be tallied with the closing balance of the stock register</div>' +
     c29sign(d) +
-    '<div style="font-size:10px;font-weight:bold;margin-top:6px">MOBILE NO : ' + (d.bcPhone || '') + '</div>' +
+    staffJoin(d, function(p){ return '<div style="font-size:10px;font-weight:bold;margin-top:6px">' + staffPhoneLabel(d, p, 'MOBILE NO : ') + staffPhone(p) + '</div>'; }, '') +
     '<div style="font-size:10px;font-weight:bold">T.N.C.S.C MADURAI REGION</div>'
   );
 }
@@ -215,7 +215,7 @@ function c29CrsPage2(d){
 
 function c29B6(d){
   return c29page(c29head(d, 'B6 — Monthly report') + c29StockGrid(d, false).html +
-    '<div class="c29-sign"><span>BILL CLERK SIGNATURE</span><span>AREA SUPERINTENDENT</span></div>');
+    '<div class="c29-sign"><span>' + staffJoin(d, function(p){ return p.title + ' SIGNATURE'; }) + '</span><span>AREA SUPERINTENDENT</span></div>');
 }
 
 // ── INDENT ──────────────────────────────────────────────────────────────────

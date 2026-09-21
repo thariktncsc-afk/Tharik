@@ -21,8 +21,6 @@ function buildCrsPage1(d){
   // Row27: T.N.C.S.C MADURAI REGION                              (Calibri 12 Bold)
 
   var crsNum   = d.crsId;
-  var bcName   = d.bcName   || STAFF_NAME_BLANK;   // [M4]
-  var bcPhone  = d.bcPhone  || STAFF_PHONE_BLANK;  // [M4]
   var moLabel  = (d.mo || '').toUpperCase() + "'" + d.yr;
   // ── Card details: this shop's and this month's SAVED counts (meCardStore,
   //    read fresh from the database on every render), one line per card type
@@ -125,10 +123,13 @@ function buildCrsPage1(d){
       '<div class="cp1-info-c">TOTAL NUMBER OF CARDS : ' + totalCards + '</div>' +
     '</div>' +
 
-    // Row 6: BC name (18pt Bold)
-    '<div class="cp1-info-row">' +
-      '<div style="font-family:Calibri,Arial,sans-serif;font-size:14pt;font-weight:bold">NAME OF THE B.C: ' + bcName + '</div>' +
-    '</div>' +
+    // Row 6: the shop's staff by their role — B.C, P.K.R, both, or none
+    //        (43-staff-posts.js) (18pt Bold)
+    staffJoin(d, function(p){
+      return '<div class="cp1-info-row">' +
+        '<div style="font-family:Calibri,Arial,sans-serif;font-size:14pt;font-weight:bold">NAME OF THE ' + p.short + ': ' + p.name + '</div>' +
+      '</div>';
+    }, '') +
 
     // Row 7: Month (18pt Bold)
     '<div class="cp1-info-row" style="margin-bottom:6px">' +
@@ -163,8 +164,9 @@ function buildCrsPage1(d){
     // Row 25-27: Signatures (12pt Bold)
     '<div class="cp1-sig-area">' +
       '<div class="cp1-sig-left">' +
-        'SIGNATURE OF B.C :<br><br>' +
-        'MOBILE NO : ' + bcPhone +
+        staffJoin(d, function(p){
+          return 'SIGNATURE OF ' + p.short + ' :<br><br>' + 'MOBILE NO : ' + staffPhone(p);
+        }, '<br><br>') +
       '</div>' +
       '<div class="cp1-sig-right">SIGNATURE OF AREA SUPERVISOR</div>' +
     '</div>' +
@@ -406,7 +408,7 @@ function buildReceipt(d){
 
     // Signature
     '<div class="rcp-sig">' +
-      '<span>BILL CLERK: ' + d.bcName + '</span>' +
+      '<span>' + staffJoin(d, function(p){ return p.title + ': ' + p.name; }) + '</span>' +
       '<span>DATE: __________</span>' +
     '</div>' +
   '</div>';
@@ -595,7 +597,7 @@ function buildCrsDailySale(d){
       '<div class="dcs-footer-line dcs-footer-total"><span>TOTAL</span><span>' + grandFinal.toFixed(2) + '</span></div>' +
     '</div>' +
     '<div style="display:flex;justify-content:space-between;margin-top:16px;font-size:9px;font-weight:bold">' +
-      '<span>SIGNATURE OF BC: ' + d.bcName + '</span>' +
+      '<span>' + staffJoin(d, function(p){ return 'SIGNATURE OF ' + p.abbr + ': ' + p.name; }) + '</span>' +
       '<span>DATE: __________</span>' +
     '</div>' +
   '</div>';
@@ -790,7 +792,11 @@ function buildCrsPage2(d){
     '<div class="p2-wrap">'+
       '<div class="p2-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="p2-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="p2-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span><span>MOBILE NO : '+(d.bcPhone || STAFF_PHONE_BLANK)+'</span></div>'+
+      '<div class="p2-info">'+(stmtPosts(d).length ? stmtPosts(d) : [null]).map(function(p, i){
+        return '<span>'+(p ? 'NAME OF THE '+p.short+' : '+p.name : '')+'</span>'+
+          '<span>'+(i === 0 ? 'CRS NO: '+d.crsId : '')+'</span>'+
+          '<span>'+(p ? 'MOBILE NO : '+staffPhone(p) : '')+'</span>';
+      }).join('')+'</div>'+
       '<div class="p2-scroll">'+
         '<table class="p2-tbl">'+colgroup+head+'<tbody>'+bodyRows+'</tbody></table>'+
       '</div>'+
@@ -800,7 +806,7 @@ function buildCrsPage2(d){
         '<div><span>EXCESS</span><span>'+(excess?n2(excess):'0.00')+'</span></div>'+
         '<div><span>Remittance Amount</span><span>'+n2(remitAmount)+'</span></div>'+
       '</div>'+
-      '<div class="p2-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="p2-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -900,7 +906,7 @@ function buildGunny(d){
       '<div class="gy-scroll">'+
         '<table class="gy-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table>'+
       '</div>'+
-      '<div class="gy-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="gy-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1033,11 +1039,11 @@ function buildFreeCom(d){
     '<div class="fc-wrap">'+
       '<div class="fc-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="fc-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="fc-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
+      '<div class="fc-info"><span>'+staffJoin(d, function(p){ return 'NAME OF THE '+p.short+' : '+p.name; })+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
       '<div class="fc-scroll">'+
         '<table class="fc-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table>'+
       '</div>'+
-      '<div class="fc-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="fc-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1181,9 +1187,9 @@ function buildCostCom(d){
     '<div class="co-wrap">'+
       '<div class="co-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="co-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="co-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
+      '<div class="co-info"><span>'+staffJoin(d, function(p){ return 'NAME OF THE '+p.short+' : '+p.name; })+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
       '<div class="co-scroll"><table class="co-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table></div>'+
-      '<div class="co-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="co-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1262,7 +1268,7 @@ function buildRemittance(d){
       '<div class="rm-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="rm-sub">SRCB - CRS '+d.crsId+'</div>'+
       '<table class="rm-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="rm-sig"><span>SIGNATURE OF BC</span></div>'+
+      '<div class="rm-sig"><span>'+staffJoin(d, function(p){ return 'SIGNATURE OF '+p.abbr; })+'</span></div>'+
     '</div>';
 }
 
@@ -1350,7 +1356,7 @@ function buildSaleTax(d){
         '<tr><td></td><td></td><td></td><td class="r">GRAND TOTAL</td><td class="r">'+money(grand)+'</td></tr>'+
       '</tbody></table>'+
       '<div class="st-note">Date wise Sales details enclosed</div>'+
-      '<div class="st-sig">SIGNATURE OF BC</div>'+
+      '<div class="st-sig">'+staffJoin(d, function(p){ return 'SIGNATURE OF '+p.abbr; })+'</div>'+
     '</div>';
 }
 
@@ -1431,7 +1437,7 @@ function buildColl(d){
       '<div class="cl-title">MONTHLY SALES REPORT FOR THE MONTH OF '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
       '<div class="cl-info"><span>CRS '+d.crsId+'</span>'+(crsCode?'<span>'+crsCode+'</span>':'')+'</div>'+
       '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="cl-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="cl-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1486,7 +1492,7 @@ function buildCrsPolice(d){
       '<div class="cp-sub">POLICE RECEIPT FOR THE MONTH OF '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
       '<div class="cp-sub">CRS.'+d.crsId+'</div>'+
       '<table class="cp-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="cp-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="cp-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1585,9 +1591,9 @@ function buildB6(d){
     '<div class="b6-wrap">'+
       '<div class="b6-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="b6-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="b6-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS '+d.crsId+'</span><span>CONTACT NO : '+d.bcPhone+'</span></div>'+
+      '<div class="b6-info"><span>'+staffJoin(d, function(p){ return 'NAME OF THE '+p.short+' : '+p.name; })+'</span><span>CRS '+d.crsId+'</span><span>'+staffJoin(d, function(p){ return staffPhoneLabel(d, p, 'CONTACT NO : ')+staffPhone(p); })+'</span></div>'+
       '<div class="b6-scroll"><table class="b6-tbl">'+cg+head+'<tbody>'+body+'</tbody></table></div>'+
-      '<div class="b6-sig"><span>BILL CLERK SIGNATURE</span><span>AREA SUPERINTENDENT</span></div>'+
+      '<div class="b6-sig"><span>'+staffJoin(d, function(p){ return p.title+' SIGNATURE'; })+'</span><span>AREA SUPERINTENDENT</span></div>'+
     '</div>';
 }
 
@@ -1671,7 +1677,7 @@ function buildCardDetails(d){
         '<div class="cd-col">'+cardTbl+'</div>'+
         '<div class="cd-col">'+gunnyTbl+polTbl+'</div>'+
       '</div>'+
-      '<div class="cd-sig">BILL CLERK : '+d.bcName+'</div>'+
+      '<div class="cd-sig">'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</div>'+
     '</div>';
 }
 
@@ -1730,7 +1736,7 @@ function buildRBI(d){
       '<div class="rb-title">RBI STATEMENT</div>'+
       '<div class="rb-info"><span>NAME OF THE CRS : '+d.crsId+'</span><span>'+d.mo.toUpperCase()+"'"+String(d.yr).slice(-2)+'</span></div>'+
       '<table class="rb-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="rb-sig"><span>BILL CLERK</span><span>AREA SUPERINTENDENT</span></div>'+
+      '<div class="rb-sig"><span>'+staffJoin(d, function(p){ return p.title; })+'</span><span>AREA SUPERINTENDENT</span></div>'+
     '</div>';
 }
 
