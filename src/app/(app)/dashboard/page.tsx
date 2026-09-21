@@ -400,7 +400,7 @@ export default function DashboardPage() {
   return (
     <div className="page active" id="page-dashboard">
       {/* ── HERO ── */}
-      <div style={{ background: 'linear-gradient(135deg,#1B3A6B 0%,#1e4d9b 45%,#1565C0 100%)', borderRadius: 18, padding: '26px 28px 22px', marginBottom: 20, position: 'relative', overflow: 'hidden' }}>
+      <div className="dash-hero" style={{ background: 'linear-gradient(135deg,#1B3A6B 0%,#1e4d9b 45%,#1565C0 100%)', borderRadius: 18, padding: '26px 28px 22px', marginBottom: 20, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,.05)' }} />
         <div style={{ position: 'absolute', bottom: -60, right: 120, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,.04)' }} />
         <div style={{ position: 'absolute', top: 10, left: '50%', width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,.03)' }} />
@@ -516,8 +516,8 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {/* ── KPI CARDS ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
+      {/* ── KPI CARDS ── (at the foot of the page on a phone: responsive.css) */}
+      <div className="dash-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
         <div style={{ ...card, padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg,#D1FAE5,#A7F3D0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>📋</div>
           <div>
@@ -546,8 +546,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── QUICK ACTIONS ── */}
-      <div style={{ ...card, padding: '20px 22px', marginBottom: 20 }}>
+      {/* ── QUICK ACTIONS ── (straight under the hero on a phone: responsive.css) */}
+      <div className="dash-quick" style={{ ...card, padding: '20px 22px', marginBottom: 20 }}>
         <div style={{ marginBottom: 14 }}>{sectionTitle('linear-gradient(180deg,#1B3A6B,#2563EB)', 'Quick Actions')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
           {quick('/daily-entry', '📝', 'Daily Entry', "Record today's sales", 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', '#BAE6FD', '#1D4ED8', '#60A5FA')}
