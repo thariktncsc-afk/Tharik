@@ -4032,7 +4032,6 @@ buildColl = function(d){
     '.cl-tbl td.l{text-align:left}',
     '.cl-tbl tr.sub td{font-weight:bold;background:#F5F5F5}',
     '.cl-tbl tr.sec td{font-weight:bold;background:#EDEDED;text-align:left}',
-    '.cl-sig{display:flex;justify-content:space-between;margin-top:16px;font-size:10px;font-weight:bold}',
     // The advance table is the width of COMMODITY + one figure column, as on
     // the office's sheet, not the width of the report above it.
     '.cl-adv-title{font-size:11px;font-weight:bold;margin:14px 2px 0}',
@@ -4053,7 +4052,9 @@ buildColl = function(d){
       '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
       advNote+
       advTbl+
-      '<div class="cl-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
+      // No signature line on COLL: the staff name and AREA SUPERVISOR under
+      // the tables were taken off at the office's request (2026-09-21) —
+      // the report ends with its Advance table. Other sheets keep theirs.
     '</div>';
 };
 

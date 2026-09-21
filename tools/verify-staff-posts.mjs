@@ -98,8 +98,9 @@ console.log('\n1. Only a Bill Clerk');
 {
   const out = render([u(BC, 'BC')]);
   const all = commonChecks('only BC', out);
-  check('the Bill Clerk is named on every sheet that names staff', ['crs_page1', 'receipt', 'crs_daily_sale', 'crs_page2', 'gunny', 'free_com', 'cost_com', 'crs_police', 'coll', 'card_details'].every((s) => text(out[s]).includes(BC.fullName)),
-    ['crs_page1', 'receipt', 'crs_daily_sale', 'crs_page2', 'gunny', 'free_com', 'cost_com', 'crs_police', 'coll', 'card_details'].filter((s) => !text(out[s]).includes(BC.fullName)).join(','));
+  check('the Bill Clerk is named on every sheet that names staff', ['crs_page1', 'receipt', 'crs_daily_sale', 'crs_page2', 'gunny', 'free_com', 'cost_com', 'crs_police', 'card_details'].every((s) => text(out[s]).includes(BC.fullName)),
+    ['crs_page1', 'receipt', 'crs_daily_sale', 'crs_page2', 'gunny', 'free_com', 'cost_com', 'crs_police', 'card_details'].filter((s) => !text(out[s]).includes(BC.fullName)).join(','));
+  check('COLL alone has no staff or AREA SUPERVISOR line (office, 2026-09-21)', !/BILL CLERK|PACKER|AREA SUPERVISOR|Test Billclerk/.test(text(out.coll)) && /ADVANCE FOR THE MONTH OF/.test(text(out.coll)));
   check('…under B.C / BILL CLERK / BC', /NAME OF THE B\.C: Test Billclerk/.test(text(out.crs_page1)) && /BILL CLERK : Test Billclerk/.test(text(out.crs_page2)) && /SIGNATURE OF BC/.test(text(out.remittance)));
   check('no P.K.R / PACKER / PKR anywhere', !PK_WORDS.test(all), (all.match(PK_WORDS) ?? [])[0]);
   check('the Bill Clerk\'s phone', text(out.crs_page2).includes(`MOBILE NO : ${BC.phone}`) && text(out.crs_page1).includes(`MOBILE NO : ${BC.phone}`));

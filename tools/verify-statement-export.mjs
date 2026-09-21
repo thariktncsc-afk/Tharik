@@ -92,9 +92,9 @@ console.log('\nPDF — one statement, one page');
   check('sheet count is one per copy', P.sheetCount([{ copies: 2 }, { copies: 1 }, { copies: 2 }]) === 5);
 }
 
-console.log('\nPDF — Remittance and Sale Tax fill their page');
+console.log('\nPDF — Remittance, Sale Tax and COLL fill their page');
 {
-  for (const id of ['remittance', 'sale_tax']) {
+  for (const id of ['remittance', 'sale_tax', 'coll']) {
     const s = { ...sectionOf(`crs19_${id}.html`), id };
     const doc = P.buildPrintDocument('T', '', [s]);
     check(`${id}: wrapped to stretch its rows to the foot of the page`,

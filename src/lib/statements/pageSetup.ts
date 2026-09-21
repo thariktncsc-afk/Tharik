@@ -90,8 +90,11 @@ export function fillsPage(sectionId: string): boolean {
  * room; Remittance is already as wide as the paper); whatever height is then
  * left goes into the main table's ROWS — the same figures in the same cells,
  * on taller ruled lines, as a hand-ruled form would be.
+ *
+ * COLL joined them the same day (a short report on a portrait page, its
+ * signature line taken off).
  */
-const STRETCH_TO_PAGE = new Set(['remittance', 'sale_tax']);
+const STRETCH_TO_PAGE = new Set(['remittance', 'sale_tax', 'coll']);
 export const stretchesToPage = (sectionId: string): boolean => STRETCH_TO_PAGE.has(sectionId);
 
 const PX_PER_MM = 96 / 25.4;

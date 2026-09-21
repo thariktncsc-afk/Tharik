@@ -565,7 +565,7 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   percentage; on our markup (RBI) it is `fillSheets` measuring in the
   browser. The Excel export keeps the office's own 145% page setup.
 - **Remittance and Sale Tax stretch to the foot of the page**
-  (`stretchesToPage`, office request 2026-09-21). They are fit-to-page,
+  (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
   which only shrinks, so `fillSheets` enlarges them as far as the width
   allows and then gives the height still left to the main table's rows
   (`data-fill-stretch`) — taller lines, same cells. Printable height is the
@@ -581,6 +581,12 @@ it used to be a section of the main table with six columns an advance does
 not have (office request 2026-09-21). The quantities are still blank: there
 is no source for them. Every shop's COLL was rendered before and after and
 is byte-identical outside that block.
+
+**COLL has no signature line** — the staff name and AREA SUPERVISOR under
+its tables were taken off (office, 2026-09-21); it ends with the Advance
+table. Every other sheet keeps its own. COLL also stretches to its page like
+Remittance and Sale Tax (`STRETCH_TO_PAGE`): its main table's rows grow to
+the office's bottom margin.
 
 Under the title COLL prints the shop's code alone, centred at 13px (`22CA005PN`) —
 "CRS 19" beside it was dropped (office, 2026-09-21). A shop with no code on
