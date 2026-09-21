@@ -46,8 +46,9 @@ function buildCrsPage1(d){
   //    every month, since no allotment had ever been saved. Now a month with
   //    no allotment saved prints each line's caption with nothing after it,
   //    and a saved month prints 0 for a commodity it did not allot.
-  //    Lines 1–5 are the office's own; 6–8 carry the rest of the fifteen, so
-  //    every commodity on the Allotment screen has a line.  (office, 2026-09-21)
+  //    Lines 1–5 are the office's own; 6 and 7 carry NPHH/AAY FRK and the
+  //    RRAs. OAP and APS have no line — the office took 8.OAP&APS off.
+  //    (office, 2026-09-21)
   function q(id){
     if(!d.allotHasData) return '';
     var v = d.allotQty ? d.allotQty(id) : 0;
@@ -63,7 +64,6 @@ function buildCrsPage1(d){
     '5.PHH BRA&FRK   : ' + pair('PHH_BRA', 'PHH_FRK'),
     '6.NPHH&AAY FRK   : ' + pair('NPHH_FRK', 'AAY_FRK'),
     '7.RRA&NPHH RRA   : ' + pair('RRA', 'NPHH_RRA'),
-    '8.OAP&APS            : ' + pair('OAP', 'APS'),
     ''
   ];
 

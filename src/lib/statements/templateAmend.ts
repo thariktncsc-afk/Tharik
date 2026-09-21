@@ -11,8 +11,9 @@
  *   - LOF AAY CARD and TOTAL CARD DETAILS under the office's eight card rows;
  *     without the first, a LOF AAY count was counted in the total and shown
  *     nowhere.
- *   - Allotment lines 6–8 beside card rows 14–16, in the office's own
- *     shorthand, so all fifteen allotment commodities have a line.
+ *   - Allotment lines 6 and 7 beside card rows 14–15, in the office's own
+ *     shorthand. (An 8.OAP&APS line was added and then taken off again at
+ *     the office's request — OAP and APS have no line on Page 1.)
  *   - The NOTE block moves down two rows and two of the five empty spacer
  *     rows above the signatures are dropped, so the signature rows keep their
  *     numbers and the page grows by about half a line.
@@ -63,7 +64,7 @@ export const PAGE1_CARD_CAPTIONS = [
 /** The Page 1 allotment lines, as the statement names them. 1–5 are the office's. */
 export const PAGE1_ALLOT_CAPTIONS = [
   '1.RICE&AAY', '2.SUGAR&AAY', '3.WHEAT', '4.T.D & P.O', '5.PHH BRA&FRK',
-  '6.NPHH&AAY FRK', '7.RRA&NPHH RRA', '8.OAP&APS',
+  '6.NPHH&AAY FRK', '7.RRA&NPHH RRA',
 ] as const;
 
 function amendPage1(sheet: TemplateSheet): TemplateSheet {
@@ -78,11 +79,10 @@ function amendPage1(sheet: TemplateSheet): TemplateSheet {
   out.cells.B18 = { s: cardStyle, kind: 'data', p: 'TOTAL CARD DETAILS : ' };
   out.cells.C14 = { s: allotStyle, kind: 'data', p: '6.NPHH&AAY FRK   : ' };
   out.cells.C15 = { s: allotStyle, kind: 'data', p: '7.RRA&NPHH RRA   : ' };
-  out.cells.C16 = { s: allotStyle, kind: 'data', p: '8.OAP&APS            : ' };
   // Every card and allotment line on a row tall enough for its 14–18 pt type.
   for (const r of [15, 16, 17, 18]) out.rows[String(r)] = lineH;
-  // Lines 6–8 span C:D as lines 1–4 do.
-  out.merges.push('C14:D14', 'C15:D15', 'C16:D16');
+  // Lines 6 and 7 span C:D as lines 1–4 do.
+  out.merges.push('C14:D14', 'C15:D15');
   return out;
 }
 

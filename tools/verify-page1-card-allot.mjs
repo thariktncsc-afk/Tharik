@@ -13,7 +13,7 @@
  * What it guards (office, 2026-09-21):
  *   - every card category on its own line, placed by card id, and TOTAL CARD
  *     DETAILS = the sum of the same saved counts;
- *   - allotment lines 1–8 carry the saved Allotment, all fifteen commodities;
+ *   - allotment lines 1–7 carry the saved Allotment; there is no line 8;
  *   - a month with no allotment saved shows NOTHING after the captions — the
  *     godown receipts it used to fall back to never appear under ALLOTMENT;
  *   - another shop's or another month's figures never appear;
@@ -130,9 +130,11 @@ console.log('\n3 & 5. Allotment saved, then changed → the preview follows');
   const { values } = page1({ allot: { [KEY]: ALLOT }, monthly: MONTHLY });
   const want = {
     '1.RICE&AAY': '2000 & 350', '2.SUGAR&AAY': '600 & 30', '3.WHEAT': '100', '4.T.D & P.O': '400 & 400',
-    '5.PHH BRA&FRK': '2000 & 2000', '6.NPHH&AAY FRK': '2500 & 600', '7.RRA&NPHH RRA': '150 & 80', '8.OAP&APS': '45 & 5',
+    '5.PHH BRA&FRK': '2000 & 2000', '6.NPHH&AAY FRK': '2500 & 600', '7.RRA&NPHH RRA': '150 & 80',
   };
   for (const [cap, v] of Object.entries(want)) check(`${cap} : ${v}`, shown(values, cap) === v, shown(values, cap));
+  check('there is no line 8 — no OAP&APS caption anywhere on the sheet or the statement',
+    !Object.values(sheet.cells).some((c) => /OAPs*&s*APS|^s*8./.test(c.p ?? c.v ?? '')) && !/8.OAP|OAP&(amp;)?APS/.test(page1({ allot: { [KEY]: ALLOT } }).html));
   const changed = page1({ allot: { [KEY]: { ...ALLOT, SUGAR: 650, WHEAT: 120 } }, monthly: MONTHLY }).values;
   check('SUGAR changed to 650 → 650 & 30', shown(changed, '2.SUGAR&AAY') === '650 & 30', shown(changed, '2.SUGAR&AAY'));
   check('WHEAT changed to 120 → 120', shown(changed, '3.WHEAT') === '120', shown(changed, '3.WHEAT'));
@@ -171,7 +173,7 @@ console.log('\n8. Print and Excel carry the preview\'s figures');
   const preview = P.buildPreviewSheet(html, 'crs_page1');
   const doc = P.buildPrintDocument('T', '', [{ id: 'crs_page1', label: 'CRS Page 1', copies: 1, html }]);
   check('the printed sheet is the preview\'s sheet', doc.includes(preview.replace(/^<style>[\s\S]*?<\/style>/, '')));
-  for (const t of ['LOF AAY CARD', `TOTAL CARD DETAILS : ${CARD_SUM}`, '6.NPHH&amp;AAY FRK', '2500 &amp; 600', '8.OAP&amp;APS', '45 &amp; 5']) {
+  for (const t of ['LOF AAY CARD', `TOTAL CARD DETAILS : ${CARD_SUM}`, '6.NPHH&amp;AAY FRK', '2500 &amp; 600', '7.RRA&amp;NPHH RRA', '150 &amp; 80']) {
     check(`…and shows "${t.replace(/&amp;/g, '&')}"`, preview.replace(/\s+/g, ' ').includes(t.replace(/\s+/g, ' ')) || preview.replace(/\s+/g, '').includes(t.replace(/\s+/g, '')));
   }
   const xlsx = W.buildStatementsXlsx([{ id: 'crs_page1', label: 'CRS Page 1', html }]);
@@ -180,7 +182,7 @@ console.log('\n8. Print and Excel carry the preview\'s figures');
     const shared = strFromU8(files['xl/sharedStrings.xml'] ?? new Uint8Array());
     const sheetXml = strFromU8(files['xl/worksheets/sheet1.xml']);
     const text = (shared + sheetXml).replace(/\s+/g, '');
-    for (const t of ['LOFAAYCARD:7', `TOTALCARDDETAILS:${CARD_SUM}`, '6.NPHH&amp;AAYFRK:2500&amp;600', '8.OAP&amp;APS:45&amp;5', 'RICECARD:500']) {
+    for (const t of ['LOFAAYCARD:7', `TOTALCARDDETAILS:${CARD_SUM}`, '6.NPHH&amp;AAYFRK:2500&amp;600', '7.RRA&amp;NPHHRRA:150&amp;80', 'RICECARD:500']) {
       check(`Excel has "${t.replace(/&amp;/g, '&')}"`, text.includes(t), '');
     }
   } else {

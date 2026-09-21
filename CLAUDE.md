@@ -611,10 +611,11 @@ NO" line at 12px (was 10px; office, 2026-09-21).
   saved now prints the captions with nothing after them; a saved month prints
   0 for a commodity it did not allot. The `receiptQty` redirect in
   `22-allotment.js` is left alone for its other reader (COLL).
-- **Lines 1–5 are the office's; 6–8 carry the rest**, so all fifteen
-  allotment commodities appear: 1.RICE&AAY = BRA & AAY, 2 SUGAR & AAY_SUGAR,
-  3 WHEAT, 4 TOOR & PALM, 5 PHH_BRA & PHH_FRK, 6.NPHH&AAY FRK, 7.RRA&NPHH RRA,
-  8.OAP&APS.
+- **Lines 1–5 are the office's; 6 and 7 are added**: 1.RICE&AAY = BRA & AAY,
+  2 SUGAR & AAY_SUGAR, 3 WHEAT, 4 TOOR & PALM, 5 PHH_BRA & PHH_FRK,
+  6.NPHH&AAY FRK, 7.RRA&NPHH RRA. There is no line 8: an 8.OAP&APS line was
+  added and the office had it taken off, so OAP and APS allotments do not
+  appear on Page 1.
 - **Cards are placed by card id, in the office's order and captions**, plus
   LOF AAY CARD (the office's form had no row for it, so its count was in the
   total and nowhere else) and TOTAL CARD DETAILS = `d.cards.total`, the same
