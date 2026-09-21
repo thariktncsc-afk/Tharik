@@ -22,7 +22,8 @@ import { useAuth } from '@/lib/authClient';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
 import { formatRupees, quoteStatement } from '@/lib/payments/pricing';
-import { buildPreviewSheet, buildPrintDocument } from '@/lib/statements/printDoc';
+import { buildPreviewSheet, buildPrintDocument, orientationOf } from '@/lib/statements/printDoc';
+import SheetPreview from '@/components/SheetPreview';
 import {
   ApiError,
   createOrder,
@@ -549,10 +550,14 @@ export default function StatementsPage() {
               </div>
             </div>
             <div className="card-body" style={{ padding: 20 }}>
-              {/* Shown as the sheet it prints on (printDoc.ts), so a wide
-                  statement such as the Receipt is previewed landscape at its
-                  real width instead of squeezed into the screen. */}
-              <div style={{ overflowX: 'auto', background: '#E2E8F0', padding: 8 }} dangerouslySetInnerHTML={{ __html: buildPreviewSheet(preview.html, preview.section.id) }} />
+              {/* The whole page, in proportion, fitted to the panel — what
+                  Ctrl+P shows. At its own size an A4 sheet is wider than this
+                  panel, so it was cut off at the right and left a tall empty
+                  band below the figures. */}
+              <SheetPreview
+                html={buildPreviewSheet(preview.html, preview.section.id)}
+                orientation={orientationOf(preview.html, preview.section.id)}
+              />
             </div>
           </div>
         </div>

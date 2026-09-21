@@ -26,6 +26,10 @@ import XLSX from 'xlsx-js-style';
 import { parseStatement, type Cell, type Grid } from '@/lib/statements/sheetModel';
 import { ALWAYS_LANDSCAPE } from '@/lib/statements/printDoc';
 import { inTemplate, printFor, type SheetPrint } from '@/lib/statements/pageSetup';
+import TEMPLATE from '@/generated/statement-template.json';
+import { CAPTION_FILLED, fillSection } from '@/lib/statements/templateFill';
+import { officeSheetFor } from '@/lib/statements/templateAmend';
+import { columnWidths as templateColWidths, rowHeights as templateRowHeights, mergeMap, colLetter, type TemplateModel, type TemplateSheet, type Values } from '@/lib/statements/templateRender';
 
 export type ExportSection = { id: string; label: string; html: string };
 
@@ -45,6 +49,8 @@ export type SheetPlan = {
   print: SheetPrint;
   /** Rows to freeze on screen and repeat at the top of every printed page. */
   headerRows: number;
+  /** Set when this sheet is the office's own, with figures filled into it. */
+  template?: { sheet: TemplateSheet; values: Values; model: TemplateModel };
 };
 
 /**
@@ -89,6 +95,33 @@ export function columnWidths(grid: Grid): number[] {
   return widths;
 }
 
+/**
+ * One statement's worksheet taken from the office's own sheet: its grid, its
+ * styles, its merges, its widths and heights, with this month's figures put in
+ * by caption (templateFill.ts).
+ *
+ * This is what "the workbook is the format" means in the export. Before it,
+ * the sheet was rebuilt from our HTML, which for CRS PAGE 1 — laid out in
+ * flex, not a table — collapsed into two columns of text.
+ */
+export function templatePlan(section: ExportSection, taken: Set<string>): SheetPlan | null {
+  if (!CAPTION_FILLED.has(section.id)) return null;
+  const model = TEMPLATE as unknown as TemplateModel;
+  // The same sheet the preview draws, additions included (templateAmend.ts).
+  const sheet = officeSheetFor(section.id, section.html);
+  if (!sheet) return null;
+  const { values } = fillSection(section.id, sheet, section.html);
+  return {
+    name: sheetName(section.label, taken),
+    grid: { rows: [], cols: sheet.maxCol, headerRows: 0 },
+    widths: [],
+    orientation: sheet.print.orientation,
+    print: printFor(section.id),
+    headerRows: 0,
+    template: { sheet, values, model },
+  };
+}
+
 /** Everything about one statement's worksheet, worked out before Excel is involved. */
 export function planSheet(section: ExportSection, taken: Set<string>): SheetPlan {
   const grid = parseStatement(section.html);
@@ -114,7 +147,9 @@ export function planSheet(section: ExportSection, taken: Set<string>): SheetPlan
 /** Every selected statement, in the order selected, each with its own sheet. */
 export function planWorkbook(sections: ExportSection[]): SheetPlan[] {
   const taken = new Set<string>();
-  return sections.map((s) => planSheet(s, taken));
+  // The office's own sheet where there is one and its figures can be placed;
+  // our own grid otherwise.
+  return sections.map((s) => templatePlan(s, taken) ?? planSheet(s, taken));
 }
 
 // ── The worksheet itself ────────────────────────────────────────────────────
@@ -192,6 +227,98 @@ export function sheetOf(plan: SheetPlan): XLSX.WorkSheet {
 }
 
 /**
+ * The office's sheet as a worksheet: its cells with its styles, its merges,
+ * its column widths and row heights. A cell holds the form's own words, or a
+ * caption with this month's figure written after it, exactly as the office
+ * types it.
+ */
+export function templateSheetOf(plan: SheetPlan): XLSX.WorkSheet {
+  const { sheet, values, model } = plan.template!;
+  const ws: XLSX.WorkSheet = {};
+  const widths = templateColWidths(sheet);
+  const heights = templateRowHeights(sheet);
+  const { spans, covered } = mergeMap(sheet);
+
+  for (let r = 1; r <= sheet.maxRow; r++) {
+    for (let c = 1; c <= sheet.maxCol; c++) {
+      const ref = `${colLetter(c)}${r}`;
+      const cell = sheet.cells[ref];
+      if (!cell && !(ref in values)) continue;
+      const st = model.styles[cell?.s ?? 0];
+      const filled = values[ref];
+      const text =
+        cell?.kind === 'data'
+          ? `${cell.p ?? ''}${filled ?? ''}`
+          : (cell?.v ?? (filled != null ? String(filled) : ''));
+      // The statement's own figure wins over the office's formula: our engine
+      // is what worked it out, and a formula pointing at another sheet
+      // (CRS POLICE!E6 = RECEIPT!E15) would read a cell our export does not
+      // lay out the office's way. A formula is kept only where there is no
+      // figure for the cell and it stays on its own sheet (D6+E6, SUM(I7:I10)),
+      // so the exported file still adds up the way the office's does.
+      if (typeof filled === 'number' && !cell?.p) {
+        ws[ref] = { t: 'n', v: filled, s: excelStyle(st) };
+      } else if (cell?.f && filled == null && !cell.f.includes('!')) {
+        ws[ref] = { t: 'n', f: cell.f, s: excelStyle(st) };
+      } else {
+        ws[ref] = { t: 's', v: text, s: excelStyle(st) };
+      }
+    }
+  }
+
+  ws['!ref'] = `A1:${colLetter(Math.max(1, sheet.maxCol))}${Math.max(1, sheet.maxRow)}`;
+  ws['!merges'] = [...spans.entries()].map(([ref, span]) => {
+    const r = Number(ref.replace(/[^0-9]/g, ''));
+    const c = ref
+      .replace(/[0-9]/g, '')
+      .split('')
+      .reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0);
+    return { s: { r: r - 1, c: c - 1 }, e: { r: r - 1 + span.rows - 1, c: c - 1 + span.cols - 1 } };
+  });
+  // The office's own column widths, in Excel's units. Going through pixels
+  // and back inflates them — 45.71 came out as 54.16.
+  const wide: { wch: number }[] = [];
+  for (let c = 1; c <= sheet.maxCol; c++) {
+    const col = sheet.cols.find((x) => c >= x.min && c <= x.max);
+    wide.push({ wch: col?.width ?? 8.43 });
+  }
+  ws['!cols'] = wide;
+  // Row heights are in points in the workbook, which is what Excel wants back.
+  ws['!rows'] = Array.from({ length: sheet.maxRow }, (_, i) => ({ hpt: sheet.rows[String(i + 1)] ?? sheet.defaultRowHeight ?? 15 }));
+  void widths;
+  void heights;
+  const m = plan.print.margins;
+  ws['!margins'] = { left: m.left, right: m.right, top: m.top, bottom: m.bottom, header: 0, footer: 0 };
+  void covered;
+  return ws;
+}
+
+/** One of the workbook's own styles, as xlsx-js-style writes it. */
+function excelStyle(st: TemplateModel['styles'][number] | undefined) {
+  const border: Record<string, unknown> = {};
+  for (const [edge, style] of Object.entries(st?.border ?? {})) {
+    if (style) border[edge] = { style: style === 'medium' || style === 'thick' ? 'medium' : 'thin', color: { rgb: '000000' } };
+  }
+  return {
+    font: {
+      name: st?.font ?? 'Calibri',
+      sz: st?.size ?? 11,
+      bold: !!st?.bold,
+      italic: !!st?.italic,
+      underline: !!st?.underline,
+      ...(st?.color ? { color: { rgb: st.color.slice(-6) } } : {}),
+    },
+    alignment: {
+      ...(st?.h ? { horizontal: st.h } : {}),
+      ...(st?.v ? { vertical: st.v } : {}),
+      wrapText: !!st?.wrap,
+    },
+    ...(Object.keys(border).length ? { border } : {}),
+    ...(st?.fill && !/^FFFFFFFF$/i.test(st.fill) ? { fill: { fgColor: { rgb: st.fill.slice(-6) }, patternType: 'solid' } } : {}),
+  };
+}
+
+/**
  * The workbook: one sheet per statement, plus the defined names that make
  * Excel repeat each sheet's header rows at the top of every printed page
  * (`_xlnm.Print_Titles`) and print only the statement (`_xlnm.Print_Area`).
@@ -200,7 +327,7 @@ export function workbookOf(plans: SheetPlan[]): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
   const names: { Name: string; Ref: string; Sheet: number }[] = [];
   plans.forEach((plan, i) => {
-    const ws = sheetOf(plan);
+    const ws = plan.template ? templateSheetOf(plan) : sheetOf(plan);
     XLSX.utils.book_append_sheet(wb, ws, plan.name);
     const quoted = `'${plan.name.replace(/'/g, "''")}'`;
     if (plan.headerRows > 0) {
@@ -249,6 +376,20 @@ export function applyPrintSetup(xlsx: Uint8Array, plans: SheetPlan[]): Uint8Arra
     if (!raw) return;
     let xml = strFromU8(raw);
     if (!/<sheetPr\b/.test(xml)) xml = xml.replace(/(<worksheet\b[^>]*>)/, `$1${xmlSheetPr(plan.print)}`);
+
+    // The office's own column widths, written verbatim. Handing the writer
+    // `wch` gets them back with its own padding added (45.71 → 46.54), and
+    // these are the widths the statement is laid out to.
+    if (plan.template) {
+      const cols = plan.template.sheet.cols
+        .map((c) => `<col min="${c.min}" max="${c.max}" width="${c.width}" customWidth="1"/>`)
+        .join('');
+      if (cols) {
+        xml = /<cols>[\s\S]*?<\/cols>/.test(xml)
+          ? xml.replace(/<cols>[\s\S]*?<\/cols>/, `<cols>${cols}</cols>`)
+          : xml.replace(/(<sheetData)/, `<cols>${cols}</cols>$1`);
+      }
+    }
     const views = xmlSheetViews(plan.headerRows);
     if (views) {
       // The writer always emits a bare `<sheetViews><sheetView .../></sheetViews>`,

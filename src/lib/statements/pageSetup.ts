@@ -65,3 +65,54 @@ export const inTemplate = (sectionId: string): boolean => sectionId in TEMPLATE_
 const MM_PER_INCH = 25.4;
 /** A margin in millimetres, for CSS. */
 export const mm = (inches: number): number => Math.round(inches * MM_PER_INCH * 100) / 100;
+
+/**
+ * Does the office ENLARGE this sheet to fill its page?
+ *
+ * Two of the workbook's sheets are printed at a fixed scale above 100% rather
+ * than "fit to page": CRS Police at 145% and RBI at 120%. They are short
+ * statements, and the office blows them up so they fill the paper instead of
+ * sitting small in the top half of it. Every other sheet is fit-to-page, which
+ * in Excel only ever SHRINKS — so those are left at their own size.
+ */
+export function fillsPage(sectionId: string): boolean {
+  const p = TEMPLATE_PRINT[sectionId];
+  return (!!p && !p.fitToPage && p.scale > 100) || stretchesToPage(sectionId);
+}
+
+/**
+ * Statements whose ROWS grow until the table reaches the foot of the page.
+ *
+ * Remittance and Sale Tax are portrait and fit to page, which in Excel only
+ * ever shrinks — so a month's rows stopped two-thirds of the way down, and
+ * the office asked for the sheet to fill the page (2026-09-21). Each is first
+ * enlarged as far as the printable width allows, as Police is (Sale Tax has
+ * room; Remittance is already as wide as the paper); whatever height is then
+ * left goes into the main table's ROWS — the same figures in the same cells,
+ * on taller ruled lines, as a hand-ruled form would be.
+ *
+ * COLL joined them the same day (a short report on a portrait page, its
+ * signature line taken off).
+ */
+const STRETCH_TO_PAGE = new Set(['remittance', 'sale_tax', 'coll']);
+export const stretchesToPage = (sectionId: string): boolean => STRETCH_TO_PAGE.has(sectionId);
+
+const PX_PER_MM = 96 / 25.4;
+/** The preview draws every sheet with 8 mm of paper around it. */
+const SCREEN_MARGIN_MM = 8;
+
+/**
+ * The room a statement has on its page, in CSS pixels.
+ *
+ * Taken as the tighter of the office's own print margins and the preview's
+ * 8 mm, per side, so a statement enlarged to fill it fits both on screen and on
+ * the printed sheet — the two must never show a different page.
+ */
+export function printableBoxPx(sectionId: string): { w: number; h: number } {
+  const p = printFor(sectionId);
+  const paper = p.orientation === 'landscape' ? { w: 297, h: 210 } : { w: 210, h: 297 };
+  const side = (inches: number) => Math.max(mm(inches), SCREEN_MARGIN_MM);
+  const w = paper.w - side(p.margins.left) - side(p.margins.right);
+  const h = paper.h - side(p.margins.top) - side(p.margins.bottom);
+  return { w: Math.floor(w * PX_PER_MM), h: Math.floor(h * PX_PER_MM) };
+}

@@ -140,7 +140,9 @@ console.log('\nThe rest of the statement is untouched');
   check('the gunny report below it is still there', /GUNNY REPORT FOR THE MONTH OF/.test(html) && /50KG SS/.test(html));
   check('the title, month and shop line are unchanged', /TAMIL NADU CIVIL SUPPLIES CORPORATION/.test(html) && /CRS 7/.test(html));
   check('the commodity headings are unchanged', /NPHH FRK RRA/.test(html) && /SALT\(RFFS\)/.test(html) && /PJ 100/.test(html));
-  check('the signature line is unchanged', /BILL CLERK|PACKER/i.test(html));
+  // No staff in this fixture, so no BILL CLERK / PACKER label — never an
+  // empty one (43-staff-posts.js; verify:staff-posts has the rest).
+  check('the signature line is still there, with no empty staff label', /class="rcp-sig"/.test(html) && /DATE: _+/.test(html) && !/BILL CLERK:s*</.test(html));
   check('the sheet is still laid out landscape-wide (37 columns)',
     (html.match(/<col\b/g) ?? []).length === 0 && (rowsOf(html).rows[0].match(/<td/g) ?? []).length === 37,
     String((rowsOf(html).rows[0].match(/<td/g) ?? []).length));

@@ -76,11 +76,18 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .badge-purple{background:#EDE9FE;color:#6D28D9}
 
 .table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
-th{background:#F8FAFC;padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
-td{padding:11px 14px;border-bottom:1px solid #F1F5F9;font-size:13px}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:#F8FAFC}
+/* The app's own tables — and ONLY the app's. A statement previewed on screen
+   (.stmt-sheet / .tpl-sheet) is the printed page, and the print window never
+   loads this file; left unscoped, these rules drew every statement's cells at
+   13px against its own 7.5–10px, turned its headings muted grey and
+   uppercase, dropped its last ruled line and shaded rows on hover — so the
+   preview showed a different document from the paper. :where() keeps each at
+   zero specificity: nothing the app's own tables had changes. */
+:where(table:not(.stmt-sheet *, .tpl-sheet *)){width:100%;border-collapse:collapse}
+:where(th:not(.stmt-sheet *, .tpl-sheet *)){background:#F8FAFC;padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+:where(td:not(.stmt-sheet *, .tpl-sheet *)){padding:11px 14px;border-bottom:1px solid #F1F5F9;font-size:13px}
+:where(tr:last-child td:not(.stmt-sheet *, .tpl-sheet *)){border-bottom:none}
+:where(tr:hover td:not(.stmt-sheet *, .tpl-sheet *)){background:#F8FAFC}
 
 .form-group{margin-bottom:14px}
 label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}

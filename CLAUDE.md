@@ -544,6 +544,123 @@ output. `npm run verify:statement-export` drives both exports over all 306.
 - `node tools/sample-statement-export.mjs crs19 <outDir>` builds both files
   from the goldens — no database, nothing live — for looking at the format.
 
+### The office's master workbook as the format
+
+`src/generated/statement-template.json` is `CRS 19 AUG'26.xlsx` read by
+`tools/extract-template.mjs` **with every figure, name, month and phone
+blanked** — rerun the privacy scan after re-extracting. A data cell keeps
+its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
+`"CRS."`), and the fill supplies what follows.
+
+- `TEMPLATE_FILL` in `templateFill.ts` lists the sections drawn on the
+  office's sheet: `crs_page1` by caption, `crs_police` by table (row label ×
+  column heading, figures only into non-static cells, title lines by
+  caption prefix). Everything else still renders our own markup.
+- Preview and Print draw the same `templateSheetPreview` markup.
+  Formulas are evaluated for display (`evaluateFormulas`); the export keeps
+  them unless a value was filled, and drops cross-sheet ones.
+- **CRS Police and RBI fill their page** (`fillsPage`: the office prints them
+  above 100%, not fitted). On the template sheet that is `fillScale` —
+  worked out from the office's widths and heights, never below its own
+  percentage; on our markup (RBI) it is `fillSheets` measuring in the
+  browser. The Excel export keeps the office's own 145% page setup.
+- **Remittance and Sale Tax stretch to the foot of the page**
+  (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
+  which only shrinks, so `fillSheets` enlarges them as far as the width
+  allows and then gives the height still left to the main table's rows
+  (`data-fill-stretch`) — taller lines, same cells. Printable height is the
+  office's own margins, with 3% spare so nothing tips onto a second page.
+
+### COLL — the Advance block is its own one-column table
+
+`buildColl` in `24-coll.js` (which overrides the one in
+`12-statement-builders.js`). "ADVANCE FOR THE MONTH OF OCT'2026" prints
+under the report as COMMODITY + one quantity column, in the office's row
+order from the master's Coll sheet (rows 34–46, PHH FRK twice included) —
+it used to be a section of the main table with six columns an advance does
+not have (office request 2026-09-21). The quantities are still blank: there
+is no source for them. Every shop's COLL was rendered before and after and
+is byte-identical outside that block.
+
+**COLL has no signature line** — the staff name and AREA SUPERVISOR under
+its tables were taken off (office, 2026-09-21); it ends with the Advance
+table. Every other sheet keeps its own. COLL also stretches to its page like
+Remittance and Sale Tax (`STRETCH_TO_PAGE`): its main table's rows grow to
+the office's bottom margin.
+
+Under the title COLL prints the shop's code alone, centred at 13px (`22CA005PN`) —
+"CRS 19" beside it was dropped (office, 2026-09-21). A shop with no code on
+the master falls back to "CRS n" so the sheet still says whose it is.
+
+**The app's table CSS stops at a statement.** `globals.css` styles bare
+`table`/`th`/`td` for the app's own lists, and those rules used to reach
+every statement in the preview: cells at 13px against the statement's own
+7.5–10px, headings muted grey and uppercase, the last ruled line dropped,
+rows shaded on hover. The print window never loads `globals.css`, so the
+preview was showing a different document from the paper. They are now
+`:where(td:not(.stmt-sheet *, .tpl-sheet *))` and so on — zero specificity,
+so the app's own tables are unchanged — and `.stmt-sheet` sets `color:#000`.
+Side effect worth knowing: sheets like CRS Page 2 now LOOK smaller in the
+preview, because that is the size they have always printed at.
+
+CRS Page 2, Free Com, Cost Com and B6 print their "NAME OF THE B.C … CRS
+NO" line at 12px (was 10px; office, 2026-09-21).
+
+### CRS Page 1 — saved Card Details and saved Allotment, nothing else
+
+`buildCrsPage1` (office, 2026-09-21). `npm run verify:page1-card-allot`.
+npm run verify:staff-posts     B.C / P.K.R by users-table role on every sheet: only BC, only Packer, both, none, role moved
+
+- **Allotment is the saved Allotment (`meAllotStore`) only.** It used to fall
+  back to the month's godown receipts when no allotment was saved — and no
+  allotment had ever been saved, so every Page 1 printed receipts under
+  ALLOTMENT (CRS 19 Sep: 402 & 26.5, 851, 318 & 314…). A month with nothing
+  saved now prints the captions with nothing after them; a saved month prints
+  0 for a commodity it did not allot. The `receiptQty` redirect in
+  `22-allotment.js` is left alone for its other reader (COLL).
+- **Lines 1–5 are the office's; 6 and 7 are added**: 1.RICE&AAY = BRA & AAY,
+  2 SUGAR & AAY_SUGAR, 3 WHEAT, 4 TOOR & PALM, 5 PHH_BRA & PHH_FRK,
+  6.NPHH&AAY FRK, 7.RRA&NPHH RRA. There is no line 8: an 8.OAP&APS line was
+  added and the office had it taken off, so OAP and APS allotments do not
+  appear on Page 1.
+- **Cards are placed by card id, in the office's order and captions**, plus
+  LOF AAY CARD (the office's form had no row for it, so its count was in the
+  total and nowhere else) and TOTAL CARD DETAILS = `d.cards.total`, the same
+  sum Monthly Entry shows. A carried-forward draft nobody saved is not shown.
+- **Staff lines follow the shop's roles** — see "Who signs a statement",
+  below. The office's form (worded for CRS 19's Packer) is re-captioned per
+  shop by `officeSheetFor()`; both posts add a name row and a signature block.
+- The extra rows are added to the office's sheet in code
+  (`templateAmend.ts`, `officeSheet()`), not in the extracted JSON, so
+  re-extracting the workbook cannot lose them. Preview, Print and Excel all
+  read the sheet through `officeSheet()`.
+- Nothing is cached: every preview/print/export re-renders on the server from
+  the database, so a save shows on the next preview. Live has no saved Card
+  Details or Allotment for any shop (2026-09-21), so Page 1 currently shows
+  0 cards and blank allotment everywhere — that is the saved data.
+
+## Who signs a statement — B.C, P.K.R, both or neither
+
+`src/legacy/43-staff-posts.js` (office, 2026-09-21). `npm run verify:staff-posts`.
+
+- **The users table decides**, by role: `BC` prints as B.C / BILL CLERK / BC,
+  `Packer` as P.K.R / PACKER / PKR — each sheet keeps its own wording. Only
+  active users of that shop count; a role changed on the Users screen shows
+  on the next render (the server reads the users table every time).
+- **CRS_MASTER's `bc:`/`packer:` columns no longer name anyone on a
+  statement.** They are spreadsheet columns, not roles: CRS 5, 8, 19, 28 and 29
+  have a Packer in `bc:`, so every sheet called that Packer the Bill Clerk.
+  `23-crs-master.js` still sets `d.bcName`; 43 runs after it and resets it.
+- Only BC → B.C lines only. Only Packer → P.K.R lines only. Both → both, each
+  with its own name and mobile, BC first (a phone line that could be read as
+  either person's says whose it is, e.g. `CONTACT NO (P.K.R)`). Neither →
+  no staff line at all, never an empty label or a ruled blank.
+- Builders print through `staffJoin(d, fn)`, one line per filled post. A
+  shop with only a Bill Clerk renders byte-identical to before (all 182
+  sheets checked); the rest change only in their staff lines.
+- Live, 2026-09-21: only BC 1, 9–12, 14–17, 23, 26, 27, 30; only Packer 5, 8,
+  19, 28, 29; both 7, 20, 24, 25; none 2–4, 6, 13, 18, 21, 22.
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for
@@ -756,6 +873,7 @@ npm run verify:month-close   month-close needs Card Details and Allotment SAVED 
 npm run verify:statement-export  PDF sheets and one-worksheet-per-statement Excel, over all 306 goldens
 npm run verify:receipt-rows  Receipt statement: a row per receipt, none reserved, none dropped
 npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every figure in one column
+npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
@@ -816,7 +934,7 @@ phone numbers.
 ## Open items
 
 - Five staff are `bc:` in `CRS_MASTER` but `Packer` in the users table
-  (CRS 5, 8, 19, 28, 29). Those shops therefore have no Bill Clerk, so statements
-  print a blank BC signature line. Needs the office to confirm before switching.
+  (CRS 5, 8, 19, 28, 29). Statements now follow the users table and print them
+  as P.K.R (2026-09-21); the master's column itself is unchanged.
 - Everyone shares the password `pds123`; the audit trail's `updated_by` proves
   little until that changes.
