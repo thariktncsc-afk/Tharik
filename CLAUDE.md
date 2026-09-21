@@ -351,6 +351,24 @@ each button showing the date it goes to (`daily-entry/dateNav.ts`; office,
 
 `npm run verify:daily-date-nav`.
 
+## Phones: dashboard order and the header bell
+
+`responsive.css`, the last `@media (max-width: 560px)` block (office,
+2026-09-21). Tablets and desktops are untouched.
+
+- **Dashboard order**: Quick Actions straight under the hero; the three
+  summary cards (Entries This Month, Days Without Entry, Receipt Dates) together
+  at the foot. `#page-dashboard` becomes a flex column and `.dash-hero` /
+  `.dash-quick` / `.dash-kpis` take an `order` — the markup and data are
+  unchanged, and it is by class, so it is the same for every user.
+- **The bell**: the title block had no `min-width:0`, so it never shrank and
+  pushed the right-hand group (bell + date chip, 88px) 46px off a 375px screen,
+  leaving the bell jammed against the edge with no room for its badge. The
+  title now gives way (it ends in "…"), the bell group never shrinks, and the
+  date chip is hidden on a phone — it was already off-screen there.
+- Checked at 320 / 375 / 390 / 414 / 430: no sideways scroll, header fits, bell
+  12px from the edge (the badge sticks out 6px), panel on screen.
+
 ## Holidays — one engine
 
 `src/lib/engine/holidays.ts` decides every date: a **government holiday on

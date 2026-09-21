@@ -468,3 +468,49 @@
     font-size: 14px;
   }
 }
+
+/* ── Phones: the header's bell, and the dashboard's order (office, 2026-09-21)
+   ─────────────────────────────────────────────────────────────────────────
+   The bell. The title block had no min-width, so it would not shrink below
+   its text, and the right-hand group (bell + date chip, 88px) was pushed 46px
+   past a 375px screen: the date chip off it, the bell jammed against the edge
+   with no room for its red count badge. The title now gives way (it already
+   ends in "…" at this width) and the bell group never shrinks. The date chip
+   is left out on a phone — it was already off-screen on every phone, and the
+   pages that need the date show it themselves. Tablets and desktops keep it.
+
+   The dashboard. Quick Actions straight under the hero, the three summary
+   cards (Entries This Month, Days Without Entry, Receipt Dates) together at
+   the foot of the page. Order only — same cards, same data, same links — and
+   by class, so it is the same for every user: admin, BC, Packer, any shop. */
+@media (max-width: 560px) {
+  #topbar > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  #topbar .topbar-right {
+    flex: 0 0 auto;
+    gap: 8px;
+  }
+  #topbar .tb-date {
+    display: none;
+  }
+
+  #page-dashboard.active {
+    display: flex;
+    flex-direction: column;
+  }
+  #page-dashboard > * {
+    order: 0;
+    min-width: 0;
+  }
+  #page-dashboard > .dash-hero {
+    order: -2;
+  }
+  #page-dashboard > .dash-quick {
+    order: -1;
+  }
+  #page-dashboard > .dash-kpis {
+    order: 99;
+  }
+}
