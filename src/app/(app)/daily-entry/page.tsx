@@ -48,6 +48,7 @@ import { rechainAndRepublish } from '@/lib/engine/rechain';
 import { withReceiptOnlyDays } from '@/lib/engine/dssDays';
 import { saveSuccess } from '@/components/SaveSuccess';
 import { dailySaved, monthlySaved } from '@/lib/saveSuccess';
+import { dateNav, dmy } from './dateNav';
 
 type ShopRec = { name: string };
 
@@ -283,6 +284,32 @@ export default function DailyEntryPage() {
     setRemoteChanged(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, saved]);
+
+  /**
+   * Every change of date — the date box, ← Previous, Next → — comes through
+   * here. The new day loads its own saved sheet (the effect above refills the
+   * whole form on a new key), so nothing of the old day can show on it; what
+   * could be lost is typing on the old day that was never saved, so that is
+   * asked about first. Saved days are in the database and are never touched.
+   */
+  const goToDate = async (next: string) => {
+    if (!next || next === date || next > todayIso()) return;
+    const typed = JSON.stringify({ rows, remits, riceFree, riceCost }) !== filled.current || remitAmt.trim() !== '';
+    if (key && typed) {
+      const ok = await appConfirm({
+        title: 'Unsaved figures',
+        tone: 'warning',
+        icon: '📅',
+        message: `The figures typed for ${dmy(date)} have not been saved. Go to ${dmy(next)} anyway? What you typed for ${dmy(date)} will be discarded — anything already saved stays saved.`,
+        cancelLabel: `Stay on ${dmy(date)}`,
+        confirmLabel: `Go to ${dmy(next)}`,
+        defaultCancel: true,
+      });
+      if (!ok) return;
+    }
+    setDate(next);
+  };
+  const nav = date ? dateNav(date, todayIso()) : null;
 
   const adjFor = (sec: 'a' | 'b', id: string) => {
     const r = insp?.[sec]?.[id];
@@ -1243,7 +1270,7 @@ export default function DailyEntryPage() {
             </div>
             <div>
               <label className="form-label">Entry Date (நாள்)</label>
-              <input type="date" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} />
+              <input type="date" value={date} max={todayIso()} onChange={(e) => void goToDate(e.target.value)} />
             </div>
             {crsVal && date ? (
               <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 14px' }}>
@@ -1738,6 +1765,32 @@ export default function DailyEntryPage() {
                   💾 தினசரி விற்பனை நிறைவு
                 </button>
               </div>
+              {nav ? (
+                /* Which day is on screen, and the days either side of it —
+                   worked out from THIS date, not today (dateNav.ts). The
+                   date box at the top reads the same state, so the two can
+                   never disagree. */
+                <nav className="de-datenav" aria-label="Change entry date">
+                  <button type="button" className="de-datenav-btn" onClick={() => void goToDate(nav.prev)} title={`Go to ${dmy(nav.prev)}`}>
+                    <span className="de-datenav-hint">← Previous Date</span>
+                    <span className="de-datenav-date">{dmy(nav.prev)}</span>
+                  </button>
+                  <div className="de-datenav-current" aria-live="polite">
+                    <span className="de-datenav-hint">Current Date</span>
+                    <span className="de-datenav-now">{dmy(nav.current)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="de-datenav-btn de-datenav-next"
+                    onClick={() => void goToDate(nav.next)}
+                    disabled={nav.nextDisabled}
+                    title={nav.nextDisabled ? 'A day that has not happened yet cannot be entered' : `Go to ${dmy(nav.next)}`}
+                  >
+                    <span className="de-datenav-hint">Next Date →</span>
+                    <span className="de-datenav-date">{dmy(nav.next)}</span>
+                  </button>
+                </nav>
+              ) : null}
             </div>
           </div>
         </div>
