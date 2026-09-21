@@ -571,6 +571,22 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   (`data-fill-stretch`) — taller lines, same cells. Printable height is the
   office's own margins, with 3% spare so nothing tips onto a second page.
 
+### COLL — the Advance block is its own one-column table
+
+`buildColl` in `24-coll.js` (which overrides the one in
+`12-statement-builders.js`). "ADVANCE FOR THE MONTH OF OCT'2026" prints
+under the report as COMMODITY + one quantity column, in the office's row
+order from the master's Coll sheet (rows 34–46, PHH FRK twice included) —
+it used to be a section of the main table with six columns an advance does
+not have (office request 2026-09-21). The quantities are still blank: there
+is no source for them. Every shop's COLL was rendered before and after and
+is byte-identical outside that block.
+
+The preview had also been dropping the last ruled line of every statement
+table: `globals.css`'s `tr:last-child td{border-bottom:none}` out-ranked
+the builders' `.xx-tbl td` borders. It is now `:where(tr:last-child) td`.
+Print never loaded the app's CSS, so paper was not affected.
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for

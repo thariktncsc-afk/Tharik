@@ -3956,11 +3956,20 @@ buildColl = function(d){
     POLICE.forEach(function(r){ body+=dataRow(r[0],r[1]); });
   }
 
-  var nextMo=STMT_MONTHS[(d.month%12)+1] || '';
+  // ADVANCE FOR THE MONTH OF <next> — its own small table under the report,
+  // COMMODITY and ONE quantity column, as the office's Coll sheet has it
+  // (CRS 19 AUG'26.xlsx, rows 34–46; asked for 2026-09-21). It used to be a
+  // section of the main table, which gave it six empty columns — Opening,
+  // Allotment, Received, Total, Sales, Closing — none of which an advance has.
+  // Rows and their order are the office's, PHH FRK twice included. Still no
+  // figure source: the quantity cells print blank, as the block always has.
+  var nextMo=STMT_MONTHS_SHORT[(d.month%12)+1] || '';
   var nextYr=d.month===12 ? d.yr+1 : d.yr;
-  var ADV=['BRA','PHH FRK','SUGAR','AAY SUGAR','AAY FRK','WHEAT','T.DHALL','P.OIL'];
-  body+=sectionLabel("ADVANCE FOR THE MONTH OF "+nextMo.toUpperCase()+"'"+nextYr);
-  ADV.forEach(function(l){ body+='<tr>'+L(l)+C('')+C('')+C('')+C('')+C('')+C('')+'</tr>'; });
+  var ADV=['NPHH FRK','PHH FRK','BRA','RRA','SUGAR','AAY SUGAR','PHH FRK','AAY FRK','WHEAT','T.DHALL','P.OIL'];
+  var advTbl='<div class="cl-adv-title">ADVANCE FOR THE MONTH OF '+nextMo.toUpperCase()+"'"+nextYr+'</div>'+
+    '<table class="cl-tbl cl-adv"><colgroup><col style="width:62%"><col style="width:38%"></colgroup><tbody>'+
+    ADV.map(function(l){ return '<tr>'+L(l)+'<td class="r"></td></tr>'; }).join('')+
+    '</tbody></table>';
 
   var crs=(typeof CRS_LIST!=='undefined')?CRS_LIST.find(function(c){return String(c.id)===String(d.crsId);}):null;
   var crsCode=(d.master&&d.master.code) ? d.master.code : ((crs&&crs.code)?crs.code:'');
@@ -3988,6 +3997,11 @@ buildColl = function(d){
     '.cl-tbl tr.sub td{font-weight:bold;background:#F5F5F5}',
     '.cl-tbl tr.sec td{font-weight:bold;background:#EDEDED;text-align:left}',
     '.cl-sig{display:flex;justify-content:space-between;margin-top:16px;font-size:10px;font-weight:bold}',
+    // The advance table is the width of COMMODITY + one figure column, as on
+    // the office's sheet, not the width of the report above it.
+    '.cl-adv-title{font-size:11px;font-weight:bold;margin:14px 2px 0}',
+    '.cl-tbl.cl-adv{width:36%}',
+    '.cl-tbl td.r{text-align:right}',
   ].join('');
   var cg='<colgroup><col style="width:22%"><col style="width:13%"><col style="width:11%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col style="width:14%"></colgroup>';
   var head='<thead><tr>'+
@@ -4000,6 +4014,7 @@ buildColl = function(d){
       '<div class="cl-info"><span>CRS '+d.crsId+'</span>'+(crsCode?'<span>'+crsCode+'</span>':'')+'</div>'+
       '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
       advNote+
+      advTbl+
       '<div class="cl-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 };

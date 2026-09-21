@@ -79,7 +79,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 table{width:100%;border-collapse:collapse}
 th{background:#F8FAFC;padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
 td{padding:11px 14px;border-bottom:1px solid #F1F5F9;font-size:13px}
-tr:last-child td{border-bottom:none}
+/* :where() keeps this at the specificity of a bare `td`, so a statement's own
+   `.xx-tbl td{border:1px solid #000}` wins in the preview. Written plainly it
+   out-ranked them and took the last ruled line off every statement table. */
+:where(tr:last-child) td{border-bottom:none}
 tr:hover td{background:#F8FAFC}
 
 .form-group{margin-bottom:14px}
