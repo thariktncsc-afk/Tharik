@@ -24,28 +24,46 @@ function buildCrsPage1(d){
   var bcName   = d.bcName   || STAFF_NAME_BLANK;   // [M4]
   var bcPhone  = d.bcPhone  || STAFF_PHONE_BLANK;  // [M4]
   var moLabel  = (d.mo || '').toUpperCase() + "'" + d.yr;
-  // ── Card details: live from the Monthly Entry → Card Details module ──────
+  // ── Card details: this shop's and this month's SAVED counts (meCardStore,
+  //    read fresh from the database on every render), one line per card type
+  //    in the office's order and with the office's captions, placed by card id
+  //    — never by matching label text. TOTAL is d.cards.total, the sum of the
+  //    same counts, which is how Monthly Entry's TOTAL CARD adds them up; there
+  //    is no second total. A carried-forward draft that nobody saved is not
+  //    saved data and is not shown.  (office, 2026-09-21)
   var totalCards = d.cards.total;
-  var cardTypes  = d.cards.list.map(function(c){ return {label:c.label, count:c.count}; });
-  if(!cardTypes.length){
-    cardTypes = [{label:'RICE CARD',count:0},{label:'SUGAR CARD',count:0},{label:'AAY CARD',count:0}];
-  }
+  var CARD_LINES = [
+    ['RICE CARD','rice'], ['SUGAR CARD','sugar'], ['AAY CARD','aay'], ['LOF RICE CARD','lof_rice'],
+    ['POLICE CARD','police'], ["N' CARD",'n_card'], ['LOF SUGAR CARD','lof_sugar'], ['OAP CARD','oap'],
+    ['LOF AAY CARD','lof_aay']
+  ];
+  var cardTypes = CARD_LINES.map(function(c){ return {label:c[0], count:d.cards.byId[c[1]] || 0}; });
+  cardTypes.push({label:'TOTAL CARD DETAILS', count:totalCards});
 
-  // ── Allotment: live from the Receipt module (falls back to Monthly/Daily
-  //    receipt figures when no godown receipt row exists for the month) ──────
-  function q(id){ var v = d.receiptQty(id); return v ? (Number.isInteger(v) ? v : +v.toFixed(3)) : 0; }
-  var nphh_frk = q('NPHH_FRK'), aay_frk = q('AAY_FRK');
-  var sugar    = q('SUGAR'),    aay_sug = q('AAY_SUGAR');
-  var wheat    = q('WHEAT'),    toor    = q('TOOR'), palm = q('PALM');
-  var phh_bra  = q('PHH_BRA'),  phh_frk = q('PHH_FRK');
+  // ── Allotment: the SAVED allotment for this shop and month (meAllotStore),
+  //    nothing else. It used to fall back to the month's godown receipts when
+  //    no allotment was saved, so Page 1 printed receipts under ALLOTMENT —
+  //    every month, since no allotment had ever been saved. Now a month with
+  //    no allotment saved prints each line's caption with nothing after it,
+  //    and a saved month prints 0 for a commodity it did not allot.
+  //    Lines 1–5 are the office's own; 6–8 carry the rest of the fifteen, so
+  //    every commodity on the Allotment screen has a line.  (office, 2026-09-21)
+  function q(id){
+    if(!d.allotHasData) return '';
+    var v = d.allotQty ? d.allotQty(id) : 0;
+    return v ? (Number.isInteger(v) ? v : +v.toFixed(3)) : 0;
+  }
+  function pair(a, b){ return d.allotHasData ? q(a) + ' & ' + q(b) : ''; }
 
   var allotments = [
-    '1.NPHH&AAY FRK : ' + nphh_frk + ' & ' + aay_frk,
-    '2.SUGAR&AAY       : ' + sugar + ' & ' + aay_sug,
-    '3.WHEAT                 : ' + wheat,
-    '4.T.D & P.O             : ' + toor + ' & ' + palm,
-    '5.PHH BRA&FRK   : ' + phh_bra + ' & ' + phh_frk,
-    '6.B.RICE & RRA     : ' + q('BRA') + ' & ' + q('RRA'),
+    '1.RICE&AAY            : ' + pair('BRA', 'AAY'),
+    '2.SUGAR&AAY       : ' + pair('SUGAR', 'AAY_SUGAR'),
+    '3.WHEAT                 : ' + q('WHEAT'),
+    '4.T.D & P.O             : ' + pair('TOOR', 'PALM'),
+    '5.PHH BRA&FRK   : ' + pair('PHH_BRA', 'PHH_FRK'),
+    '6.NPHH&AAY FRK   : ' + pair('NPHH_FRK', 'AAY_FRK'),
+    '7.RRA&NPHH RRA   : ' + pair('RRA', 'NPHH_RRA'),
+    '8.OAP&APS            : ' + pair('OAP', 'APS'),
     ''
   ];
 

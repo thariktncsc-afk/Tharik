@@ -27,7 +27,8 @@ import { parseStatement, type Cell, type Grid } from '@/lib/statements/sheetMode
 import { ALWAYS_LANDSCAPE } from '@/lib/statements/printDoc';
 import { inTemplate, printFor, type SheetPrint } from '@/lib/statements/pageSetup';
 import TEMPLATE from '@/generated/statement-template.json';
-import { CAPTION_FILLED, SHEET_FOR, fillSection } from '@/lib/statements/templateFill';
+import { CAPTION_FILLED, fillSection } from '@/lib/statements/templateFill';
+import { officeSheet } from '@/lib/statements/templateAmend';
 import { columnWidths as templateColWidths, rowHeights as templateRowHeights, mergeMap, colLetter, type TemplateModel, type TemplateSheet, type Values } from '@/lib/statements/templateRender';
 
 export type ExportSection = { id: string; label: string; html: string };
@@ -104,10 +105,10 @@ export function columnWidths(grid: Grid): number[] {
  * flex, not a table — collapsed into two columns of text.
  */
 export function templatePlan(section: ExportSection, taken: Set<string>): SheetPlan | null {
-  const officeSheet = SHEET_FOR[section.id];
-  if (!officeSheet || !CAPTION_FILLED.has(section.id)) return null;
+  if (!CAPTION_FILLED.has(section.id)) return null;
   const model = TEMPLATE as unknown as TemplateModel;
-  const sheet = model.sheets.find((s) => s.name === officeSheet);
+  // The same sheet the preview draws, additions included (templateAmend.ts).
+  const sheet = officeSheet(section.id);
   if (!sheet) return null;
   const { values } = fillSection(section.id, sheet, section.html);
   return {

@@ -37,7 +37,8 @@
     "verify:month-close": "node tools/verify-month-close.mjs",
     "verify:statement-export": "node tools/verify-statement-export.mjs",
     "verify:receipt-rows": "node tools/verify-receipt-rows.mjs",
-    "verify:gunny-rows": "node tools/verify-gunny-rows.mjs"
+    "verify:gunny-rows": "node tools/verify-gunny-rows.mjs",
+    "verify:page1-card-allot": "node tools/verify-page1-card-allot.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

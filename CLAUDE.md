@@ -600,6 +600,34 @@ preview, because that is the size they have always printed at.
 CRS Page 2, Free Com, Cost Com and B6 print their "NAME OF THE B.C … CRS
 NO" line at 12px (was 10px; office, 2026-09-21).
 
+### CRS Page 1 — saved Card Details and saved Allotment, nothing else
+
+`buildCrsPage1` (office, 2026-09-21). `npm run verify:page1-card-allot`.
+
+- **Allotment is the saved Allotment (`meAllotStore`) only.** It used to fall
+  back to the month's godown receipts when no allotment was saved — and no
+  allotment had ever been saved, so every Page 1 printed receipts under
+  ALLOTMENT (CRS 19 Sep: 402 & 26.5, 851, 318 & 314…). A month with nothing
+  saved now prints the captions with nothing after them; a saved month prints
+  0 for a commodity it did not allot. The `receiptQty` redirect in
+  `22-allotment.js` is left alone for its other reader (COLL).
+- **Lines 1–5 are the office's; 6–8 carry the rest**, so all fifteen
+  allotment commodities appear: 1.RICE&AAY = BRA & AAY, 2 SUGAR & AAY_SUGAR,
+  3 WHEAT, 4 TOOR & PALM, 5 PHH_BRA & PHH_FRK, 6.NPHH&AAY FRK, 7.RRA&NPHH RRA,
+  8.OAP&APS.
+- **Cards are placed by card id, in the office's order and captions**, plus
+  LOF AAY CARD (the office's form had no row for it, so its count was in the
+  total and nowhere else) and TOTAL CARD DETAILS = `d.cards.total`, the same
+  sum Monthly Entry shows. A carried-forward draft nobody saved is not shown.
+- The extra rows are added to the office's sheet in code
+  (`templateAmend.ts`, `officeSheet()`), not in the extracted JSON, so
+  re-extracting the workbook cannot lose them. Preview, Print and Excel all
+  read the sheet through `officeSheet()`.
+- Nothing is cached: every preview/print/export re-renders on the server from
+  the database, so a save shows on the next preview. Live has no saved Card
+  Details or Allotment for any shop (2026-09-21), so Page 1 currently shows
+  0 cards and blank allotment everywhere — that is the saved data.
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for
@@ -812,6 +840,7 @@ npm run verify:month-close   month-close needs Card Details and Allotment SAVED 
 npm run verify:statement-export  PDF sheets and one-worksheet-per-statement Excel, over all 306 goldens
 npm run verify:receipt-rows  Receipt statement: a row per receipt, none reserved, none dropped
 npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every figure in one column
+npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]

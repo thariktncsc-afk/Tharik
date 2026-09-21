@@ -43,7 +43,8 @@ import { parseStatement } from '@/lib/statements/sheetModel';
 import { fillsPage, inTemplate, mm, printFor, printableBoxPx, stretchesToPage } from '@/lib/statements/pageSetup';
 import { FILL_SCRIPT } from '@/lib/statements/fillPage';
 import TEMPLATE from '@/generated/statement-template.json';
-import { CAPTION_FILLED, SHEET_FOR, evaluateFormulas, fillSection } from '@/lib/statements/templateFill';
+import { CAPTION_FILLED, evaluateFormulas, fillSection } from '@/lib/statements/templateFill';
+import { officeSheet } from '@/lib/statements/templateAmend';
 import { TEMPLATE_CSS, pageCssFor, renderSheet, type TemplateModel } from '@/lib/statements/templateRender';
 
 export type PrintSection = { id: string; label: string; copies: number; html: string };
@@ -224,10 +225,11 @@ export function buildPreviewSheet(html: string, sectionId?: string): string {
  * statement is shown as our own markup.
  */
 export function templateSheetPreview(sectionId: string, html: string): string | null {
-  const name = SHEET_FOR[sectionId];
-  if (!name || !CAPTION_FILLED.has(sectionId)) return null;
+  if (!CAPTION_FILLED.has(sectionId)) return null;
   const model = TEMPLATE as unknown as TemplateModel;
-  const sheet = model.sheets.find((s) => s.name === name);
+  // The office's sheet with any rows added since it was extracted
+  // (templateAmend.ts) — the export reads the same one.
+  const sheet = officeSheet(sectionId);
   if (!sheet) return null;
   const { values } = fillSection(sectionId, sheet, html);
   // What the office's own formulas come to — the exported file keeps the
