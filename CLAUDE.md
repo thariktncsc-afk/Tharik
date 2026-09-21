@@ -586,10 +586,19 @@ Under the title COLL prints the shop's code alone, centred at 13px (`22CA005PN`)
 "CRS 19" beside it was dropped (office, 2026-09-21). A shop with no code on
 the master falls back to "CRS n" so the sheet still says whose it is.
 
-The preview had also been dropping the last ruled line of every statement
-table: `globals.css`'s `tr:last-child td{border-bottom:none}` out-ranked
-the builders' `.xx-tbl td` borders. It is now `:where(tr:last-child) td`.
-Print never loaded the app's CSS, so paper was not affected.
+**The app's table CSS stops at a statement.** `globals.css` styles bare
+`table`/`th`/`td` for the app's own lists, and those rules used to reach
+every statement in the preview: cells at 13px against the statement's own
+7.5–10px, headings muted grey and uppercase, the last ruled line dropped,
+rows shaded on hover. The print window never loads `globals.css`, so the
+preview was showing a different document from the paper. They are now
+`:where(td:not(.stmt-sheet *, .tpl-sheet *))` and so on — zero specificity,
+so the app's own tables are unchanged — and `.stmt-sheet` sets `color:#000`.
+Side effect worth knowing: sheets like CRS Page 2 now LOOK smaller in the
+preview, because that is the size they have always printed at.
+
+CRS Page 2, Free Com, Cost Com and B6 print their "NAME OF THE B.C … CRS
+NO" line at 12px (was 10px; office, 2026-09-21).
 
 ## Monthly Sales Close needs both sections SAVED
 

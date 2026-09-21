@@ -134,7 +134,7 @@ export function pageCss(sectionIds: string[] = []): string {
     // On screen (the print preview window before the dialog opens) the sheets
     // are shown as pages, so what is on the paper is what is on the screen.
     '@media screen{body{background:#E2E8F0;margin:0}',
-    `.stmt-sheet{background:#fff;margin:10px auto;padding:${MARGIN_MM}mm;box-sizing:border-box;box-shadow:0 2px 10px rgba(0,0,0,.15)}`,
+    `.stmt-sheet{background:#fff;color:#000;margin:10px auto;padding:${MARGIN_MM}mm;box-sizing:border-box;box-shadow:0 2px 10px rgba(0,0,0,.15)}`,
     '.stmt-sheet--portrait{width:210mm;min-height:297mm}',
     '.stmt-sheet--landscape{width:297mm;min-height:210mm}}',
     '@media print{.stmt-sheet{margin:0;padding:0;box-shadow:none;width:auto;min-height:0}}',
