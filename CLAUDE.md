@@ -582,6 +582,10 @@ not have (office request 2026-09-21). The quantities are still blank: there
 is no source for them. Every shop's COLL was rendered before and after and
 is byte-identical outside that block.
 
+Under the title COLL prints the shop's code alone, centred at 13px (`22CA005PN`) —
+"CRS 19" beside it was dropped (office, 2026-09-21). A shop with no code on
+the master falls back to "CRS n" so the sheet still says whose it is.
+
 The preview had also been dropping the last ruled line of every statement
 table: `globals.css`'s `tr:last-child td{border-bottom:none}` out-ranked
 the builders' `.xx-tbl td` borders. It is now `:where(tr:last-child) td`.

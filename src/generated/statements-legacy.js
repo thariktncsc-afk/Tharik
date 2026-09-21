@@ -3988,8 +3988,10 @@ buildColl = function(d){
   var css=[
     '.cl-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff;max-width:820px;margin:0 auto}',
     '.cl-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
-    '.cl-info{display:flex;font-size:11px;font-weight:bold;margin:4px 2px}',
-    '.cl-info span{margin-right:28px}',
+    // The shop's code alone, centred under the title and a size up from the
+    // old 11px — "CRS 19" beside it was dropped at the office's request
+    // (2026-09-21).
+    '.cl-info{text-align:center;font-size:13px;font-weight:bold;margin:4px 2px}',
     '.cl-tbl{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed;margin-top:4px}',
     '.cl-tbl th,.cl-tbl td{border:1px solid #000;padding:3px 5px;text-align:center;white-space:nowrap;overflow:hidden}',
     '.cl-tbl th{font-weight:bold;background:#fff;line-height:1.15}',
@@ -4011,7 +4013,9 @@ buildColl = function(d){
   return '<style>'+css+'</style>'+
     '<div class="cl-wrap">'+
       '<div class="cl-title">MONTHLY SALES REPORT FOR THE MONTH OF '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="cl-info"><span>CRS '+d.crsId+'</span>'+(crsCode?'<span>'+crsCode+'</span>':'')+'</div>'+
+      // A shop with no code on the master keeps "CRS n", or nothing on the
+      // sheet would say whose it is.
+      '<div class="cl-info">'+(crsCode || ('CRS '+d.crsId))+'</div>'+
       '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
       advNote+
       advTbl+
