@@ -332,6 +332,25 @@ role.
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
 
+## Daily Entry — which day is on screen
+
+The foot of Daily Entry reads `← Previous Date | Current Date | Next Date →`,
+each button showing the date it goes to (`daily-entry/dateNav.ts`; office,
+2026-09-21 — clerks were losing track of which day they were keying).
+
+- Worked out from the date ON SCREEN, never from today, in UTC so no time
+  zone can shift it. Next stops at today, as the date box already did.
+- The date box, the "Selected" label and the bar all read the one `date`
+  state; every change of date goes through `goToDate()`.
+- A new date reloads that day's saved sheet from scratch (the key effect's
+  `applyFill`), so nothing of the previous day can show on it. Figures typed
+  but not saved would be lost by a date change, so `goToDate()` asks first
+  ("Stay on …" / "Go to …"). Saved days are never touched.
+- The OB → CB chain is untouched: 20-09 opens at 19-09's Closing whichever way
+  you arrive at it.
+
+`npm run verify:daily-date-nav`.
+
 ## Holidays — one engine
 
 `src/lib/engine/holidays.ts` decides every date: a **government holiday on
@@ -610,6 +629,7 @@ NO" line at 12px (was 10px; office, 2026-09-21).
 
 `buildCrsPage1` (office, 2026-09-21). `npm run verify:page1-card-allot`.
 npm run verify:staff-posts     B.C / P.K.R by users-table role on every sheet: only BC, only Packer, both, none, role moved
+npm run verify:daily-date-nav  Daily Entry ← Previous | Current | Next →: from the date on screen, calendar edges, stops at today
 
 - **Allotment is the saved Allotment (`meAllotStore`) only.** It used to fall
   back to the month's godown receipts when no allotment was saved — and no

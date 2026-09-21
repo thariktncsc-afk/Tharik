@@ -39,7 +39,8 @@
     "verify:receipt-rows": "node tools/verify-receipt-rows.mjs",
     "verify:gunny-rows": "node tools/verify-gunny-rows.mjs",
     "verify:page1-card-allot": "node tools/verify-page1-card-allot.mjs",
-    "verify:staff-posts": "node tools/verify-staff-posts.mjs"
+    "verify:staff-posts": "node tools/verify-staff-posts.mjs",
+    "verify:daily-date-nav": "node tools/verify-daily-date-nav.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

@@ -376,3 +376,95 @@
     order: 2;
   }
 }
+
+/* Daily Entry: ← Previous Date | Current Date | Next Date → at the foot of the
+   form (daily-entry/dateNav.ts; office, 2026-09-21). Three columns that
+   always fit the screen — the two buttons share the space either side of the
+   current date, and on a phone they shrink rather than overflow. */
+.de-datenav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+.de-datenav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1.5px solid #7DD3FC;
+  border-radius: 9px;
+  color: #0369A1;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, border-color .15s;
+}
+.de-datenav-btn:hover:not(:disabled) {
+  background: #F0F9FF;
+  border-color: #0EA5E9;
+}
+.de-datenav-btn:disabled {
+  color: #94A3B8;
+  border-color: var(--border);
+  background: #F8FAFC;
+  cursor: not-allowed;
+}
+.de-datenav-current {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 18px;
+  background: #0369A1;
+  border-radius: 9px;
+  color: #fff;
+}
+.de-datenav-hint {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: .85;
+}
+.de-datenav-date {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.de-datenav-now {
+  font-size: 17px;
+  font-weight: 800;
+  white-space: nowrap;
+  letter-spacing: .02em;
+}
+@media (max-width: 560px) {
+  .de-datenav {
+    gap: 6px;
+  }
+  .de-datenav-btn {
+    padding: 7px 4px;
+  }
+  .de-datenav-current {
+    padding: 7px 10px;
+  }
+  .de-datenav-hint {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .de-datenav-date {
+    font-size: 11px;
+  }
+  .de-datenav-now {
+    font-size: 14px;
+  }
+}
