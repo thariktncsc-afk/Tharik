@@ -21,31 +21,47 @@ function buildCrsPage1(d){
   // Row27: T.N.C.S.C MADURAI REGION                              (Calibri 12 Bold)
 
   var crsNum   = d.crsId;
-  var bcName   = d.bcName   || STAFF_NAME_BLANK;   // [M4]
-  var bcPhone  = d.bcPhone  || STAFF_PHONE_BLANK;  // [M4]
   var moLabel  = (d.mo || '').toUpperCase() + "'" + d.yr;
-  // ── Card details: live from the Monthly Entry → Card Details module ──────
+  // ── Card details: this shop's and this month's SAVED counts (meCardStore,
+  //    read fresh from the database on every render), one line per card type
+  //    in the office's order and with the office's captions, placed by card id
+  //    — never by matching label text. TOTAL is d.cards.total, the sum of the
+  //    same counts, which is how Monthly Entry's TOTAL CARD adds them up; there
+  //    is no second total. A carried-forward draft that nobody saved is not
+  //    saved data and is not shown.  (office, 2026-09-21)
   var totalCards = d.cards.total;
-  var cardTypes  = d.cards.list.map(function(c){ return {label:c.label, count:c.count}; });
-  if(!cardTypes.length){
-    cardTypes = [{label:'RICE CARD',count:0},{label:'SUGAR CARD',count:0},{label:'AAY CARD',count:0}];
-  }
+  var CARD_LINES = [
+    ['RICE CARD','rice'], ['SUGAR CARD','sugar'], ['AAY CARD','aay'], ['LOF RICE CARD','lof_rice'],
+    ['POLICE CARD','police'], ["N' CARD",'n_card'], ['LOF SUGAR CARD','lof_sugar'], ['OAP CARD','oap'],
+    ['LOF AAY CARD','lof_aay']
+  ];
+  var cardTypes = CARD_LINES.map(function(c){ return {label:c[0], count:d.cards.byId[c[1]] || 0}; });
+  cardTypes.push({label:'TOTAL CARD DETAILS', count:totalCards});
 
-  // ── Allotment: live from the Receipt module (falls back to Monthly/Daily
-  //    receipt figures when no godown receipt row exists for the month) ──────
-  function q(id){ var v = d.receiptQty(id); return v ? (Number.isInteger(v) ? v : +v.toFixed(3)) : 0; }
-  var nphh_frk = q('NPHH_FRK'), aay_frk = q('AAY_FRK');
-  var sugar    = q('SUGAR'),    aay_sug = q('AAY_SUGAR');
-  var wheat    = q('WHEAT'),    toor    = q('TOOR'), palm = q('PALM');
-  var phh_bra  = q('PHH_BRA'),  phh_frk = q('PHH_FRK');
+  // ── Allotment: the SAVED allotment for this shop and month (meAllotStore),
+  //    nothing else. It used to fall back to the month's godown receipts when
+  //    no allotment was saved, so Page 1 printed receipts under ALLOTMENT —
+  //    every month, since no allotment had ever been saved. Now a month with
+  //    no allotment saved prints each line's caption with nothing after it,
+  //    and a saved month prints 0 for a commodity it did not allot.
+  //    Lines 1–5 are the office's own; 6 and 7 carry NPHH/AAY FRK and the
+  //    RRAs. OAP and APS have no line — the office took 8.OAP&APS off.
+  //    (office, 2026-09-21)
+  function q(id){
+    if(!d.allotHasData) return '';
+    var v = d.allotQty ? d.allotQty(id) : 0;
+    return v ? (Number.isInteger(v) ? v : +v.toFixed(3)) : 0;
+  }
+  function pair(a, b){ return d.allotHasData ? q(a) + ' & ' + q(b) : ''; }
 
   var allotments = [
-    '1.NPHH&AAY FRK : ' + nphh_frk + ' & ' + aay_frk,
-    '2.SUGAR&AAY       : ' + sugar + ' & ' + aay_sug,
-    '3.WHEAT                 : ' + wheat,
-    '4.T.D & P.O             : ' + toor + ' & ' + palm,
-    '5.PHH BRA&FRK   : ' + phh_bra + ' & ' + phh_frk,
-    '6.B.RICE & RRA     : ' + q('BRA') + ' & ' + q('RRA'),
+    '1.RICE&AAY            : ' + pair('BRA', 'AAY'),
+    '2.SUGAR&AAY       : ' + pair('SUGAR', 'AAY_SUGAR'),
+    '3.WHEAT                 : ' + q('WHEAT'),
+    '4.T.D & P.O             : ' + pair('TOOR', 'PALM'),
+    '5.PHH BRA&FRK   : ' + pair('PHH_BRA', 'PHH_FRK'),
+    '6.NPHH&AAY FRK   : ' + pair('NPHH_FRK', 'AAY_FRK'),
+    '7.RRA&NPHH RRA   : ' + pair('RRA', 'NPHH_RRA'),
     ''
   ];
 
@@ -107,10 +123,13 @@ function buildCrsPage1(d){
       '<div class="cp1-info-c">TOTAL NUMBER OF CARDS : ' + totalCards + '</div>' +
     '</div>' +
 
-    // Row 6: BC name (18pt Bold)
-    '<div class="cp1-info-row">' +
-      '<div style="font-family:Calibri,Arial,sans-serif;font-size:14pt;font-weight:bold">NAME OF THE B.C: ' + bcName + '</div>' +
-    '</div>' +
+    // Row 6: the shop's staff by their role — B.C, P.K.R, both, or none
+    //        (43-staff-posts.js) (18pt Bold)
+    staffJoin(d, function(p){
+      return '<div class="cp1-info-row">' +
+        '<div style="font-family:Calibri,Arial,sans-serif;font-size:14pt;font-weight:bold">NAME OF THE ' + p.short + ': ' + p.name + '</div>' +
+      '</div>';
+    }, '') +
 
     // Row 7: Month (18pt Bold)
     '<div class="cp1-info-row" style="margin-bottom:6px">' +
@@ -145,8 +164,9 @@ function buildCrsPage1(d){
     // Row 25-27: Signatures (12pt Bold)
     '<div class="cp1-sig-area">' +
       '<div class="cp1-sig-left">' +
-        'SIGNATURE OF B.C :<br><br>' +
-        'MOBILE NO : ' + bcPhone +
+        staffJoin(d, function(p){
+          return 'SIGNATURE OF ' + p.short + ' :<br><br>' + 'MOBILE NO : ' + staffPhone(p);
+        }, '<br><br>') +
       '</div>' +
       '<div class="cp1-sig-right">SIGNATURE OF AREA SUPERVISOR</div>' +
     '</div>' +
@@ -388,7 +408,7 @@ function buildReceipt(d){
 
     // Signature
     '<div class="rcp-sig">' +
-      '<span>BILL CLERK: ' + d.bcName + '</span>' +
+      '<span>' + staffJoin(d, function(p){ return p.title + ': ' + p.name; }) + '</span>' +
       '<span>DATE: __________</span>' +
     '</div>' +
   '</div>';
@@ -577,7 +597,7 @@ function buildCrsDailySale(d){
       '<div class="dcs-footer-line dcs-footer-total"><span>TOTAL</span><span>' + grandFinal.toFixed(2) + '</span></div>' +
     '</div>' +
     '<div style="display:flex;justify-content:space-between;margin-top:16px;font-size:9px;font-weight:bold">' +
-      '<span>SIGNATURE OF BC: ' + d.bcName + '</span>' +
+      '<span>' + staffJoin(d, function(p){ return 'SIGNATURE OF ' + p.abbr + ': ' + p.name; }) + '</span>' +
       '<span>DATE: __________</span>' +
     '</div>' +
   '</div>';
@@ -715,7 +735,12 @@ function buildCrsPage2(d){
     '.p2-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
     '.p2-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
     '.p2-sub{text-align:center;font-size:10px;margin-bottom:2px}',
-    '.p2-info{display:flex;justify-content:space-between;font-size:10px;font-weight:bold;margin:6px 2px 4px}',
+    // Name left, CRS NO centred, mobile right (office, 2026-09-21). A grid of
+    // 1fr | auto | 1fr, not flex space-between, so CRS NO sits on the page's
+    // centre line however long the name or the number is.
+    '.p2-info{display:grid;grid-template-columns:1fr auto 1fr;font-size:12px;font-weight:bold;margin:6px 2px 4px}',
+    '.p2-info>span:nth-child(2){text-align:center}',
+    '.p2-info>span:nth-child(3){text-align:right}',
     '.p2-scroll{overflow-x:auto}',
     '.p2-tbl{width:100%;border-collapse:collapse;font-size:7.5px;table-layout:fixed}',
     '.p2-tbl th,.p2-tbl td{border:1px solid #000;padding:1px 2px;text-align:center;vertical-align:middle;overflow:hidden;white-space:nowrap}',
@@ -767,7 +792,11 @@ function buildCrsPage2(d){
     '<div class="p2-wrap">'+
       '<div class="p2-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="p2-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="p2-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
+      '<div class="p2-info">'+(stmtPosts(d).length ? stmtPosts(d) : [null]).map(function(p, i){
+        return '<span>'+(p ? 'NAME OF THE '+p.short+' : '+p.name : '')+'</span>'+
+          '<span>'+(i === 0 ? 'CRS NO: '+d.crsId : '')+'</span>'+
+          '<span>'+(p ? 'MOBILE NO : '+staffPhone(p) : '')+'</span>';
+      }).join('')+'</div>'+
       '<div class="p2-scroll">'+
         '<table class="p2-tbl">'+colgroup+head+'<tbody>'+bodyRows+'</tbody></table>'+
       '</div>'+
@@ -777,7 +806,7 @@ function buildCrsPage2(d){
         '<div><span>EXCESS</span><span>'+(excess?n2(excess):'0.00')+'</span></div>'+
         '<div><span>Remittance Amount</span><span>'+n2(remitAmount)+'</span></div>'+
       '</div>'+
-      '<div class="p2-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="p2-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -877,7 +906,7 @@ function buildGunny(d){
       '<div class="gy-scroll">'+
         '<table class="gy-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table>'+
       '</div>'+
-      '<div class="gy-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="gy-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -963,7 +992,7 @@ function buildFreeCom(d){
     '.fc-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
     '.fc-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
     '.fc-sub{text-align:center;font-size:10px;margin-bottom:2px}',
-    '.fc-info{display:flex;justify-content:space-between;font-size:10px;font-weight:bold;margin:6px 2px 4px}',
+    '.fc-info{display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin:6px 2px 4px}',
     '.fc-scroll{overflow-x:auto}',
     '.fc-tbl{width:100%;border-collapse:collapse;font-size:8px;table-layout:fixed}',
     '.fc-tbl th,.fc-tbl td{border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;overflow:hidden;white-space:nowrap}',
@@ -1010,11 +1039,11 @@ function buildFreeCom(d){
     '<div class="fc-wrap">'+
       '<div class="fc-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="fc-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="fc-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
+      '<div class="fc-info"><span>'+staffJoin(d, function(p){ return 'NAME OF THE '+p.short+' : '+p.name; })+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
       '<div class="fc-scroll">'+
         '<table class="fc-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table>'+
       '</div>'+
-      '<div class="fc-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="fc-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1114,7 +1143,7 @@ function buildCostCom(d){
     '.co-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
     '.co-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
     '.co-sub{text-align:center;font-size:10px;margin-bottom:2px}',
-    '.co-info{display:flex;justify-content:space-between;font-size:10px;font-weight:bold;margin:6px 2px 4px}',
+    '.co-info{display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin:6px 2px 4px}',
     '.co-scroll{overflow-x:auto}',
     '.co-tbl{width:100%;border-collapse:collapse;font-size:8px;table-layout:fixed}',
     '.co-tbl th,.co-tbl td{border:1px solid #000;padding:2px 2px;text-align:center;vertical-align:middle;overflow:hidden;white-space:nowrap}',
@@ -1158,9 +1187,9 @@ function buildCostCom(d){
     '<div class="co-wrap">'+
       '<div class="co-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="co-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="co-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
+      '<div class="co-info"><span>'+staffJoin(d, function(p){ return 'NAME OF THE '+p.short+' : '+p.name; })+'</span><span>CRS NO: '+d.crsId+'</span></div>'+
       '<div class="co-scroll"><table class="co-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table></div>'+
-      '<div class="co-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="co-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1239,7 +1268,7 @@ function buildRemittance(d){
       '<div class="rm-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="rm-sub">SRCB - CRS '+d.crsId+'</div>'+
       '<table class="rm-tbl">'+colgroup+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="rm-sig"><span>SIGNATURE OF BC</span></div>'+
+      '<div class="rm-sig"><span>'+staffJoin(d, function(p){ return 'SIGNATURE OF '+p.abbr; })+'</span></div>'+
     '</div>';
 }
 
@@ -1327,7 +1356,7 @@ function buildSaleTax(d){
         '<tr><td></td><td></td><td></td><td class="r">GRAND TOTAL</td><td class="r">'+money(grand)+'</td></tr>'+
       '</tbody></table>'+
       '<div class="st-note">Date wise Sales details enclosed</div>'+
-      '<div class="st-sig">SIGNATURE OF BC</div>'+
+      '<div class="st-sig">'+staffJoin(d, function(p){ return 'SIGNATURE OF '+p.abbr; })+'</div>'+
     '</div>';
 }
 
@@ -1408,7 +1437,7 @@ function buildColl(d){
       '<div class="cl-title">MONTHLY SALES REPORT FOR THE MONTH OF '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
       '<div class="cl-info"><span>CRS '+d.crsId+'</span>'+(crsCode?'<span>'+crsCode+'</span>':'')+'</div>'+
       '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="cl-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="cl-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1463,7 +1492,7 @@ function buildCrsPolice(d){
       '<div class="cp-sub">POLICE RECEIPT FOR THE MONTH OF '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
       '<div class="cp-sub">CRS.'+d.crsId+'</div>'+
       '<table class="cp-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="cp-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      '<div class="cp-sig"><span>'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</span><span>AREA SUPERVISOR</span></div>'+
     '</div>';
 }
 
@@ -1526,7 +1555,7 @@ function buildB6(d){
     '.b6-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
     '.b6-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
     '.b6-sub{text-align:center;font-size:10px;margin-bottom:2px}',
-    '.b6-info{display:flex;justify-content:space-between;font-size:10px;font-weight:bold;margin:6px 2px 4px}',
+    '.b6-info{display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin:6px 2px 4px}',
     '.b6-scroll{overflow-x:auto}',
     '.b6-tbl{width:100%;border-collapse:collapse;font-size:8px;table-layout:fixed}',
     '.b6-tbl th,.b6-tbl td{border:1px solid #000;padding:2px 2px;text-align:center;white-space:nowrap;overflow:hidden}',
@@ -1562,9 +1591,9 @@ function buildB6(d){
     '<div class="b6-wrap">'+
       '<div class="b6-title">TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION</div>'+
       '<div class="b6-sub">Monthly report for the month of '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="b6-info"><span>NAME OF THE B.C : '+d.bcName+'</span><span>CRS '+d.crsId+'</span><span>CONTACT NO : '+d.bcPhone+'</span></div>'+
+      '<div class="b6-info"><span>'+staffJoin(d, function(p){ return 'NAME OF THE '+p.short+' : '+p.name; })+'</span><span>CRS '+d.crsId+'</span><span>'+staffJoin(d, function(p){ return staffPhoneLabel(d, p, 'CONTACT NO : ')+staffPhone(p); })+'</span></div>'+
       '<div class="b6-scroll"><table class="b6-tbl">'+cg+head+'<tbody>'+body+'</tbody></table></div>'+
-      '<div class="b6-sig"><span>BILL CLERK SIGNATURE</span><span>AREA SUPERINTENDENT</span></div>'+
+      '<div class="b6-sig"><span>'+staffJoin(d, function(p){ return p.title+' SIGNATURE'; })+'</span><span>AREA SUPERINTENDENT</span></div>'+
     '</div>';
 }
 
@@ -1648,7 +1677,7 @@ function buildCardDetails(d){
         '<div class="cd-col">'+cardTbl+'</div>'+
         '<div class="cd-col">'+gunnyTbl+polTbl+'</div>'+
       '</div>'+
-      '<div class="cd-sig">BILL CLERK : '+d.bcName+'</div>'+
+      '<div class="cd-sig">'+staffJoin(d, function(p){ return p.title+' : '+p.name; })+'</div>'+
     '</div>';
 }
 
@@ -1707,7 +1736,7 @@ function buildRBI(d){
       '<div class="rb-title">RBI STATEMENT</div>'+
       '<div class="rb-info"><span>NAME OF THE CRS : '+d.crsId+'</span><span>'+d.mo.toUpperCase()+"'"+String(d.yr).slice(-2)+'</span></div>'+
       '<table class="rb-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
-      '<div class="rb-sig"><span>BILL CLERK</span><span>AREA SUPERINTENDENT</span></div>'+
+      '<div class="rb-sig"><span>'+staffJoin(d, function(p){ return p.title; })+'</span><span>AREA SUPERINTENDENT</span></div>'+
     '</div>';
 }
 

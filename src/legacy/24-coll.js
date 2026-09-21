@@ -169,11 +169,20 @@ buildColl = function(d){
     POLICE.forEach(function(r){ body+=dataRow(r[0],r[1]); });
   }
 
-  var nextMo=STMT_MONTHS[(d.month%12)+1] || '';
+  // ADVANCE FOR THE MONTH OF <next> — its own small table under the report,
+  // COMMODITY and ONE quantity column, as the office's Coll sheet has it
+  // (CRS 19 AUG'26.xlsx, rows 34–46; asked for 2026-09-21). It used to be a
+  // section of the main table, which gave it six empty columns — Opening,
+  // Allotment, Received, Total, Sales, Closing — none of which an advance has.
+  // Rows and their order are the office's, PHH FRK twice included. Still no
+  // figure source: the quantity cells print blank, as the block always has.
+  var nextMo=STMT_MONTHS_SHORT[(d.month%12)+1] || '';
   var nextYr=d.month===12 ? d.yr+1 : d.yr;
-  var ADV=['BRA','PHH FRK','SUGAR','AAY SUGAR','AAY FRK','WHEAT','T.DHALL','P.OIL'];
-  body+=sectionLabel("ADVANCE FOR THE MONTH OF "+nextMo.toUpperCase()+"'"+nextYr);
-  ADV.forEach(function(l){ body+='<tr>'+L(l)+C('')+C('')+C('')+C('')+C('')+C('')+'</tr>'; });
+  var ADV=['NPHH FRK','PHH FRK','BRA','RRA','SUGAR','AAY SUGAR','PHH FRK','AAY FRK','WHEAT','T.DHALL','P.OIL'];
+  var advTbl='<div class="cl-adv-title">ADVANCE FOR THE MONTH OF '+nextMo.toUpperCase()+"'"+nextYr+'</div>'+
+    '<table class="cl-tbl cl-adv"><colgroup><col style="width:62%"><col style="width:38%"></colgroup><tbody>'+
+    ADV.map(function(l){ return '<tr>'+L(l)+'<td class="r"></td></tr>'; }).join('')+
+    '</tbody></table>';
 
   var crs=(typeof CRS_LIST!=='undefined')?CRS_LIST.find(function(c){return String(c.id)===String(d.crsId);}):null;
   var crsCode=(d.master&&d.master.code) ? d.master.code : ((crs&&crs.code)?crs.code:'');
@@ -192,28 +201,44 @@ buildColl = function(d){
   var css=[
     '.cl-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff;max-width:820px;margin:0 auto}',
     '.cl-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
-    '.cl-info{display:flex;font-size:11px;font-weight:bold;margin:4px 2px}',
-    '.cl-info span{margin-right:28px}',
+    // The shop's code alone, centred under the title and a size up from the
+    // old 11px — "CRS 19" beside it was dropped at the office's request
+    // (2026-09-21).
+    '.cl-info{text-align:center;font-size:13px;font-weight:bold;margin:4px 2px}',
     '.cl-tbl{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed;margin-top:4px}',
     '.cl-tbl th,.cl-tbl td{border:1px solid #000;padding:3px 5px;text-align:center;white-space:nowrap;overflow:hidden}',
-    '.cl-tbl th{font-weight:bold;background:#fff;line-height:1.15}',
+    // The column headings are shaded and bold (office, 2026-09-21). Colour,
+    // case and spacing are stated here because the app's own `th` rule
+    // (globals.css: muted grey, uppercase, letter-spaced) otherwise reaches
+    // them in the preview and makes the bold read as light. print-color-adjust
+    // so the shade is printed, not dropped as a "background graphic".
+    '.cl-tbl th{font-weight:bold;color:#000;background:#D9D9D9;line-height:1.15;font-size:11px;letter-spacing:normal;text-transform:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
     '.cl-tbl td.l{text-align:left}',
     '.cl-tbl tr.sub td{font-weight:bold;background:#F5F5F5}',
     '.cl-tbl tr.sec td{font-weight:bold;background:#EDEDED;text-align:left}',
-    '.cl-sig{display:flex;justify-content:space-between;margin-top:16px;font-size:10px;font-weight:bold}',
+    // The advance table is the width of COMMODITY + one figure column, as on
+    // the office's sheet, not the width of the report above it.
+    '.cl-adv-title{font-size:11px;font-weight:bold;margin:14px 2px 0}',
+    '.cl-tbl.cl-adv{width:36%}',
+    '.cl-tbl td.r{text-align:right}',
   ].join('');
   var cg='<colgroup><col style="width:22%"><col style="width:13%"><col style="width:11%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col style="width:14%"></colgroup>';
   var head='<thead><tr>'+
-    '<th>COMMODITY</th><th>Opening<br>Balance</th><th>Allotment</th><th>Received from<br>godown</th>'+
-    '<th>Total</th><th>Sales</th><th>Closing<br>Balance</th></tr></thead>';
+    '<th>COMMODITY</th><th>OPENING<br>BALANCE</th><th>ALLOTMENT</th><th>RECEIVED FROM<br>GODOWN</th>'+
+    '<th>TOTAL</th><th>SALES</th><th>CLOSING<br>BALANCE</th></tr></thead>';
 
   return '<style>'+css+'</style>'+
     '<div class="cl-wrap">'+
       '<div class="cl-title">MONTHLY SALES REPORT FOR THE MONTH OF '+d.mo.toUpperCase()+"'"+d.yr+'</div>'+
-      '<div class="cl-info"><span>CRS '+d.crsId+'</span>'+(crsCode?'<span>'+crsCode+'</span>':'')+'</div>'+
+      // A shop with no code on the master keeps "CRS n", or nothing on the
+      // sheet would say whose it is.
+      '<div class="cl-info">'+(crsCode || ('CRS '+d.crsId))+'</div>'+
       '<table class="cl-tbl">'+cg+head+'<tbody>'+body+'</tbody></table>'+
       advNote+
-      '<div class="cl-sig"><span>BILL CLERK : '+d.bcName+'</span><span>AREA SUPERVISOR</span></div>'+
+      advTbl+
+      // No signature line on COLL: the staff name and AREA SUPERVISOR under
+      // the tables were taken off at the office's request (2026-09-21) —
+      // the report ends with its Advance table. Other sheets keep theirs.
     '</div>';
 };
 

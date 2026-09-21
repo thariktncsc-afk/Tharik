@@ -164,7 +164,42 @@ const colNumber = (s) => [...s].reduce((n, c) => n * 26 + (c.charCodeAt(0) - 64)
 // A month or a year names one month of one shop's business, however it is
 // punctuated — AUG'26, AUG"2026, "PONGAL STATEMENT 2026".
 const MONTHS = /\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*['’"\s]*\d{2,4}|\b(19|20)\d{2}\b/i;
-function classify(value, type) {
+
+/**
+ * Headings that happen to read like a caption and an entry.
+ *
+ * "CRS : MONTHLY PROFORMA ACCOUNT" is the sheet's title, not a caption with
+ * this month's business after it, so the rule below would blank the half of
+ * it that says what the sheet IS. Named here because guessing which side of
+ * the colon is the form cannot be done reliably — a name reads exactly like
+ * a heading.
+ */
+const HEADINGS = new Set(['CRS PAGE1!B2']);
+
+/**
+ * The form's own words at the start of a data cell — kept, while what
+ * follows (this month's business) is dropped.
+ *
+ *   "RICE CARD        : 704"                  → "RICE CARD        : "
+ *   "POLICE RECEIPT FOR THE MONTH OF AUG'2026" → "POLICE RECEIPT FOR THE MONTH OF "
+ *   "CRS.19"                                   → "CRS."
+ *
+ * A caption ends at a colon, or where the month or the shop number begins —
+ * the two things that change from one shop's month to another's. Without the
+ * last two, a title line was blanked whole and the statement could not write
+ * its month back into it.
+ */
+function captionOf(text) {
+  const colon = text.match(/^([^:]*:\s*)/);
+  if (colon) return colon[1];
+  const month = text.search(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*['’"\s]*\d{2,4}/i);
+  if (month > 0) return text.slice(0, month);
+  const crs = text.match(/^(.*?\bCRS\b[\s.:-]*)\d/i);
+  if (crs && crs[1]) return crs[1];
+  return undefined;
+}
+function classify(value, type, sheetName, ref) {
+  if (sheetName && ref && HEADINGS.has(sheetName + "!" + ref)) return "static";
   if (value === undefined || value === '') return 'static';
   if (type !== 's') return 'data';
   const t = String(value).trim();
@@ -173,9 +208,13 @@ function classify(value, type) {
   // A caption with something written after it is a caption PLUS an entry:
   // "NAME OF THE B.C: Rahamathullakhan", "RICE CARD : 698". The entry is a
   // person or a figure, so the whole cell is data and the statement writes
-  // the caption back with it. A caption with nothing after it — "NOTE:",
-  // "LOF SUGAR CARD :" — is just the form.
-  if (/:\s*\S/.test(t)) return 'data';
+  // the caption back with it.
+  //
+  // A caption with NOTHING after it is still a caption. The office left
+  // "LOF SUGAR CARD : " empty in the month this workbook came from; a shop
+  // that has a figure for it must still be able to write one, so the cell is
+  // data too, and prints as the bare caption when nothing fills it.
+  if (/:\s*\S/.test(t) || /:\s*$/.test(t)) return 'data';
   // A figure, a count, a serial number — but "50KG SS", "1ST WEEK" and
   // "50 KG SS BAGS" are the form's own words, which happen to start with a
   // digit. Letters mean it is a label.
@@ -245,17 +284,26 @@ for (const m of wbXml.matchAll(/<sheet[^>]*name="([^"]*)"[^>]*r:id="([^"]*)"[^>]
       // the police amounts on every shop's sheet. Keeping it means the
       // exported workbook adds up the way the office's own file does.
       const formula = (cXml.match(/<f[^>]*>([\s\S]*?)<\/f>/) ?? [])[1];
-      const kind = formula ? 'data' : classify(value, t === 's' || isXml ? 's' : t);
+      const kind = formula ? 'data' : classify(value, t === 's' || isXml ? 's' : t, name, ref);
       const col = colNumber(ref.replace(/\d+/g, ''));
       const row = Number(ref.replace(/\D+/g, ''));
       if (value === undefined && s === 0) continue; // nothing to say about this cell
       if (row > maxRow) maxRow = row;
       if (col > maxCol) maxCol = col;
+      // A caption and its entry share a cell on several sheets:
+      // "RICE CARD        : 704", "NAME OF THE P.K.R: <name>", "MONTH : AUG'2026".
+      // The caption — including the office's own spacing, which is how the
+      // colons line up — is the FORM and is kept; what follows it is the
+      // month's business and is dropped. A statement supplies only the entry,
+      // and it is written back after the caption.
+      const caption = kind === 'data' && typeof value === 'string' ? captionOf(value) : undefined;
+
       cells[ref] = {
         s,
         kind,
         // A data cell's value is NOT kept: the form is committed blank.
         ...(kind === 'static' && value !== undefined ? { v: value } : {}),
+        ...(caption ? { p: caption } : {}),
         ...(formula ? { f: formula } : {}),
         ...(t && t !== 's' ? { t } : {}),
       };

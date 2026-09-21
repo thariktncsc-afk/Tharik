@@ -30,8 +30,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcUrl = pathToFileURL(join(root, 'src') + '/').href;
 register(
   `data:text/javascript,${encodeURIComponent(`
+const SRC_URL = ${JSON.stringify(srcUrl ?? (pathToFileURL(join(root,"src")+"/").href))};
 export async function resolve(spec, ctx, next) {
-  if (spec.startsWith('@/')) return next(${JSON.stringify(srcUrl)} + spec.slice(2) + '.ts', ctx);
+  if (spec.startsWith('@/')) {
+    const base = SRC_URL + spec.slice(2);
+    // A JSON module needs its import attribute stating under Node's ESM
+    // loader; the bundler infers it from the extension.
+    if (base.endsWith('.json')) return { url: base, shortCircuit: true, importAttributes: { type: 'json' } };
+    return next(base + '.ts', ctx);
+  }
   return next(spec, ctx);
 }`)}`,
   import.meta.url,
@@ -83,6 +90,19 @@ console.log('\nPDF — one statement, one page');
   check('a ×2 statement prints as two separate sheets', (copied.match(/class="stmt-sheet /g) ?? []).length === 2);
   check('…each marked as its own copy', /data-copy="1"/.test(copied) && /data-copy="2"/.test(copied));
   check('sheet count is one per copy', P.sheetCount([{ copies: 2 }, { copies: 1 }, { copies: 2 }]) === 5);
+}
+
+console.log('\nPDF — Remittance, Sale Tax and COLL fill their page');
+{
+  for (const id of ['remittance', 'sale_tax', 'coll']) {
+    const s = { ...sectionOf(`crs19_${id}.html`), id };
+    const doc = P.buildPrintDocument('T', '', [s]);
+    check(`${id}: wrapped to stretch its rows to the foot of the page`,
+      /class="stmt-fill"[^>]*data-fill-stretch="1"/.test(doc) && doc.includes(s.html));
+    check(`${id}: …and the print window runs the fill before printing`, /<script>\(function fillSheets[\s\S]*data-fill-stretch/.test(doc));
+  }
+  const b6 = P.buildPrintDocument('T', '', [{ ...sectionOf('crs19_b6.html'), id: 'b6' }]);
+  check('a fit-to-page statement the office did not name is left at its own size', !/stmt-fill/.test(b6));
 }
 
 console.log('\nPDF — A4, not A3');
@@ -137,6 +157,60 @@ console.log('\nPDF — every golden statement is placed');
   check(`${files.length} statements → ${files.length} sheets`, (doc.match(/class="stmt-sheet /g) ?? []).length === files.length);
   const widths = files.map((f) => P.columnCount(load(f)));
   check('every statement’s column count was readable (none came back 0)', widths.every((n) => n > 0), JSON.stringify(files.filter((_, i) => !widths[i])));
+}
+
+console.log('\nCRS Police — the office\'s own sheet, filled by row and heading');
+{
+  const html = load('crs19_crs_police.html');
+  const doc = P.buildPrintDocument('T', '', [{ id: 'crs_police', label: 'CRS Police', copies: 1, html }]);
+  check('Print draws the office\'s sheet, as the preview does', /class="tpl-sheet"[^>]*data-sheet="CRS POLICE"/.test(doc));
+  check('…landscape, as the workbook says', /data-orient="landscape"[^>]*data-sheet="CRS POLICE"/.test(doc));
+  {
+    // Filling the page: never below the office's 145%, as large as the
+    // printable width and height allow, and not a hair over either.
+    const zoom = Number((doc.match(/class="tpl-scale" style="zoom:([\d.]+)/) ?? [])[1]);
+    const R = await import('../src/lib/statements/templateRender.ts');
+    const T = (await import('../src/generated/statement-template.json', { with: { type: 'json' } })).default;
+    const ps = T.sheets.find((s) => s.name === 'CRS POLICE');
+    const w = R.columnWidths(ps).slice(1).reduce((t, x) => t + x, 0);
+    const h = R.rowHeights(ps).slice(1).reduce((t, x) => t + x, 0);
+    const side = (inch) => Math.max(inch * 25.4, 6);
+    const m = ps.print.margins;
+    const boxW = (297 - side(m.left) - side(m.right)) / (25.4 / 96);
+    const boxH = (210 - side(m.top) - side(m.bottom)) / (25.4 / 96);
+    const fillW = (w * zoom) / boxW;
+    const fillH = (h * zoom) / boxH;
+    check('…at no less than the office\'s own 145%, as layout rather than paint', zoom >= 1.45, `zoom ${zoom}`);
+    check('…filling the page: one side reaches it, neither passes it',
+      fillW <= 1 && fillH <= 1 && Math.max(fillW, fillH) >= 0.97, `width ${(fillW * 100).toFixed(1)}%, height ${(fillH * 100).toFixed(1)}%`);
+  }
+  check('the preview and the printed sheet are the same markup',
+    doc.includes(P.buildPreviewSheet(html, 'crs_police').replace(/^<style>[\s\S]*?<\/style>/, '').slice(0, 400)));
+  // Every figure our Police statement prints, in the cell the office keeps
+  // for it: row by commodity, column by heading.
+  const cells = (row) => (doc.match(new RegExp(`<tr[^>]*>(?:(?!</tr>)[\\s\\S])*?${row}(?:(?!</tr>)[\\s\\S])*?</tr>`)) ?? [''])[0]
+    .match(/<td[^>]*>([^<]*)<\/td>/g)?.map((t) => t.replace(/<[^>]*>/g, '')) ?? [];
+  check('B.R.A: SI NO 1, O.B 20, receipt 0, total 20, sales 0, C.B 20', JSON.stringify(cells('B\\.R\\.A').filter(Boolean)) === JSON.stringify(['1', 'B.R.A', '20', '0', '20', '0', '20']), JSON.stringify(cells('B\\.R\\.A')));
+  {
+    const rows = ['B\\.R\\.A', 'SUGAR', 'WHEAT', 'T\\.DHALL', 'P\\.OIL'];
+    check('SI NO numbers every commodity 1–5, on the row its commodity names',
+      rows.every((r, i) => cells(r).filter(Boolean)[0] === String(i + 1)), JSON.stringify(rows.map((r) => cells(r).filter(Boolean)[0])));
+    check('…and the G.TOTAL row takes no number', !/^\d+$/.test(cells('G\\.TOTAL')[0] ?? ''), JSON.stringify(cells('G\\.TOTAL')));
+  }
+  check('SUGAR carries its rate 12.50 and an amount of 0.00 worked out from the office\'s own formula',
+    cells('SUGAR').includes('12.50') && cells('SUGAR').includes('0.00'), JSON.stringify(cells('SUGAR')));
+  check('the row label is not repeated into a figure cell', (doc.match(/G\.TOTAL/g) ?? []).length === 1);
+}
+
+console.log('\nThe office\'s formulas, worked out for the preview');
+{
+  const F = await import(pathToFileURL(join(root, 'src/lib/statements/templateFill.ts')).href);
+  const sheet = { cells: { A1: { kind: 'data', s: 0 }, B1: { kind: 'data', s: 0 }, C1: { kind: 'data', s: 0, f: 'A1*B1' }, C2: { kind: 'data', s: 0, f: 'SUM(C1:C1)+A1' }, C3: { kind: 'data', s: 0, f: 'RECEIPT!E15' } } };
+  const out = F.evaluateFormulas(sheet, { A1: 3, B1: 12.5 });
+  check('a product (G7*H7) comes out as Excel would', out.C1 === 37.5, JSON.stringify(out));
+  check('a total that sums another formula sees its result', out.C2 === 40.5, JSON.stringify(out));
+  check('a formula reaching into another sheet is left alone, not guessed', !('C3' in out));
+  check('a figure the statement supplies is never overwritten by a formula', !('A1' in F.evaluateFormulas({ cells: { A1: { kind: 'data', s: 0, f: '1+1' } } }, { A1: 9 })));
 }
 
 console.log('\nExcel — one report, one worksheet');
