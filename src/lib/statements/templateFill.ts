@@ -186,7 +186,11 @@ export function fillByTable(sheet: TemplateSheet, html: string): Filled {
     if (tRow === undefined) continue;
     row.forEach((text, c) => {
       const head = ourHeads[c];
-      if (!text || !head || head === 'SINO' || head === 'SLNO') return;
+      // SI NO is filled too: the office's sheet numbers its rows (the cells
+      // were blanked with the other figures when the form was extracted), and
+      // the number goes on the row its commodity names, so it is right
+      // whatever order the two lists are in.
+      if (!text || !head) return;
       // A row's own label ("B.R.A", "G.TOTAL") says which row this is; it is
       // not a figure, and the form already prints it in its own place.
       if (rowByLabel.has(captionKey(text))) return;

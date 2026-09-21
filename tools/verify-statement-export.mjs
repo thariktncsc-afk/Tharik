@@ -190,7 +190,13 @@ console.log('\nCRS Police — the office\'s own sheet, filled by row and heading
   // for it: row by commodity, column by heading.
   const cells = (row) => (doc.match(new RegExp(`<tr[^>]*>(?:(?!</tr>)[\\s\\S])*?${row}(?:(?!</tr>)[\\s\\S])*?</tr>`)) ?? [''])[0]
     .match(/<td[^>]*>([^<]*)<\/td>/g)?.map((t) => t.replace(/<[^>]*>/g, '')) ?? [];
-  check('B.R.A: O.B 20, receipt 0, total 20, sales 0, C.B 20', JSON.stringify(cells('B\\.R\\.A').filter(Boolean)) === JSON.stringify(['B.R.A', '20', '0', '20', '0', '20']), JSON.stringify(cells('B\\.R\\.A')));
+  check('B.R.A: SI NO 1, O.B 20, receipt 0, total 20, sales 0, C.B 20', JSON.stringify(cells('B\\.R\\.A').filter(Boolean)) === JSON.stringify(['1', 'B.R.A', '20', '0', '20', '0', '20']), JSON.stringify(cells('B\\.R\\.A')));
+  {
+    const rows = ['B\\.R\\.A', 'SUGAR', 'WHEAT', 'T\\.DHALL', 'P\\.OIL'];
+    check('SI NO numbers every commodity 1–5, on the row its commodity names',
+      rows.every((r, i) => cells(r).filter(Boolean)[0] === String(i + 1)), JSON.stringify(rows.map((r) => cells(r).filter(Boolean)[0])));
+    check('…and the G.TOTAL row takes no number', !/^\d+$/.test(cells('G\\.TOTAL')[0] ?? ''), JSON.stringify(cells('G\\.TOTAL')));
+  }
   check('SUGAR carries its rate 12.50 and an amount of 0.00 worked out from the office\'s own formula',
     cells('SUGAR').includes('12.50') && cells('SUGAR').includes('0.00'), JSON.stringify(cells('SUGAR')));
   check('the row label is not repeated into a figure cell', (doc.match(/G\.TOTAL/g) ?? []).length === 1);
