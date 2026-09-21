@@ -1,6 +1,6 @@
 {
  "source": "CRS 19 AUG'26.xlsx",
- "extractedAt": "2026-09-20",
+ "extractedAt": "2026-09-21",
  "styles": [
   {
    "font": "Calibri",
@@ -6722,7 +6722,8 @@
     },
     "R2": {
      "s": 12,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "S2": {
      "s": 13,
@@ -9140,7 +9141,8 @@
     },
     "D18": {
      "s": 116,
-     "kind": "data"
+     "kind": "data",
+     "p": "GUNNY REPORT FOR THE MONTH OF "
     },
     "L18": {
      "s": 44,
@@ -9654,11 +9656,13 @@
     },
     "B2": {
      "s": 7,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS 19 DATEWISE PARTICULARS OF SALES  FOR THE MONTH OF "
     },
     "W2": {
      "s": 10,
-     "kind": "data"
+     "kind": "data",
+     "p": "REMITTANCE FOR "
     },
     "X2": {
      "s": 13,
@@ -13500,7 +13504,8 @@
     },
     "B2": {
      "s": 15,
-     "kind": "data"
+     "kind": "data",
+     "p": "Monthly report for the month of "
     },
     "B3": {
      "s": 10,
@@ -16052,11 +16057,13 @@
     },
     "B2": {
      "s": 2,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "B3": {
      "s": 134,
-     "kind": "data"
+     "kind": "data",
+     "p": "GUNNY STOCK STATEMENT FOR THE MONTH OF "
     },
     "B4": {
      "s": 137,
@@ -16558,7 +16565,8 @@
     },
     "A2": {
      "s": 15,
-     "kind": "data"
+     "kind": "data",
+     "p": "Monthly report for the month of "
     },
     "A3": {
      "s": 10,
@@ -17988,7 +17996,8 @@
     },
     "A2": {
      "s": 15,
-     "kind": "data"
+     "kind": "data",
+     "p": "Monthly report for the month of "
     },
     "A3": {
      "s": 10,
@@ -19500,7 +19509,8 @@
     },
     "B2": {
      "s": 116,
-     "kind": "data"
+     "kind": "data",
+     "p": "POLICE RECEIPT FOR THE MONTH OF "
     },
     "B3": {
      "s": 18,
@@ -19508,7 +19518,8 @@
     },
     "C3": {
      "s": 2,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS."
     },
     "D3": {
      "s": 18,
@@ -20005,7 +20016,8 @@
     },
     "B2": {
      "s": 234,
-     "kind": "data"
+     "kind": "data",
+     "p": "SRCB - CRS "
     },
     "C2": {
      "s": 139,
@@ -20871,11 +20883,13 @@
    "cells": {
     "B5": {
      "s": 235,
-     "kind": "data"
+     "kind": "data",
+     "p": "MONTHLY SALES REPORT FOR THER MONTH OF "
     },
     "B6": {
      "s": 237,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "C6": {
      "s": 66,
@@ -21807,7 +21821,8 @@
     },
     "B34": {
      "s": 326,
-     "kind": "data"
+     "kind": "data",
+     "p": "ADVANCE  FOR THE MONTH OF "
     },
     "F34": {
      "s": 66,
@@ -23415,7 +23430,8 @@
     },
     "B2": {
      "s": 15,
-     "kind": "data"
+     "kind": "data",
+     "p": "Monthly report for the month of  "
     },
     "B3": {
      "s": 274,
@@ -23448,7 +23464,8 @@
     },
     "I3": {
      "s": 275,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "J3": {
      "s": 275,
@@ -26300,7 +26317,8 @@
     },
     "B3": {
      "s": 333,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS ."
     },
     "C3": {
      "s": 333,
@@ -28532,7 +28550,8 @@
     },
     "B5": {
      "s": 391,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "D5": {
      "s": 387,
@@ -28940,7 +28959,8 @@
     },
     "B5": {
      "s": 44,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "G5": {
      "s": 41,
@@ -29184,7 +29204,8 @@
     },
     "B5": {
      "s": 44,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "J5": {
      "s": 41,
@@ -29507,7 +29528,8 @@
     },
     "B5": {
      "s": 44,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "I5": {
      "s": 41,
@@ -29840,7 +29862,8 @@
     },
     "B6": {
      "s": 426,
-     "kind": "data"
+     "kind": "data",
+     "p": "CRS "
     },
     "C6": {
      "s": 66,

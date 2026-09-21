@@ -218,6 +218,32 @@ export function printScale(sheet: TemplateSheet): number {
   return contentPx > printablePx ? printablePx / contentPx : 1;
 }
 
+/**
+ * The scale that makes this sheet fill its page: as large as the printable
+ * width AND height allow, never smaller than the office's own percentage.
+ * For the sheets the office enlarges (CRS Police, RBI) — at their 145% /
+ * 120% a shop's few rows left the table a band across the top of the paper.
+ *
+ * Worked out from the sheet's own column widths and row heights, so nothing
+ * is measured in the browser. Each side takes the office's margin or the
+ * preview's 6 mm padding, whichever is larger, so the page on screen and the
+ * page printed are the same size.
+ */
+export function fillScale(sheet: TemplateSheet, widths = columnWidths(sheet), heights = rowHeights(sheet)): number {
+  const own = printScale(sheet);
+  const w = widths.slice(1).reduce((t, x) => t + x, 0);
+  const h = heights.slice(1, sheet.maxRow + 1).reduce((t, x) => t + (x || 0), 0);
+  if (!w || !h) return own;
+  const paper = A4[sheet.print.orientation];
+  const side = (inches: number) => Math.max(inches * MM_PER_IN, 6);
+  const m = sheet.print.margins;
+  const boxW = (paper.w - side(m.left) - side(m.right)) / MM_PER_PX;
+  const boxH = (paper.h - side(m.top) - side(m.bottom)) / MM_PER_PX;
+  // A hair to spare, so a printer driver's rounding cannot push the last row
+  // onto a second page.
+  return Math.max(own, Math.min(boxW / w, boxH / h) * 0.985);
+}
+
 /** The page rules for this sheet: its paper, its margins, its centring. */
 export function pageCssFor(sheet: TemplateSheet, pageId: string): string {
   const m = sheet.print.margins;
@@ -234,11 +260,17 @@ export function pageCssFor(sheet: TemplateSheet, pageId: string): string {
  * `pageId` names the CSS page so several statements can sit in one document,
  * each on its own paper.
  */
-export function renderSheet(model: TemplateModel, sheet: TemplateSheet, values: Values, pageId = 'tpl'): string {
+export function renderSheet(
+  model: TemplateModel,
+  sheet: TemplateSheet,
+  values: Values,
+  pageId = 'tpl',
+  opts: { fill?: boolean } = {},
+): string {
   const widths = columnWidths(sheet);
   const heights = rowHeights(sheet);
   const { spans, covered } = mergeMap(sheet);
-  const scale = printScale(sheet);
+  const scale = opts.fill ? fillScale(sheet, widths, heights) : printScale(sheet);
 
   const cols: string[] = [];
   for (let c = 1; c <= sheet.maxCol; c++) cols.push(`<col style="width:${widths[c]}px"/>`);
@@ -279,8 +311,12 @@ export function renderSheet(model: TemplateModel, sheet: TemplateSheet, values: 
 
   const width = widths.slice(1).reduce((t, w) => t + w, 0);
   return (
-    `<div class="tpl-sheet" data-page="${pageId}" data-sheet="${escapeHtml(sheet.name)}">` +
-    `<div class="tpl-scale" style="transform:scale(${scale.toFixed(4)});transform-origin:top ${sheet.print.centredH ? 'center' : 'left'};width:${width}px${sheet.print.centredH ? ';margin:0 auto' : ''}">` +
+    `<div class="tpl-sheet" data-page="${pageId}" data-orient="${sheet.print.orientation}" data-sheet="${escapeHtml(sheet.name)}">` +
+    // `zoom`, not `transform: scale()`: zoom changes the size the sheet takes
+    // up, so the page lays it out — and breaks it — at the size it prints.
+    // A transform only paints it bigger over whatever the layout thinks is
+    // there, so a 145% sheet could be cut at a page edge it appears to clear.
+    `<div class="tpl-scale" style="zoom:${scale.toFixed(4)};width:${width}px${sheet.print.centredH ? ';margin:0 auto' : ''}">` +
     `<table class="tpl-grid" style="width:${width}px;table-layout:fixed;border-collapse:collapse">` +
     `<colgroup>${cols.join('')}</colgroup><tbody>${rows.join('')}</tbody></table>` +
     '</div></div>'

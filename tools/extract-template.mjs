@@ -175,6 +175,29 @@ const MONTHS = /\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*['
  * a heading.
  */
 const HEADINGS = new Set(['CRS PAGE1!B2']);
+
+/**
+ * The form's own words at the start of a data cell — kept, while what
+ * follows (this month's business) is dropped.
+ *
+ *   "RICE CARD        : 704"                  → "RICE CARD        : "
+ *   "POLICE RECEIPT FOR THE MONTH OF AUG'2026" → "POLICE RECEIPT FOR THE MONTH OF "
+ *   "CRS.19"                                   → "CRS."
+ *
+ * A caption ends at a colon, or where the month or the shop number begins —
+ * the two things that change from one shop's month to another's. Without the
+ * last two, a title line was blanked whole and the statement could not write
+ * its month back into it.
+ */
+function captionOf(text) {
+  const colon = text.match(/^([^:]*:\s*)/);
+  if (colon) return colon[1];
+  const month = text.search(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*['’"\s]*\d{2,4}/i);
+  if (month > 0) return text.slice(0, month);
+  const crs = text.match(/^(.*?\bCRS\b[\s.:-]*)\d/i);
+  if (crs && crs[1]) return crs[1];
+  return undefined;
+}
 function classify(value, type, sheetName, ref) {
   if (sheetName && ref && HEADINGS.has(sheetName + "!" + ref)) return "static";
   if (value === undefined || value === '') return 'static';
@@ -273,7 +296,7 @@ for (const m of wbXml.matchAll(/<sheet[^>]*name="([^"]*)"[^>]*r:id="([^"]*)"[^>]
       // colons line up — is the FORM and is kept; what follows it is the
       // month's business and is dropped. A statement supplies only the entry,
       // and it is written back after the caption.
-      const caption = kind === 'data' && typeof value === 'string' ? (value.match(/^([^:]*:\s*)/) ?? [])[1] : undefined;
+      const caption = kind === 'data' && typeof value === 'string' ? captionOf(value) : undefined;
 
       cells[ref] = {
         s,

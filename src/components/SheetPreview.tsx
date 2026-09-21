@@ -15,6 +15,7 @@
  * simply shown whole.
  */
 import { useEffect, useRef, useState } from 'react';
+import { fillSheets } from '@/lib/statements/fillPage';
 
 /** A4 at 96 dpi, which is what the sheet is laid out in. */
 const PAGE = { portrait: { w: 794, h: 1123 }, landscape: { w: 1123, h: 794 } };
@@ -31,6 +32,9 @@ export default function SheetPreview({ html, orientation }: { html: string; orie
     const el = box.current;
     if (!el) return;
     const fit = () => {
+      // The statements the office enlarges are sized to fill their page first,
+      // so the height measured below is the height they will print at.
+      if (page.current) fillSheets(page.current);
       // The panel's own padding is not room for the page.
       const available = el.clientWidth - PAD * 2;
       if (available <= 0) return;

@@ -544,6 +544,27 @@ output. `npm run verify:statement-export` drives both exports over all 306.
 - `node tools/sample-statement-export.mjs crs19 <outDir>` builds both files
   from the goldens — no database, nothing live — for looking at the format.
 
+### The office's master workbook as the format
+
+`src/generated/statement-template.json` is `CRS 19 AUG'26.xlsx` read by
+`tools/extract-template.mjs` **with every figure, name, month and phone
+blanked** — rerun the privacy scan after re-extracting. A data cell keeps
+its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
+`"CRS."`), and the fill supplies what follows.
+
+- `TEMPLATE_FILL` in `templateFill.ts` lists the sections drawn on the
+  office's sheet: `crs_page1` by caption, `crs_police` by table (row label ×
+  column heading, figures only into non-static cells, title lines by
+  caption prefix). Everything else still renders our own markup.
+- Preview and Print draw the same `templateSheetPreview` markup.
+  Formulas are evaluated for display (`evaluateFormulas`); the export keeps
+  them unless a value was filled, and drops cross-sheet ones.
+- **CRS Police and RBI fill their page** (`fillsPage`: the office prints them
+  above 100%, not fitted). On the template sheet that is `fillScale` —
+  worked out from the office's widths and heights, never below its own
+  percentage; on our markup (RBI) it is `fillSheets` measuring in the
+  browser. The Excel export keeps the office's own 145% page setup.
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for

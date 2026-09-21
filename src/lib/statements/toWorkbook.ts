@@ -27,7 +27,7 @@ import { parseStatement, type Cell, type Grid } from '@/lib/statements/sheetMode
 import { ALWAYS_LANDSCAPE } from '@/lib/statements/printDoc';
 import { inTemplate, printFor, type SheetPrint } from '@/lib/statements/pageSetup';
 import TEMPLATE from '@/generated/statement-template.json';
-import { CAPTION_FILLED, SHEET_FOR, fillByCaption, linesOf } from '@/lib/statements/templateFill';
+import { CAPTION_FILLED, SHEET_FOR, fillSection } from '@/lib/statements/templateFill';
 import { columnWidths as templateColWidths, rowHeights as templateRowHeights, mergeMap, colLetter, type TemplateModel, type TemplateSheet, type Values } from '@/lib/statements/templateRender';
 
 export type ExportSection = { id: string; label: string; html: string };
@@ -109,7 +109,7 @@ export function templatePlan(section: ExportSection, taken: Set<string>): SheetP
   const model = TEMPLATE as unknown as TemplateModel;
   const sheet = model.sheets.find((s) => s.name === officeSheet);
   if (!sheet) return null;
-  const { values } = fillByCaption(sheet, linesOf(section.html));
+  const { values } = fillSection(section.id, sheet, section.html);
   return {
     name: sheetName(section.label, taken),
     grid: { rows: [], cols: sheet.maxCol, headerRows: 0 },
@@ -249,11 +249,19 @@ export function templateSheetOf(plan: SheetPlan): XLSX.WorkSheet {
         cell?.kind === 'data'
           ? `${cell.p ?? ''}${filled ?? ''}`
           : (cell?.v ?? (filled != null ? String(filled) : ''));
-      // A cell the office left to a formula keeps the formula, so the
-      // exported file adds up the way the office's own file does.
-      ws[ref] = cell?.f
-        ? { t: 'n', f: cell.f, s: excelStyle(st) }
-        : { t: 's', v: text, s: excelStyle(st) };
+      // The statement's own figure wins over the office's formula: our engine
+      // is what worked it out, and a formula pointing at another sheet
+      // (CRS POLICE!E6 = RECEIPT!E15) would read a cell our export does not
+      // lay out the office's way. A formula is kept only where there is no
+      // figure for the cell and it stays on its own sheet (D6+E6, SUM(I7:I10)),
+      // so the exported file still adds up the way the office's does.
+      if (typeof filled === 'number' && !cell?.p) {
+        ws[ref] = { t: 'n', v: filled, s: excelStyle(st) };
+      } else if (cell?.f && filled == null && !cell.f.includes('!')) {
+        ws[ref] = { t: 'n', f: cell.f, s: excelStyle(st) };
+      } else {
+        ws[ref] = { t: 's', v: text, s: excelStyle(st) };
+      }
     }
   }
 

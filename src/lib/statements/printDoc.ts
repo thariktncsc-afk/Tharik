@@ -31,17 +31,19 @@
  * measuring the statement's width is only the fallback for a section it has no
  * sheet for.
  *
- * Not yet carried across from it: the print SCALE (the office prints CRS
- * Police at 145% and RBI at 120%, and fits the rest to one page), because
- * these statements are our HTML rather than the workbook's own grid, so a
- * percentage of it would mean nothing. That arrives with the template-driven
- * rendering.
+ * SCALE. The office prints CRS Police at 145% and RBI at 120% so those short
+ * statements fill the paper; every other sheet is fit-to-page, which only
+ * ever shrinks. The percentages themselves are not copied — they were set for
+ * the office's grid, and our HTML is drawn at a different size — but the
+ * effect is: those two are enlarged to fill their printable area, width and
+ * height both (`sheetBody` + fillPage.ts). The rest print at their own size.
  */
 
 import { parseStatement } from '@/lib/statements/sheetModel';
-import { inTemplate, mm, printFor } from '@/lib/statements/pageSetup';
+import { fillsPage, inTemplate, mm, printFor, printableBoxPx } from '@/lib/statements/pageSetup';
+import { FILL_SCRIPT } from '@/lib/statements/fillPage';
 import TEMPLATE from '@/generated/statement-template.json';
-import { CAPTION_FILLED, SHEET_FOR, fillByCaption, linesOf } from '@/lib/statements/templateFill';
+import { CAPTION_FILLED, SHEET_FOR, evaluateFormulas, fillSection } from '@/lib/statements/templateFill';
 import { TEMPLATE_CSS, pageCssFor, renderSheet, type TemplateModel } from '@/lib/statements/templateRender';
 
 export type PrintSection = { id: string; label: string; copies: number; html: string };
@@ -118,6 +120,7 @@ export function pageCss(sectionIds: string[] = []): string {
     // print job ends on a blank page.
     '.stmt-sheet{break-after:page;page-break-after:always;break-inside:auto}',
     '.stmt-sheet:last-child{break-after:auto;page-break-after:auto}',
+    '.stmt-doc>.stmt-sheet:last-child,.stmt-doc>.tpl-sheet:last-child{break-after:auto;page-break-after:auto}',
     // The builders' own <style> blocks set `body{font-size:8px}` for print
     // between them; put it back so each statement keeps its own sizes.
     '@media print{body{font-size:11px;margin:0;padding:0;background:#fff}}',
@@ -138,13 +141,29 @@ export function pageCss(sectionIds: string[] = []): string {
   ].join('\n');
 }
 
+/**
+ * A statement's markup, ready for its sheet. The two the office enlarges
+ * (CRS Police, RBI) are wrapped so `fillSheets` can size them to fill the
+ * page; the room they have is stated on the wrapper, from the office's own
+ * margins, so the same figure is used on screen and on paper.
+ */
+export function sheetBody(html: string, sectionId?: string): string {
+  if (!sectionId || !fillsPage(sectionId)) return html;
+  const box = printableBoxPx(sectionId);
+  return `<div class="stmt-fill" data-fill-w="${box.w}" data-fill-h="${box.h}">${html}</div>`;
+}
+
 /** One sheet: the statement's own HTML, wrapped so it owns a page. */
 function sheet(section: PrintSection, copy: number, copies: number): string {
+  // Where the office's own sheet is drawn for the preview, PRINT draws the
+  // same sheet — otherwise the preview and the PDF are two documents.
+  const office = templateSheetPreview(section.id, section.html);
+  if (office) return office;
   const orient = orientationOf(section.html, section.id);
   const label = copies > 1 ? `${section.label} (copy ${copy} of ${copies})` : section.label;
   return (
     `<div class="stmt-sheet stmt-sheet--${orient}" data-section="${section.id}" data-copy="${copy}" aria-label="${label}">` +
-    section.html +
+    sheetBody(section.html, section.id) +
     '</div>'
   );
 }
@@ -166,10 +185,16 @@ export function buildPrintDocument(title: string, baseCss: string, sections: Pri
     `<title>${title}</title>` +
     `<style>${baseCss}</style>` +
     '</head><body>' +
-    sheets +
+    // Wrapped, so "the last sheet" is the last sheet and not the <style>
+    // and <script> that follow it — otherwise every sheet, the last one
+    // included, takes a page break after it.
+    `<main class="stmt-doc">${sheets}</main>` +
     // Last, so these page rules win over the ones a builder carries — and
     // carrying each section's own page setup from the office's workbook.
     `<style>${pageCss(sections.map((s) => s.id))}</style>` +
+    // Size the statements the office enlarges to fill their page, before the
+    // print dialog opens (it is opened 600 ms after the window is written).
+    (sections.some((s) => fillsPage(s.id)) ? `<script>${FILL_SCRIPT}</script>` : '') +
     '</body></html>'
   );
 }
@@ -188,7 +213,7 @@ export function buildPreviewSheet(html: string, sectionId?: string): string {
   if (office) return office;
   return (
     `<style>${pageCss(sectionId ? [sectionId] : [])}</style>` +
-    `<div class="stmt-sheet stmt-sheet--${orientationOf(html, sectionId)}" data-section="${sectionId ?? ''}">${html}</div>`
+    `<div class="stmt-sheet stmt-sheet--${orientationOf(html, sectionId)}" data-section="${sectionId ?? ''}">${sheetBody(html, sectionId)}</div>`
   );
 }
 
@@ -203,10 +228,13 @@ export function templateSheetPreview(sectionId: string, html: string): string | 
   const model = TEMPLATE as unknown as TemplateModel;
   const sheet = model.sheets.find((s) => s.name === name);
   if (!sheet) return null;
-  const { values } = fillByCaption(sheet, linesOf(html));
+  const { values } = fillSection(sectionId, sheet, html);
+  // What the office's own formulas come to — the exported file keeps the
+  // formulas and Excel works them out, so the page shows the same results.
+  const shown = { ...evaluateFormulas(sheet, values), ...values };
   const pageId = 'tpl' + sectionId.replace(/[^a-z0-9]/gi, '');
   return `<style>${TEMPLATE_CSS}
-${pageCssFor(sheet, pageId)}</style>` + renderSheet(model, sheet, values, pageId);
+${pageCssFor(sheet, pageId)}</style>` + renderSheet(model, sheet, shown, pageId, { fill: fillsPage(sectionId) });
 }
 
 /** How many sheets a selection prints — one per copy, in order. */
