@@ -67,9 +67,13 @@ type WatchedTopic = Exclude<LiveTopic, 'clears'>;
 
 const POLL_MS = 5000;
 const LIVE_MS = 4000;
-/** saveConfirmed(): how long it waits for a save already in flight — 25 × 120 ms = 3 s. */
-const FLUSH_TRIES = 25;
-const FLUSH_WAIT_MS = 120;
+/**
+ * saveConfirmed(): how many saves it will follow one after another before
+ * giving up — the one already in flight, then its own. It WAITS on each save
+ * rather than polling, so the tick shows the moment the database answers
+ * (it used to check every 120 ms, which could hold the tick back that long).
+ */
+const FLUSH_TRIES = 4;
 
 /** A save that keeps meeting fresh conflicts gives up after this many rounds. */
 const REBASE_ROUNDS = 3;
@@ -86,6 +90,8 @@ class CrsDataStore {
   private timer: ReturnType<typeof setInterval> | null = null;
   private liveTimer: ReturnType<typeof setInterval> | null = null;
   private saving = false;
+  /** The save now in flight, so saveConfirmed() can wait on it instead of polling. */
+  private inFlight: Promise<boolean> | null = null;
   private loading = false;
   private polling = false;
   private revisions: Record<LiveTopic, number | string> = { clears: 0, payments: '', activity: '', inbox: '' };
@@ -251,16 +257,25 @@ class CrsDataStore {
         if (!this.collectChanged()) return !this.lastError;
         return await this.save();
       }
-      await new Promise((r) => setTimeout(r, FLUSH_WAIT_MS));
+      // A save is already carrying (some of) these records: wait for its
+      // answer — no fixed delay — then ask again.
+      await this.inFlight?.catch(() => false);
     }
     return false;
   }
 
-  async save(opts?: { keepalive?: boolean }): Promise<boolean> {
-    if (this.status !== 'ready' || this.saving) return false;
-    if (!this.collectChanged()) return false;
-
+  save(opts?: { keepalive?: boolean }): Promise<boolean> {
+    if (this.status !== 'ready' || this.saving) return Promise.resolve(false);
+    if (!this.collectChanged()) return Promise.resolve(false);
+    // Marked in flight synchronously, so a second press in the same instant
+    // waits on this save instead of sending the same records again.
     this.saving = true;
+    const run = this.send(opts);
+    this.inFlight = run;
+    return run;
+  }
+
+  private async send(opts?: { keepalive?: boolean }): Promise<boolean> {
     // Taken now so a record marked while this save is in flight rides the next one.
     const hints = this.edits;
     this.edits = {};
@@ -341,6 +356,7 @@ class CrsDataStore {
         for (const [store, keys] of Object.entries(hints)) this.edits[store] = { ...keys, ...(this.edits[store] ?? {}) };
       }
       this.saving = false;
+      this.inFlight = null;
     }
   }
 

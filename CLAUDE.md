@@ -839,6 +839,20 @@ duplicate rule, so both can be checked without a browser.
 - The popup never takes the pointer and sits above the modals (z 9900 over
   9800), so it blocks nothing and is never hidden behind a dialog.
 
+**No delay between the database and the tick** (office, 2026-09-22):
+- `saveConfirmed()` WAITS on the save already in flight (`inFlight`) rather
+  than polling every 120 ms — the press is answered the moment it lands.
+- `/api/state` writes its stores side by side (`Promise.all`; each keeps its
+  own version check, so each still lands or conflicts exactly as before) and
+  records the activity log with next/server `after()`, once the response is
+  sent. `reconcileShops` stays BEFORE the response: the next save's
+  Initial-Opening guard reads what it writes.
+- Receipt uses `saveConfirmed()` (it used `save()`, which says "not saved"
+  while the autosave is sending); Sales Close shows its tick as soon as the
+  save lands, not after its dialog is dismissed; Daily and Receipt save
+  buttons ignore a second tap while a save runs.
+- The popup's tick draws 0.08 s after the card (was 0.22 s) — same design.
+
 `npm run verify:save-success`.
 
 ## Activity log (admin only)

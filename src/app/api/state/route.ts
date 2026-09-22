@@ -9,7 +9,7 @@
  * The payload shape is the engine's own backup format (see BACKUP_STORES in
  * src/legacy/18-backup-init.js), so nothing about the in-memory model changes.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { cookies } from 'next/headers';
@@ -277,9 +277,12 @@ export async function POST(req: Request) {
     for (const row of prior ?? []) stored[row.store_key as string] = row.data;
   }
 
-  for (const [key, value] of Object.entries(stores)) {
-    if (!ALLOWED_KEYS.has(key)) continue;
-
+  // Each store is its own row with its own version check, so they are written
+  // side by side rather than one round trip after another — a Daily save
+  // sends three or four. Every row still lands only at the version the client
+  // read, and one that does not is a conflict exactly as before; running them
+  // together changes how long the save takes, not what it writes.
+  const writeOne = async (key: string, value: unknown): Promise<void> => {
     const expected = Number(versions[key] ?? 0);
 
     // New row: insert. A unique-violation means someone else created it first,
@@ -293,7 +296,7 @@ export async function POST(req: Request) {
 
       if (error) conflicts.push(key);
       else if (data) savedVersions[key] = data.version;
-      continue;
+      return;
     }
 
     // Existing row: the update only matches while the version is untouched.
@@ -313,13 +316,19 @@ export async function POST(req: Request) {
 
     if (error || !data) conflicts.push(key);
     else savedVersions[key] = data.version;
-  }
+  };
+  await Promise.all(Object.entries(stores).filter(([key]) => ALLOWED_KEYS.has(key)).map(([key, value]) => writeOne(key, value)));
 
   // The activity log: only the stores that actually landed. A refused or
   // conflicting store logs nothing here — its re-send will, once it lands.
+  // Recorded AFTER the response is sent (next/server `after`): the log never
+  // decides whether a save succeeds and already swallows its own failures, so
+  // the person saving no longer waits for it. It is still written, from the
+  // same `stored` / `landed` captured here.
   const landed = Object.fromEntries(Object.entries(stores).filter(([k]) => k in savedVersions));
   if (Object.keys(landed).length) {
-    await recordActivity(session, diffStateWrite(stored, landed, readHints((body as { activity?: unknown }).activity)));
+    const rows = diffStateWrite(stored, landed, readHints((body as { activity?: unknown }).activity));
+    after(() => recordActivity(session, rows));
   }
 
   // Every shop whose day sheets this save changed has its "started" record
