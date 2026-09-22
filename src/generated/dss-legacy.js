@@ -134,9 +134,11 @@ function openDSSViewer(titleText, subText, bodyHTML, cssBlock){
   ov.id='dss-viewer';
   ov.style.cssText='position:fixed;inset:0;z-index:9600;background:#E2E8F0;display:flex;flex-direction:column;overflow:hidden';
   ov.innerHTML='<style>'+cssBlock+'</style>'+
-    '<div class="no-print" style="background:#1E40AF;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:10px">'+
-      '<div><div style="font-weight:800;font-size:14px">'+titleText+'</div><div style="font-size:11px;opacity:.8">'+subText+'</div></div>'+
-      '<div style="display:flex;gap:8px;flex-shrink:0">'+
+    // dssv-* classes: only the phone rules in the viewer's CSS use them
+    // (office, 2026-09-22); on a desktop these inline styles are the layout.
+    '<div class="no-print dssv-bar" style="background:#1E40AF;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;gap:10px">'+
+      '<div class="dssv-title"><div style="font-weight:800;font-size:14px">'+titleText+'</div><div style="font-size:11px;opacity:.8">'+subText+'</div></div>'+
+      '<div class="dssv-actions" style="display:flex;gap:8px;flex-shrink:0">'+
         '<button type="button" onclick="downloadDSSExcel()" style="background:#16A34A;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px">\u2b07\ufe0f Excel</button>'+
         '<button type="button" onclick="window.print()" style="background:#fff;color:#1E40AF;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-weight:700;font-size:12px">\ud83d\udda8\ufe0f Print / PDF</button>'+
         '<button type="button" onclick="document.getElementById(\'dss-viewer\').remove()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">\u2715 Close</button>'+
@@ -410,14 +412,17 @@ function openDSSPreview(){
       '<div class="dss-sub">\u0ba4\u0bbf\u0ba9\u0b9a\u0bb0\u0bbf \u0b87\u0bb0\u0bc1\u0baa\u0bcd\u0baa\u0bc1 \u0b85\u0bb1\u0bbf\u0b95\u0bcd\u0b95\u0bc8 / \u0bb5\u0bbf\u0bb1\u0bcd\u0baa\u0ba9\u0bc8 \u0b85\u0bb1\u0bbf\u0b95\u0bcd\u0b95\u0bc8</div>'+
       '<div class="dss-meta"><span>\u0ba8\u0bbf\u0baf\u0bbe\u0baf\u0bb5\u0bbf\u0bb2\u0bc8\u0b95\u0bcd\u0b95\u0b9f\u0bc8 \u0b8e\u0ba3\u0bcd: <b>CRS-'+crsId+'</b>'+(crs?' '+crs.name:'')+'</span>'+
         '<span>\u0ba8\u0bbe\u0bb3\u0bcd: <b>'+dlbl+'</b></span></div>'+
-      '<table class="dss-tbl">'+
+      // The wrapper is the table's own sideways scroll on a phone, so the
+      // columns keep a legible width instead of being squeezed and clipped.
+      // It has no effect on a desktop or on paper.
+      '<div class="dss-tbl-wrap"><table class="dss-tbl">'+
         '<colgroup><col style="width:36px"><col style="width:210px"><col><col><col><col><col><col style="width:80px"><col style="width:104px"></colgroup>'+
         '<thead>'+
           '<tr><th>\u0bb5.\u0b8e\u0ba3\u0bcd.</th><th>\u0baa\u0bca\u0bb0\u0bc1\u0b9f\u0bcd\u0b95\u0bb3\u0bcd</th><th>\u0b86\u0bb0\u0bae\u0bcd\u0baa \u0b87\u0bb0\u0bc1\u0baa\u0bcd\u0baa\u0bc1</th><th>\u0bb5\u0bb0\u0bb5\u0bc1</th><th>\u0bae\u0bca\u0ba4\u0bcd\u0ba4\u0bae\u0bcd</th><th>\u0bb5\u0bbf\u0bb1\u0bcd\u0baa\u0ba9\u0bc8</th><th>\u0b87\u0bb1\u0bc1\u0ba4\u0bbf \u0b87\u0bb0\u0bc1\u0baa\u0bcd\u0baa\u0bc1</th><th>\u0bb5\u0bbf\u0bb1\u0bcd\u0baa\u0ba9\u0bc8 \u0bb5\u0bbf\u0bb2\u0bc8</th><th>\u0bae\u0bca\u0ba4\u0bcd\u0ba4 \u0bb5\u0bbf\u0bb1\u0bcd\u0baa\u0ba9\u0bc8\u0ba4\u0bcd\u0ba4\u0bca\u0b95\u0bc8</th></tr>'+
           '<tr class="u"><th></th><th></th><th>'+KG+'</th><th>'+KG+'</th><th>'+KG+'</th><th>'+KG+'</th><th>'+KG+'</th><th>\u0bb0\u0bc2 \u0baa\u0bc8.</th><th>\u0bb0\u0bc2 \u0baa\u0bc8.</th></tr>'+
         '</thead>'+
         '<tbody>'+A.body+totalRowA+policeHdr+B.body+totalRowB+'</tbody>'+
-      '</table>'+
+      '</table></div>'+
       '<div class="dss-acc">'+APP_CONFIG.accountLabel+' = '+cerealAccountNo(crsId)+' = <span class="dss-acc-val">'+dssRemitTotal.toFixed(2)+'</span></div>'+   // [M3][C4]
       '<div class="dss-foot"><div>'+APP_CONFIG.submitToOffice+'<br>'+APP_CONFIG.regionName+'</div>'+   // [M3]
         '<div class="sign">\u0baa\u0b9f\u0bcd\u0b9f\u0bbf\u0baf\u0bb2\u0bcd \u0b8e\u0bb4\u0bc1\u0ba4\u0bcd\u0ba4\u0bb0\u0bcd \u0b95\u0bc8\u0baf\u0bca\u0baa\u0bcd\u0baa\u0bae\u0bcd</div></div>'+
@@ -441,7 +446,39 @@ function openDSSPreview(){
     '.dss-acc-val{border-bottom:3px double #000;padding:0 24px;display:inline-block;min-width:120px}'+
     '.dss-foot{display:flex;justify-content:space-between;align-items:flex-end;font-size:12px;margin-top:26px}'+
     '.dss-foot .sign{font-size:13px}'+
+    // ── Phones only (office, 2026-09-22). A desktop, a tablet and the printed
+    //    page never match this, so their DSS is exactly as before. Layout
+    //    only: every figure, total and label is the same markup.
+    '@media screen and (max-width:560px){'+
+      // The bar: title on its own line, the three buttons sharing the width.
+      '#dss-viewer .dssv-bar{flex-wrap:wrap;padding:8px 10px!important;gap:8px!important}'+
+      '#dss-viewer .dssv-title{flex:1 1 100%;min-width:0;overflow-wrap:anywhere}'+
+      '#dss-viewer .dssv-actions{flex:1 1 100%!important;flex-shrink:1!important}'+
+      '#dss-viewer .dssv-actions button{flex:1 1 0;min-width:0;padding:9px 4px!important;white-space:nowrap;text-align:center}'+
+      '#dss-scroll{padding:10px 8px!important}'+
+      // The page: the full width of the phone, headings and meta wrapping.
+      '.dss-page{padding:14px 10px;margin-bottom:14px}'+
+      '.dss-title{font-size:15px;line-height:1.35}'+
+      '.dss-sub{font-size:12px}'+
+      '.dss-meta{flex-wrap:wrap;gap:4px 14px;font-size:12px}'+
+      // The table keeps a legible width and scrolls inside its own box, not
+      // the page; the commodity column stays in view while it scrolls, and a
+      // long name wraps instead of being cut.
+      '.dss-tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}'+
+      // Sized to its content (≈ 770px): every heading and figure at full
+      // width. A fixed 660px left the Tamil headings cut.
+      '.dss-tbl{table-layout:auto;width:max-content;min-width:100%}'+
+      '.dss-tbl col:nth-child(2){width:128px!important}'+
+      '.dss-tbl th,.dss-tbl td{overflow:visible}'+
+      '.dss-tbl th,.dss-tbl td{height:auto}'+
+      '.dss-tbl td.nm{white-space:normal;overflow-wrap:anywhere;line-height:1.25}'+
+      '.dss-tbl th:nth-child(2),.dss-tbl td:nth-child(2){position:sticky;left:0;z-index:1;background:#fff;box-shadow:1px 0 0 #000}'+
+      '.dss-acc{font-size:13px;overflow-wrap:anywhere}'+
+      '.dss-acc-val{padding:0 8px;min-width:0}'+
+      '.dss-foot{flex-wrap:wrap;gap:10px}'+
+    '}'+
     '@media print{'+
+      '.dss-tbl-wrap{overflow:visible!important}'+
       'body *{visibility:hidden!important}'+
       '#dss-viewer,#dss-viewer *{visibility:visible!important}'+
       '#dss-viewer{position:absolute!important;inset:0!important;background:#fff!important;overflow:visible!important;height:auto!important}'+

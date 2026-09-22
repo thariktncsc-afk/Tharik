@@ -165,6 +165,17 @@ DSS fee (`daysWithEntries` in `/api/payments`) counts the same set, so a shop
 pays for exactly the pages it gets. The legacy DSS builder is unchanged — it
 is handed the augmented entryStore. `npm run verify:dss-days`.
 
+### The DSS viewer on a phone
+
+`17-dss-export.js`, the viewer's own CSS: an `@media screen and (max-width:560px)`
+block (office, 2026-09-22). The title and the Excel / Print-PDF / Close buttons
+wrap into two rows; the table sits in `.dss-tbl-wrap` and scrolls inside it,
+sized to its content (≈ 770px — a fixed width cut the Tamil headings), with the
+commodity column pinned while it scrolls. Markup is the same apart from the
+wrapper and `dssv-*` class names, so every figure is identical (all 10 of CRS
+19's September pages compared old vs new), and tablet, desktop and the printed
+page lay out exactly as before (compared position for position at 768 and 1280).
+
 ### Payment Access Control (shop-wise switches)
 
 `/payment-access` (admin only) sets, per shop, whether the **DSS** and the
