@@ -108,6 +108,17 @@ looked like "invalid credentials" and took a while to find.
 
 Every seeded account still shares the password `pds123`.
 
+**A shop's sign-in username is the shop's — `crs8` — never the person's
+name.** The Users screen's Add / Edit form used to send `username: name` on
+every save, so editing an account silently renamed its login: on 2026-09-22
+an admin edit of CRS 8's Anand turned `crs8` into `Anand`, and `crs8` /
+`pds123` answered "Incorrect username or password" (verify_login found no
+row — its `lower(username) = lower(input)` match was never the problem).
+`signInUsernameFor()` (engine/staffAssignment.ts) now decides: a new account
+takes `crs<N>`; an edit sends no username, unless the account moves shop,
+when a shop username follows it as a transfer does. #5016 was restored to
+`crs8` (backup in `backups/user-5016-…`). `npm run verify:staff`.
+
 ## Paid downloads
 
 Shop users pay per sheet before a statement can be opened; **ADMIN downloads are
