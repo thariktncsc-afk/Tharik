@@ -948,6 +948,44 @@ day, and `0` is an answer where blank is not. No other shop has these fields.
   the A3-landscape `@page` another builder carries cannot reach it.
   `verify:crs29-sales` checks it against the PDF's own figures.
 
+## The 3-month PV from uploaded PDFs
+
+Reports → 3-Month PV → Manual (office, 2026-09-22). Past months of the quarter
+are **uploaded as the office's PDFs**; the current month is **read from the
+system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
+
+- **Reading.** `pvPdfLoad.ts` (pdf.js, bundled worker, browser only) turns a
+  PDF into positioned text; `pvPdfParse.ts` reads CRS PAGE2, GUNNY and CRS
+  POLICE from it **by position, not text order** — a text dump collapses
+  empty cells and shifts Police C.B values a line. A figure belongs to the
+  rightmost heading whose centre is left of its right edge (the sheets
+  right-align numbers). Every row must add up or the upload is refused;
+  transfer's direction is whichever sign makes the row's own TOTAL.
+- Several PDFs per month, any order, or the whole workbook as one PDF: other
+  sheets are stepped over. B6, Free Com and Cost Com share PAGE2's title, so
+  PAGE2 is the sheet with SHORTAG… **and** RATE/AMOUNT columns. A wrong shop,
+  wrong month, duplicate sheet or unknown commodity row refuses the file.
+- **Police only where `__crsMaster[].police`** says so — the system month
+  drops its (zero) police rows otherwise, so no empty police section prints.
+  A police shop can tick "No police ration this month"; police then starts at
+  the first month that has it.
+- **The current month** is `systemQuarterMonth`: the Monthly Entry roll-up
+  (`rebuildMonthlyFromDaily`) and the Gunny Stock screen's own rule
+  (`gunnyRowFor`, now shared with `GunnyTable.tsx`), from the stores at that
+  moment — no copy is kept. Stored transfer is outward-positive; a chain flow
+  is signed (in +). C.S counts as sales.
+- **The chain** (`chainQuarter`): opening = first month's; each later month
+  must open at the previous Closing, and each month must add up, or Generate is
+  refused listing every difference. Gunny carries the same way. Opening +
+  Receipt + Transfer + Excess − Sales − Shortage = Balance.
+- **Gunny notes** ("WHEAT CONSIDER AS GUNNY") are lines containing CONSIDER
+  below the Gunny table, printed as written under the PV's Gunny rows — this PV
+  only; they change no figure.
+- Nothing uploaded is saved anywhere. The generated quarter is tagged with its
+  shop and period, and a PDF still being read when the shop changes is
+  dropped, so one shop's figures can never print under another's name.
+- The automatic PV is byte-identical to before (checked against `dev`).
+
 ## Tools
 
 ```
@@ -964,6 +1002,7 @@ npm run verify:statement-export  PDF sheets and one-worksheet-per-statement Exce
 npm run verify:receipt-rows  Receipt statement: a row per receipt, none reserved, none dropped
 npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every figure in one column
 npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
+npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]

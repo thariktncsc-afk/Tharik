@@ -24,6 +24,13 @@ export type PvCommRow = {
   amount: number;
   free: boolean;
   _openSet?: boolean;
+  /**
+   * The 3-month PV built from uploaded months (pvQuarter.ts) knows these; the
+   * automatic PV does not set them, so its sheet prints exactly as before.
+   * Transfer is net (in +, out −); Shortage prints in the SHORTAGE column.
+   */
+  transfer?: number;
+  shortage?: number;
 };
 export type PvAggregate = {
   commMap: Record<string, PvCommRow>;
@@ -164,8 +171,14 @@ export function buildPVTable(opts: {
   pvOfficer?: string;
   /** Already formatted DD-MM-YYYY; blank leaves the ruled line for the officer. */
   pvDate?: string;
+  /**
+   * Gunny classification notes as written in the uploaded Gunny sheets
+   * ("WHEAT CONSIDER AS GUNNY") — printed under the Gunny section of THIS PV
+   * only. None: no note line.
+   */
+  gunnyNotes?: string[];
 }): string {
-  const { commMap, periodLabel, crsId, crsName, gunny, billClerk, pvOfficer, pvDate } = opts;
+  const { commMap, periodLabel, crsId, crsName, gunny, billClerk, pvOfficer, pvDate, gunnyNotes } = opts;
   const fmtN = (v: number | undefined | null) => {
     if (v === undefined || v === null || v === 0) return '0';
     const n = Number(v);
@@ -183,6 +196,7 @@ export function buildPVTable(opts: {
     sl: number, label: string, unit: string,
     bagsOb: string, kgsOb: string, bagsRec: string, kgsRec: string, kgsTransfer: string,
     bagsTot: string, kgsTot: string, bagsIss: string, kgsIss: string, bagsBal: string, kgsBal: string,
+    bagsShort = '', kgsShort = '',
   ) =>
     '<tr>' +
     C(sl) + L(label) + C(unit) + C('') +
@@ -196,9 +210,11 @@ export function buildPVTable(opts: {
     C('') + C('') +
     C('') + C('') + C('') + C('') + C('') +
     C(bagsBal || '0') + C(kgsBal || '0') +
-    C('') + C('') +
+    C(bagsShort) + C(kgsShort) +
     C('') + C('') + C('') + C('') + C('') + C('') +
     '</tr>';
+  /** Transfer / shortage cells — blank when the row does not carry them (the automatic PV). */
+  const fmtT = (v: number | undefined) => (v === undefined ? '' : fmtN(v));
   const sectionLabel = (text: string) =>
     `<tr><td colspan="39" style="border:1px solid #000;padding:3px 8px;font-weight:700;font-size:9px;background:#F5F5F5">${text}</td></tr>`;
 
@@ -207,7 +223,11 @@ export function buildPVTable(opts: {
   for (const cid of mainComms) {
     const r = commMap[cid];
     const div = cid === 'PALM' ? 10 : cid === 'SALT_CIS' || cid === 'SALT_RFFS' ? 25 : 50;
-    rows += dataRow(sl++, r.name, r.unit, fmtB(r.open, div), fmtN(r.open), fmtB(r.receipt, div), fmtN(r.receipt), '', fmtB(r.total, div), fmtN(r.total), fmtB(r.issues, div), fmtN(r.issues), fmtB(r.closing, div), fmtN(r.closing));
+    rows += dataRow(
+      sl++, r.name, r.unit, fmtB(r.open, div), fmtN(r.open), fmtB(r.receipt, div), fmtN(r.receipt), fmtT(r.transfer),
+      fmtB(r.total, div), fmtN(r.total), fmtB(r.issues, div), fmtN(r.issues), fmtB(r.closing, div), fmtN(r.closing),
+      r.shortage === undefined ? '' : fmtB(r.shortage, div), fmtT(r.shortage),
+    );
   }
   rows += sectionLabel('Gunny');
   for (const [label, key] of [
@@ -218,11 +238,18 @@ export function buildPVTable(opts: {
     const g = gunny[key];
     rows += dataRow(sl++, label, 'NOS', g ? fmtN(g.opening) : '0', '', g ? fmtN(g.receipt) : '0', '', '', g ? fmtN(g.total) : '0', '', g ? fmtN(g.issues) : '0', '', g ? fmtN(g.closing) : '0', '');
   }
+  // The classification the office wrote under its Gunny sheet, as written —
+  // "WHEAT CONSIDER AS GUNNY" — so the PV says how its Gunny was counted.
+  const notes = (gunnyNotes ?? []).map((n) => n.trim()).filter(Boolean);
+  if (notes.length) {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    rows += `<tr class="pv-gunny-note"><td colspan="39" style="border:1px solid #000;padding:3px 8px;font-size:8.5px;font-weight:700">Note: ${notes.map(esc).join('; ')}</td></tr>`;
+  }
   if (policeComms.length) {
     rows += sectionLabel('Police');
     for (const cid of policeComms) {
       const r = commMap[cid];
-      rows += dataRow(sl++, r.name, r.unit, '0', fmtN(r.open), '0', fmtN(r.receipt), '', '0', fmtN(r.total), '0', fmtN(r.issues), '0', fmtN(r.closing));
+      rows += dataRow(sl++, r.name, r.unit, '0', fmtN(r.open), '0', fmtN(r.receipt), fmtT(r.transfer), '0', fmtN(r.total), '0', fmtN(r.issues), '0', fmtN(r.closing), r.shortage === undefined ? '' : '0', fmtT(r.shortage));
     }
   }
 

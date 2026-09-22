@@ -15,7 +15,7 @@
  * Receipt totals count item quantities (the legacy sum over item objects
  * was always 0 — noted in pvStatement.ts too).
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { useStore } from '@/lib/dataStore';
 import { appAlert } from '@/components/dialog';
@@ -23,7 +23,8 @@ import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/
 import { useCommodityMaster, useShops } from '@/lib/masters';
 import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow } from '@/lib/engine/pvStatement';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
-import { buildMonthlySheet, consolidateMonths, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
+import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
+import { quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 
@@ -54,6 +55,11 @@ export default function ReportsPage() {
   const monthlyStore = useStore<Record<string, never>>('monthlyStore') ?? {};
   const meGunnyStore = useStore<Record<string, Record<string, { opening?: number }>>>('meGunnyStore') ?? {};
   const rawPvOfficers = useStore<PvOfficerStore>('__pvOfficers');
+  // The current month of a manual 3-month PV is worked out from these, live.
+  const inspectionStore = useStore<Record<string, unknown>>('inspectionStore') ?? {};
+  const meManualStore = useStore<Record<string, never>>('meManualStore') ?? {};
+  const salesCloseStore = useStore<Record<string, never>>('salesCloseStore') ?? {};
+  const crsMaster = useStore<{ id: number; police?: boolean }[]>('__crsMaster') ?? [];
 
   const isAdmin = user?.role === 'ADMIN';
   const now = new Date();
@@ -88,7 +94,13 @@ export default function ReportsPage() {
     () => (crsVal ? resolveForStatement(pvOfficerStore, Number(crsVal)) : { officer: '', date: '' }),
     [pvOfficerStore, crsVal],
   );
-  const [manualRows, setManualRows] = useState<PvMonthRow[] | null>(null);
+  /**
+   * The manual 3-month PV, once its months have chained without a problem
+   * (pvQuarter.ts) — tagged with the shop and period it was generated for, so
+   * choosing another shop can never print one shop's figures under another's
+   * name.
+   */
+  const [manualQuarter, setManualQuarter] = useState<{ scope: string; q: Extract<QuarterResult, { ok: true }> } | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const shopIds = shops.map((_, i) => i + 1);
@@ -186,21 +198,17 @@ export default function ReportsPage() {
     // months. Both then go through the same builder, so the printed PV is the
     // same document either way.
     if (pvSource === 'manual') {
-      if (!manualRows) return '';
-      const commMap: Record<string, PvCommRow> = {};
-      for (const r of manualRows) {
-        commMap[r.commId] = {
-          name: r.name, unit: r.unit, open: r.open, receipt: r.receipt,
-          total: r.total, issues: r.sales, closing: r.closing, amount: r.amount, free: false,
-        };
-      }
-      const first = pvPeriod.months[0];
+      // Past months from their PDFs, the current month from the system,
+      // chained and checked (pvQuarter.ts) — the same sheet builder prints it.
+      if (!manualQuarter || manualQuarter.scope !== `${crsId}|${pvPeriod.rangeLabel}`) return '';
+      const { commMap, gunny, gunnyNotes } = quarterPvInputs(manualQuarter.q);
       return buildPVTable({
         commMap,
         periodLabel: pvPeriod.rangeLabel,
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
-        gunny: meGunnyStore[`${crsId}_${first.month}_${first.year}`] ?? {},
+        gunny,
+        gunnyNotes,
         billClerk: user?.fullName ?? '',
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
@@ -220,7 +228,27 @@ export default function ReportsPage() {
         pvDate: pvOfficer.date,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualRows, pvOfficer, entryStore, receiptStore, monthlyStore, meGunnyStore, generated]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, entryStore, receiptStore, monthlyStore, meGunnyStore, generated]);
+
+  /**
+   * The current month of a manual 3-month PV, worked out from the stores as
+   * they stand — a change keyed a moment ago is in it. Re-created whenever a
+   * store changes, so the card and the PV can never show a stale month.
+   */
+  /** Police only where CRS_MASTER says the shop has it — never assumed. */
+  const hasPolice = !!crsMaster.find((m) => Number(m.id) === Number(crsVal))?.police;
+  const systemMonth = useCallback(
+    (m: YearMonth) =>
+      systemQuarterMonth(Number(crsVal), m.month, m.year, {
+        entryStore: entryStore as Record<string, unknown>,
+        inspectionStore,
+        meManualStore,
+        receiptStore,
+        meGunnyStore: meGunnyStore as never,
+        salesCloseStore,
+      }, hasPolice),
+    [crsVal, hasPolice, entryStore, inspectionStore, meManualStore, receiptStore, meGunnyStore, salesCloseStore],
+  );
 
   /**
    * The rows this month would export.
@@ -372,7 +400,7 @@ export default function ReportsPage() {
                     <button
                       key={v}
                       type="button"
-                      onClick={() => { setPvSource(v); setManualRows(null); }}
+                      onClick={() => { setPvSource(v); setManualQuarter(null); }}
                       disabled={v === 'manual' && type !== 'quarterly'}
                       title={v === 'manual' && type !== 'quarterly' ? 'Manual upload is available for the 3-Month PV' : undefined}
                       style={{
@@ -424,7 +452,7 @@ export default function ReportsPage() {
                     <button
                       key={qi}
                       type="button"
-                      onClick={() => { setQuarterIdx(qi); setManualRows(null); }}
+                      onClick={() => { setQuarterIdx(qi); setManualQuarter(null); }}
                       style={{
                         textAlign: 'left', cursor: 'pointer', borderRadius: 10, padding: '12px 14px',
                         border: `2px solid ${on ? 'var(--navy, #0369A1)' : 'var(--border)'}`,
@@ -477,7 +505,10 @@ export default function ReportsPage() {
           period={pvPeriod}
           crsId={Number(crsVal)}
           crsName={shops[Number(crsVal) - 1]?.name ?? ''}
-          onGenerate={(months) => { setManualRows(consolidateMonths(months)); setGenerated((g) => g + 1); }}
+          hasPolice={hasPolice}
+          today={{ year: now.getFullYear(), month: now.getMonth() + 1 }}
+          systemMonth={systemMonth}
+          onGenerate={(q) => { if (pvPeriod) setManualQuarter({ scope: `${Number(crsVal)}|${pvPeriod.rangeLabel}`, q }); setGenerated((g) => g + 1); }}
         />
       ) : null}
       {isPV && pvSource === 'manual' && !crsVal ? (

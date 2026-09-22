@@ -28,6 +28,57 @@ export type RemitMonth = Record<string, RemitDay | RemitExtra>;
 export type CardRec = { count?: number | string };
 export type SalesClose = { date: string; gunny: number; poly: number; cbox: number };
 
+/** One Gunny Stock row as the screen shows it — see gunnyRowFor. */
+export type GunnyRow = {
+  rec: GunnyRec;
+  opening: number;
+  openingVal: string;
+  openingAuto: boolean;
+  rc: { val: number; src: string; imported: boolean };
+  issues: number | '';
+  total: number;
+  closing: number;
+};
+
+/**
+ * One Gunny Stock row, worked out exactly as the Gunny Stock screen shows it.
+ * The screen and the 3-month PV both call this, so the PV's September Gunny
+ * cannot differ from what the office sees on that screen.
+ *
+ *   Opening  this month's own figure, else last month's Closing carried
+ *   Receipt  the office's imported figure, else the Sales Close totals,
+ *            else the month's own sales bag counts for that pack type
+ *   Total    Opening + Receipt;   Closing = Total − Issues
+ */
+export function gunnyRowFor(
+  id: string,
+  month: Record<string, GunnyRec>,
+  prevMonth: Record<string, GunnyRec>,
+  salesClose: SalesClose | undefined,
+  gridGunnySales: Record<string, number>,
+): GunnyRow {
+  const rec = month[id] ?? {};
+  const prevClosing = prevMonth[id]?.closing;
+  const hasOwnOpening = rec.opening !== undefined && rec.opening !== '';
+  const openingAuto = !hasOwnOpening && prevClosing !== undefined ? true : !!rec.openingAuto && hasOwnOpening;
+  const opening = hasOwnOpening ? Number(rec.opening) || 0 : prevClosing !== undefined ? Number(prevClosing) || 0 : 0;
+  const openingVal = hasOwnOpening ? String(rec.opening) : prevClosing !== undefined ? String(prevClosing) : '';
+  let rc: GunnyRow['rc'];
+  if (rec.receiptImported !== undefined && rec.receiptImported !== null && String(rec.receiptImported) !== '') {
+    rc = { val: Number(rec.receiptImported) || 0, src: 'Imported from the office workbook', imported: true };
+  } else if (salesClose) {
+    const type = ME_GUNNY_TYPE[id];
+    const v = type === 'GUNNY' ? salesClose.gunny : type === 'POLY' ? salesClose.poly : salesClose.cbox;
+    rc = { val: v || 0, src: `Auto from Sales Close (${salesClose.date.split('-').reverse().join('/')})`, imported: false };
+  } else {
+    rc = { val: monthlySalesBags(ME_GUNNY_TYPE[id], gridGunnySales), src: `Auto from Monthly Entry Sales (${ME_GUNNY_TYPE[id].toLowerCase()} counts)`, imported: false };
+  }
+  const issues = rec.issues !== undefined && rec.issues !== '' ? Number(rec.issues) : '';
+  const total = opening + rc.val;
+  const closing = total - (Number(issues) || 0);
+  return { rec, opening, openingVal, openingAuto, rc, issues, total, closing };
+}
+
 export const ME_MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export const ME_GUNNY_ITEMS = [
