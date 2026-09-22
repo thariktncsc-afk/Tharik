@@ -108,6 +108,12 @@ looked like "invalid credentials" and took a while to find.
 
 Every seeded account still shares the password `pds123`.
 
+**A sign-in never hangs.** `login()` (authClient.tsx) abandons the request
+after `SIGN_IN_TIMEOUT_MS` (20 s) and says so, and the login page always takes
+the button back from "Connecting…" (try/finally) — it used to wait for ever on
+a request that never answered. The sign-in's activity-log row is written with
+`after()`, so the answer no longer waits for three log round trips.
+
 **A shop's sign-in username is the shop's — `crs8` — never the person's
 name.** The Users screen's Add / Edit form used to send `username: name` on
 every save, so editing an account silently renamed its login: on 2026-09-22
@@ -1002,7 +1008,11 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 
 - Set all four env vars in Vercel (`.env.local` is local only)
 - Vercel → Functions region **Mumbai (`bom1`)** — users are in Tamil Nadu, and
-  the default `iad1` round-trips every request through Virginia
+  the default `iad1` round-trips every request through Virginia. Now pinned in
+  `vercel.json` (`"regions": ["bom1"]`) — it was never set in the dashboard: on
+  2026-09-22 the live site's `X-Vercel-Id` read `bom1::iad1`, every function in
+  Virginia, and a CRS 17 sign-in on a phone sat on "Connecting…" until the clerk
+  closed the tab
 - Run any new migration against the live database as an explicit step —
   `0004_payments.sql` included, or the Payments screen 503s and every download
   silently stays free
