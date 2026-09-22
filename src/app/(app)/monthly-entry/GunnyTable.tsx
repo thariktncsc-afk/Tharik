@@ -11,7 +11,7 @@
  * Total = Opening + Receipt; Closing = Total − Issues (red when negative).
  */
 import { crsData } from '@/lib/dataStore';
-import { ME_GUNNY_ITEMS, ME_GUNNY_TYPE, monthlySalesBags, type GunnyRec, type MonthCtx, type SalesClose } from './lib';
+import { ME_GUNNY_ITEMS, gunnyRowFor, type GunnyRec, type MonthCtx, type SalesClose } from './lib';
 
 export default function GunnyTable({
   ctx,
@@ -32,34 +32,11 @@ export default function GunnyTable({
   const prevKey = `${ctx.crsId}_${ctx.month === 1 ? 12 : ctx.month - 1}_${ctx.month === 1 ? ctx.year - 1 : ctx.year}`;
   const prevMonth = gunny[prevKey] ?? {};
 
-  const receiptFor = (id: string): { val: number; src: string; imported: boolean } => {
-    const rec = month[id];
-    if (rec?.receiptImported !== undefined && rec.receiptImported !== null && String(rec.receiptImported) !== '') {
-      return { val: Number(rec.receiptImported) || 0, src: 'Imported from the office workbook', imported: true };
-    }
-    if (salesClose) {
-      const type = ME_GUNNY_TYPE[id];
-      const v = type === 'GUNNY' ? salesClose.gunny : type === 'POLY' ? salesClose.poly : salesClose.cbox;
-      return { val: v || 0, src: `Auto from Sales Close (${salesClose.date.split('-').reverse().join('/')})`, imported: false };
-    }
-    return { val: monthlySalesBags(ME_GUNNY_TYPE[id], gridGunnySales), src: `Auto from Monthly Entry Sales (${ME_GUNNY_TYPE[id].toLowerCase()} counts)`, imported: false };
-  };
-
-  const rowFor = (id: string) => {
-    const rec = month[id] ?? {};
-    // Opening: auto-carry from the previous month's closing when this month
-    // has no figure of its own (locked once carried — 15-monthly-extras).
-    const prevClosing = prevMonth[id]?.closing;
-    const hasOwnOpening = rec.opening !== undefined && rec.opening !== '';
-    const openingAuto = !hasOwnOpening && prevClosing !== undefined ? true : !!rec.openingAuto && hasOwnOpening;
-    const opening = hasOwnOpening ? Number(rec.opening) || 0 : prevClosing !== undefined ? Number(prevClosing) || 0 : 0;
-    const openingVal = hasOwnOpening ? String(rec.opening) : prevClosing !== undefined ? String(prevClosing) : '';
-    const rc = receiptFor(id);
-    const issues = rec.issues !== undefined && rec.issues !== '' ? Number(rec.issues) : '';
-    const total = opening + rc.val;
-    const closing = total - (Number(issues) || 0);
-    return { rec, opening, openingVal, openingAuto, rc, issues, total, closing };
-  };
+  // The row's arithmetic lives in lib.ts (gunnyRowFor), shared with the
+  // 3-month PV so the two can never show different September Gunny figures.
+  // Opening auto-carries from last month's closing and locks once carried
+  // (15-monthly-extras).
+  const rowFor = (id: string) => gunnyRowFor(id, month, prevMonth, salesClose, gridGunnySales);
 
   const write = (id: string, patch: Partial<GunnyRec>) => {
     crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
