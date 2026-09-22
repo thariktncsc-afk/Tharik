@@ -66,8 +66,17 @@ export default function LoginPage() {
     }
     setBusy(true);
     setError('');
-    const res = await login(username.trim(), password.trim(), userId);
-    setBusy(false);
+    // The button always comes back from "Connecting…" — whatever happens to
+    // the request — so a clerk is never left looking at a sign-in that is
+    // neither working nor failing.
+    let res: Awaited<ReturnType<typeof login>>;
+    try {
+      res = await login(username.trim(), password.trim(), userId);
+    } catch {
+      res = { ok: false, error: 'Sign-in failed. Please press Sign In again.' };
+    } finally {
+      setBusy(false);
+    }
     if (res.ok) {
       router.replace('/dashboard');
       return;

@@ -31,7 +31,7 @@ var CRS_MASTER = [
   {id:9,  code:'22EA002PN',    bc:'Prakasham',        bcMobile:'9943382480', packer:'',          packerMobile:'',           coll:true,  police:true,  status:'active'},
   {id:10, code:'22EA003PN',    bc:'Rajeshkanna',      bcMobile:'9092124055', packer:'',          packerMobile:'',           coll:true,  police:true,  status:'active'},
   {id:11, code:'22EA004PN',    bc:'Mohandoss',        bcMobile:'9787380758', packer:'',          packerMobile:'',           coll:true,  police:true,  status:'active'},
-  {id:12, code:'22EA008PN',    bc:'Thirumurugan',     bcMobile:'8940635005', packer:'',          packerMobile:'',           coll:true,  police:false, status:'active'},
+  {id:12, code:'22EA008PN',    bc:'Thirumurugan',     bcMobile:'8940635005', packer:'',          packerMobile:'',           coll:true,  police:true , status:'active'},
   {id:13, code:'',             bc:'',                 bcMobile:'',           packer:'',          packerMobile:'',           coll:false, police:false, status:'no_usage'},
   {id:14, code:'22CA002PN',    bc:'Pandiyan',         bcMobile:'6379749831', packer:'',          packerMobile:'',           coll:false, police:false, status:'active'},
   {id:15, code:'22CA003PN',    bc:'Bharathimohan',    bcMobile:'9578380326', packer:'',          packerMobile:'',           coll:false, police:true,  status:'active'},

@@ -12,7 +12,7 @@
  * cookie, and the client asks which of them is signing in — preserving the role
  * picker the sign-in screen has always shown.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, cookieOptions, decodeSession, encodeSession } from '@/lib/session';
@@ -153,10 +153,16 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.json({ ok: true, user: toEngineUser(chosen) });
-  // Signing in is on the activity log too, under the person who chose it.
-  await recordActivity(
-    { userId: chosen.id, username: chosen.username, role: chosen.role, crsId: chosen.crs_id ?? null, iat: 0 },
-    [{ crsId: chosen.crs_id ?? null, module: 'Session', action: 'signed-in', source: 'user', summary: 'Signed in' }],
+  // Signing in is on the activity log too, under the person who chose it —
+  // recorded once the answer has gone (next/server `after`). The log looks up
+  // the person and the shop and inserts a row: three database round trips the
+  // person signing in used to wait for, on a phone, before "Connecting…"
+  // changed. The log never decides a sign-in and swallows its own failures.
+  after(() =>
+    recordActivity(
+      { userId: chosen.id, username: chosen.username, role: chosen.role, crsId: chosen.crs_id ?? null, iat: 0 },
+      [{ crsId: chosen.crs_id ?? null, module: 'Session', action: 'signed-in', source: 'user', summary: 'Signed in' }],
+    ),
   );
   res.cookies.set(
     SESSION_COOKIE,

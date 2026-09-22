@@ -19,6 +19,7 @@ import {
   clearedMasterSlot,
   occupant,
   planTransfer,
+  signInUsernameFor,
   vacantRoles,
   withMasterSlot,
   type MasterRec,
@@ -653,12 +654,22 @@ function UserModal({
     const crsId = Number(crsVal);
     const payload: Record<string, unknown> = {
       fullName: name.trim(),
-      username: name.trim(), // username follows fullName, as the screen always did
       phone: phone.trim(),
       email: email.trim(),
       role,
       crsId,
     };
+    // The sign-in username is the SHOP's — `crs8` — shared by its Bill Clerk
+    // and Packer (sign-in asks which of them). This form used to send
+    // `username: name`, so every edit silently replaced it with the person's
+    // name: editing CRS 8's Anand on 2026-09-22 turned `crs8` into `Anand`
+    // and `crs8` stopped signing in. Now:
+    //   - a new account gets its shop's username;
+    //   - an edit keeps the username it has, unless the account is moved to
+    //     another shop, when a shop username follows the shop (crs8 → crs12);
+    //   - a username that is the person's own is never touched.
+    const username = signInUsernameFor(editUser, crsId);
+    if (username) payload.username = username;
     setBusy(true);
     try {
       const filled = { crsId, role, fullName: name.trim(), phone: phone.trim() };

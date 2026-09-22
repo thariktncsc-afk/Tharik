@@ -200,6 +200,8 @@ export default function ReceiptPage() {
    */
   const qtyRef = useRef<HTMLTableSectionElement>(null);
   const saveRef = useRef<HTMLButtonElement>(null);
+  /** A second tap while the receipt is still saving is ignored — it would build the same receipt again from the list on screen. */
+  const saving = useRef(false);
   const qtyKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
@@ -302,7 +304,10 @@ export default function ReceiptPage() {
       d.rpNextId = nextId + 1;
     });
     republishMonth(crsId, date, beforeSave);
-    if (!(await crsData.save())) {
+    // saveConfirmed, not save: save() answers false while the 5 s autosave is
+    // already sending, which told the clerk "not saved" for a receipt that
+    // landed a moment later. This waits on that save's answer instead.
+    if (!(await crsData.saveConfirmed())) {
       setBanner(refusal('Receipt not saved'));
       return;
     }
@@ -601,7 +606,13 @@ export default function ReceiptPage() {
                 </button>
                 <button
                   ref={saveRef}
-                  onClick={() => void save()}
+                  onClick={() => {
+                    if (saving.current) return;
+                    saving.current = true;
+                    void save().finally(() => {
+                      saving.current = false;
+                    });
+                  }}
                   style={{ background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
                 >
                   💾 Save Receipt
