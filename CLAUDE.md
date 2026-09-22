@@ -969,6 +969,20 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 Backups live in `backups/`, gitignored because they contain staff names and
 phone numbers.
 
+## Which shops have police ration
+
+`__crsMaster[].police` (live) — CRS 1, 5, 9, 10, 11, **12**, 15, 17, 19, 20, 23, 24,
+27, 28, 30 as of 2026-09-22, when the office assigned CRS 12 police ration. It
+is read by the CRS Master screen, the dashboard shop card ("Had Police") and
+the COLL statement's POLICE block (`d.hasPolice`); Daily and Monthly Entry show
+Section B and the CRS Police statement is offered for every shop regardless.
+
+The CRS Master screen shows the flag but cannot change it. Use
+`node tools/set-crs-police.mjs --crs=N --on|--off` (dry run) then `--write`:
+one field of one shop, the row backed up to `backups/` first, written under
+its version. The compiled default in `23-crs-master.js` is the seed only —
+keep it in step so a re-seed cannot undo the office's change.
+
 ## Open items
 
 - Five staff are `bc:` in `CRS_MASTER` but `Packer` in the users table
