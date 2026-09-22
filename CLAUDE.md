@@ -332,6 +332,16 @@ role.
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
 
+**An Initial Opening keyed into the wrong commodity's box** is corrected with
+`node tools/swap-opening.mjs --crs=N --date=YYYY-MM-DD --a=ID --b=ID` (dry run)
+then `--write`. It trades the two Openings on the shop's chain-start sheet
+(refusing any later, carried day), moves each Total and Closing by the same
+amount, then does what a Daily Entry save does — rebuilds the month and the
+chain after it — and writes only that shop's records, backed up and under
+version. It first proves that rebuilding the untouched month reproduces the
+stored one. Used for CRS 10 on 2026-09-22: PHH BRA 2056.02 ↔ PHH FRK 1195.982
+on 01-09-2026 (backup `backups/swap-opening-crs10-…`).
+
 ## Daily Entry — which day is on screen
 
 The foot of Daily Entry reads `← Previous Date | Current Date | Next Date →`,
