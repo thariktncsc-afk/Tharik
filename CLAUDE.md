@@ -961,14 +961,33 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   rightmost heading whose centre is left of its right edge (the sheets
   right-align numbers). Every row must add up or the upload is refused;
   transfer's direction is whichever sign makes the row's own TOTAL.
-- Several PDFs per month, any order, or the whole workbook as one PDF: other
-  sheets are stepped over. B6, Free Com and Cost Com share PAGE2's title, so
-  PAGE2 is the sheet with SHORTAG… **and** RATE/AMOUNT columns. A wrong shop,
-  wrong month, duplicate sheet or unknown commodity row refuses the file.
+- Several PDFs per month, any order, any file names, or the whole workbook as
+  one PDF: other sheets are stepped over. **CRS PAGE2 is the only required
+  sheet**; a month is complete the moment it is read. GUNNY and CRS POLICE
+  are read when uploaded (office, 2026-09-22).
+- **How PAGE2 is recognised.** B6, Free Com and Cost Com share its title, so
+  PAGE2 is the sheet with RATE/AMOUNT columns (B6 has none) and both a B.RICE
+  and a SUGAR row (Free Com has no SUGAR, Cost Com no B.RICE). **Never by its
+  adjustment columns**: CRS 1's PAGE2 has no EXCESS/SHORTAGE at all, and
+  requiring SHORTAG… stepped it over silently — "still needs CRS PAGE2" with
+  the file sitting right there. A file named like a PAGE2 that is not read as
+  one is now an error naming it.
+- **A blank CLOSING cell is Total − Sales**, not 0. CRS 1 leaves C.BOX and
+  P.GUNNY's Closing unprinted and opens the next month at exactly Total −
+  Sales (July C.BOX 398 → August opens 398). A printed Closing, 0 included,
+  is still read and checked.
+- The same file picked again (name + size) is not read twice; the same sheet
+  twice with identical figures counts once; with different figures it is
+  refused. A wrong shop or month, or an unknown commodity row, refuses it.
+- Uploads survive a refresh: the pages read are kept in sessionStorage per
+  shop and quarter, restored after mount (restoring during the first render
+  broke hydration). Nothing is written to the database.
 - **Police only where `__crsMaster[].police`** says so — the system month
-  drops its (zero) police rows otherwise, so no empty police section prints.
-  A police shop can tick "No police ration this month"; police then starts at
-  the first month that has it.
+  drops its (zero) police rows otherwise, and a police sheet uploaded for a
+  shop without it is left out, so no empty police section prints. Police and
+  gunny each chain over the months that have them: the first month with the
+  sheet opens the section, a month without it is stepped over (the carry is
+  still checked across it).
 - **The current month** is `systemQuarterMonth`: the Monthly Entry roll-up
   (`rebuildMonthlyFromDaily`) and the Gunny Stock screen's own rule
   (`gunnyRowFor`, now shared with `GunnyTable.tsx`), from the stores at that
@@ -985,6 +1004,13 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   shop and period, and a PDF still being read when the shop changes is
   dropped, so one shop's figures can never print under another's name.
 - The automatic PV is byte-identical to before (checked against `dev`).
+- **CRS 1, Q2 2026 (dry run, 2026-09-22):** July and August read in full and
+  carry July → August exactly, but Generate refuses on six commodities because
+  the Initial Openings typed on 01-09-2026 ("admin (office instruction)")
+  differ from the August PDF's closings: PHH FRK 1995 vs 495 + PHH BRA 0 vs
+  1500, AAY FRK 350 vs 50 + AAY 0 vs 300 (each pair sums the same), TAN 0 vs
+  150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
+  worked around in code.
 
 ## Tools
 

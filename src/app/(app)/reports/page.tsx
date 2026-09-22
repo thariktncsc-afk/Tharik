@@ -608,7 +608,15 @@ export default function ReportsPage() {
                     that matters: the figures look finished. Say which months
                     the shop has not published rather than quietly totalling
                     the ones it has. */}
-                {pvCoverage.missing.length ? (
+                {pvSource === 'manual' ? (
+                  // Manual reads its months from the uploaded PDFs and the
+                  // system; no monthly record is needed, so none is reported.
+                  <div style={{ margin: '0 0 12px', background: pvHtml ? '#F0FDF4' : '#F8FAFC', border: `1px solid ${pvHtml ? '#86EFAC' : 'var(--border)'}`, borderRadius: 8, padding: '10px 14px', color: pvHtml ? '#15803D' : 'var(--muted)', fontSize: 12 }}>
+                    {pvHtml
+                      ? <><strong>Generated from the uploaded PDFs</strong> and the current month&apos;s system data, carried month to month.</>
+                      : 'Upload the PDFs above and press Generate 3-Month PV.'}
+                  </div>
+                ) : pvCoverage.missing.length ? (
                   <div style={{ margin: '0 0 12px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 14px', color: '#92400E', fontSize: 12 }}>
                     <strong>
                       {pvCoverage.have.length} of {(pvPeriod?.months.length ?? 0)} months published.

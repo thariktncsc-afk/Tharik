@@ -95,11 +95,75 @@ if (!officeFiles.length) {
   const all = [];
   for (const f of officeFiles) all.push(...(await pagesOf(f)));
   const whole = P.readMonthPages(all, want);
-  check(`all ${officeFiles.length} sheets at once: B6, Free Com, Cost Com, Page 1… stepped over, same month read`, J(whole) === J(m));
+  const { skipped, ...wholeRest } = whole;
+  const { skipped: _s, ...threeRest } = m;
+  check(`all ${officeFiles.length} sheets at once: B6, Free Com, Cost Com, Page 1… stepped over, same month read`, J(wholeRest) === J(threeRest));
+  check(`…and the ${officeFiles.length - 3} other sheets are named as stepped over (B6, Free Com and Cost Com among them)`,
+    skipped.length === officeFiles.length - 3 && ['B6', 'FREE COM', 'COST COM'].every((n) => skipped.some((f) => f.toUpperCase().includes(n))), J(skipped));
   const r = refused(() => P.readMonthPages(three, { ...want, crsId: 12 }));
   check('CRS 9\'s PDFs offered as CRS 12 are refused', !!r && /CRS 9's statement, not CRS 12's/.test(r), r);
   const r2 = refused(() => P.readMonthPages(three, { ...want, month: 7 }));
   check('June offered as July is refused', !!r2 && /June 2026, not July 2026/.test(r2), r2);
+}
+
+// The office's CRS 1 July and August 2026 — the files that were reported as
+// "still needs CRS PAGE2" (their PAGE2 has no EXCESS / SHORTAGE columns).
+console.log('\n1b. The office\'s CRS 1 July and August 2026 PDFs');
+const crs1Dir = join(homedir(), 'Downloads');
+const crs1 = (tag, s) => join(crs1Dir, `CRS 1 ${tag} - ${s}`);
+if (!existsSync(crs1("JULY'26", 'CRS PAGE2 .pdf')) || !existsSync(crs1("AUG'26", 'CRS PAGE2 .pdf'))) {
+  console.log('  skip  not on this machine');
+} else {
+  const pdfjs = await imp('node_modules/pdfjs-dist/legacy/build/pdf.mjs');
+  const pagesOf = async (f) => {
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(f)), verbosity: 0 }).promise;
+    const out = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      const vp = page.getViewport({ scale: 1 });
+      const tc = await page.getTextContent();
+      out.push({ file: f.split(/[\\/]/).pop(), items: tc.items.filter((i) => i.str?.trim()).map((i) => ({ str: i.str, x: i.transform[4], y: vp.height - i.transform[5], w: i.width })) });
+    }
+    await doc.destroy();
+    return out;
+  };
+  const months = {};
+  for (const [mo, tag] of [[7, "JULY'26"], [8, "AUG'26"]]) {
+    const p2 = await pagesOf(crs1(tag, 'CRS PAGE2 .pdf'));
+    check(`${tag} PAGE2 is recognised as CRS PAGE2`, P.pageKindOf(p2[0].items) === 'page2');
+    const all = [...p2];
+    for (const s of ['GUNNY-2.pdf', 'CRS POLICE.pdf']) if (existsSync(crs1(tag, s))) all.push(...(await pagesOf(crs1(tag, s))));
+    let m = null;
+    try {
+      m = P.readMonthPages(all, { crsId: 1, month: mo, year: 2026 });
+    } catch (e) {
+      check(`${tag}: PAGE2 + GUNNY + POLICE read`, false, e.message);
+      continue;
+    }
+    months[mo] = m;
+    const n = Object.keys(m.rows).length;
+    check(`${tag}: PAGE2 + GUNNY + POLICE read — ${n} commodities, gunny ${m.gunny ? 'yes' : 'no'}, police ${m.police ? 'yes' : 'no'}`, n > 10 && !!m.gunny && !!m.police);
+    check(`${tag}: every row adds up`, Object.values(m.rows).every((r) => Math.abs(r.open + r.receipt + r.excess - r.shortage + r.transfer - r.sales - r.closing) < 0.001));
+    const alone = P.readMonthPages(p2, { crsId: 1, month: mo, year: 2026 });
+    check(`${tag}: PAGE2 alone completes the month`, J(alone.rows) === J(m.rows) && alone.gunny === null && alone.police === null);
+  }
+  if (months[7] && months[8]) {
+    const bad = Object.keys(months[7].rows).filter((id) => Math.abs((months[8].rows[id]?.open ?? 0) - months[7].rows[id].closing) > 0.001);
+    const detail = bad.map((id) => `${id}: Jul CB ${months[7].rows[id].closing} → Aug OB ${months[8].rows[id]?.open}`).join('; ');
+    // What the office's own sheets say — the chain reports it either way; this
+    // records whether CRS 1's July → August carries.
+    console.log(`  info  July → August carry: ${bad.length ? `${bad.length} commodities differ — ${detail}` : 'every commodity carries'}`);
+    // The two uploaded months plus a September that opens where August closed.
+    const sep = {
+      label: 'September 2026', source: 'system', notes: [],
+      rows: Object.fromEntries(Object.entries(months[8].rows).map(([id, r]) => [id, { open: r.closing, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: r.closing, sales: 0, closing: r.closing }])),
+      gunny: Object.fromEntries(Object.entries(months[8].gunny).map(([k, g]) => [k, { opening: g.closing, receipt: 0, total: g.closing, issues: 0, closing: g.closing }])),
+      police: Object.fromEntries(Object.entries(months[8].police).map(([id, r]) => [id, { open: r.closing, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: r.closing, sales: 0, closing: r.closing }])),
+    };
+    const q = Q.chainQuarter(1, [Q.pdfQuarterMonth(months[7]), Q.pdfQuarterMonth(months[8]), sep]);
+    if (bad.length) check('a July → August break is refused, naming each commodity', !q.ok && q.problems.length >= bad.length, J(q.problems ?? []));
+    else check('CRS 1 July + August + September chain into one quarter PV', q.ok, J(q.problems ?? []));
+  }
 }
 
 // ── 2. Built pages ───────────────────────────────────────────────────────
@@ -111,14 +175,17 @@ const rightAt = (str, edge, y) => ({ str: String(str), x: edge - W(str), y, w: W
 const MONTHS = ['', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEP', 'OCT', 'NOV', 'DEC'];
 
 /** A CRS PAGE2: rows = { label: { open:[bags,kgs], receipt:[..], excess:kgs, shortage:kgs, transfer:kgs, total:[..], sales:[..], closing:[..] } }. */
-function page2(crsId, month, rows, { year = 2026 } = {}) {
+function page2(crsId, month, rows, { year = 2026, adjustments = true } = {}) {
   const items = [
     at('TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION', 200, 20),
     at(`Monthly report for the month of ${MONTHS[month]}'${year}`, 240, 34),
     at('NAME OF THE B.C : SOMEONE', 60, 48), at(`CRS NO: ${crsId}`, 500, 48),
   ];
-  // parent, and its leaves: BAGS+KGS pair or a lone KGS.
-  const layout = [['OPENING', 2], ['RECEIPT', 2], ['EXCESS', 1], ['SHORTAG', 1], ['TRANSFER', 1], ['TOTAL', 2], ['SALES', 2], ['RATE', 0], ['AMOUNT', 0], ['CLOSING', 2]];
+  // The printed form always carries every commodity row, SUGAR included.
+  if (!('SUGAR' in rows)) rows = { ...rows, SUGAR: {} };
+  // parent, and its leaves: BAGS+KGS pair or a lone KGS. Some shops' PAGE2
+  // has no EXCESS / SHORTAGE columns at all (CRS 1).
+  const layout = [['OPENING', 2], ['RECEIPT', 2], ...(adjustments ? [['EXCESS', 1], ['SHORTAG', 1]] : []), ['TRANSFER', 1], ['TOTAL', 2], ['SALES', 2], ['RATE', 0], ['AMOUNT', 0], ['CLOSING', 2]];
   const cols = {};
   let x = 120;
   for (const [name, n] of layout) {
@@ -271,20 +338,41 @@ console.log('\n2. Built pages — what a real file can throw');
     { file: 'gunny.pdf', items: gunnySheet(crs, mo, { '50KG SS': { OPENING: 1, TOTAL: 1, CLOSING: 1 } }) },
     ...(withPolice ? [{ file: 'police.pdf', items: policeSheet(crs, mo, { 'B.R.A': { 'O.B': 1, TOTAL: 1, 'C.B': 1 } }) }] : []),
   ];
-  const ok = P.readMonthPages(pages(9, 7), { crsId: 9, month: 7, year: 2026, needsPolice: true });
-  check('Page 2 + Gunny + Police: one month', ok.rows.BRA.open === 1000 && ok.police.PB_BRA.open === 1);
-  const noPol = P.readMonthPages(pages(9, 7, false), { crsId: 9, month: 7, year: 2026, needsPolice: false });
-  check('a shop without police: Page 2 + Gunny is the whole month, police null', noPol.police === null);
-  const r5 = refused(() => P.readMonthPages(pages(9, 7, false), { crsId: 9, month: 7, year: 2026, needsPolice: true }));
-  check('a police shop without its Police sheet is told what it still needs', !!r5 && / still needs CRS POLICE/.test(r5), r5);
-  const r6 = refused(() => P.readMonthPages(pages(9, 7).slice(0, 1), { crsId: 9, month: 7, year: 2026, needsPolice: true }));
-  check('…and lists every sheet still missing', !!r6 && /still needs GUNNY and CRS POLICE/.test(r6), r6);
-  const r7 = refused(() => P.readMonthPages([...pages(9, 7), pages(9, 7)[0]], { crsId: 9, month: 7, year: 2026, needsPolice: true }));
-  check('the same sheet uploaded twice is refused', !!r7 && /second CRS PAGE2/.test(r7), r7);
-  const r8 = refused(() => P.readMonthPages([...pages(9, 7).slice(0, 2), pages(10, 7)[2]], { crsId: 9, month: 7, year: 2026, needsPolice: true }));
+  const JUL = { crsId: 9, month: 7, year: 2026 };
+  const ok = P.readMonthPages(pages(9, 7), JUL);
+  check('Page 2 + Gunny + Police: one month', ok.rows.BRA.open === 1000 && ok.police.PB_BRA.open === 1 && ok.gunny.ss50.opening === 1);
+  const noPol = P.readMonthPages(pages(9, 7, false), JUL);
+  check('Page 2 + Gunny, no Police sheet: the month is complete, police null', noPol.police === null && noPol.gunny !== null);
+  const only2 = P.readMonthPages(pages(9, 7).slice(0, 1), JUL);
+  check('Page 2 alone completes the month — Gunny and Police are optional', only2.rows.BRA.open === 1000 && only2.gunny === null && only2.police === null);
+  const r6 = refused(() => P.readMonthPages(pages(9, 7).slice(1), JUL));
+  check('Gunny + Police without Page 2: still needs CRS PAGE2', !!r6 && /July 2026: still needs CRS PAGE2\.$/.test(r6), r6);
+  const twice = P.readMonthPages([...pages(9, 7), pages(9, 7)[0], pages(9, 7)[1]], JUL);
+  check('the same sheets uploaded twice count once', twice.rows.BRA.open === 1000 && twice.gunny.ss50.opening === 1);
+  const other = { file: 'p2-other.pdf', items: page2(9, 7, { 'B.RICE': { open: 900, total: 900, closing: 900 } }) };
+  const r7 = refused(() => P.readMonthPages([...pages(9, 7), other], JUL));
+  check('two PAGE2s for one month with DIFFERENT figures are refused', !!r7 && /second CRS PAGE2 for July 2026 with different figures/.test(r7), r7);
+  const r8 = refused(() => P.readMonthPages([...pages(9, 7).slice(0, 2), pages(10, 7)[2]], JUL));
   check('another shop\'s Police sheet among CRS 9\'s is refused — no mixing', !!r8 && /CRS 10's statement, not CRS 9's/.test(r8), r8);
-  const r9 = refused(() => P.readMonthPages(pages(9, 8), { crsId: 9, month: 7, year: 2026, needsPolice: true }));
+  const r9 = refused(() => P.readMonthPages(pages(9, 8), JUL));
   check('August\'s PDFs dropped on July are refused', !!r9 && /August 2026, not July 2026/.test(r9), r9);
+
+  // CRS 1's PAGE2 has no EXCESS / SHORTAGE columns. Requiring them stepped it
+  // over as "another sheet" and left the month on "still needs CRS PAGE2".
+  const plain = page2(1, 7, { 'B.RICE': { open: [20, 1000], receipt: [10, 500], transfer: 100, total: [32, 1600], sales: [2, 100], closing: [30, 1500] } }, { adjustments: false });
+  check('a PAGE2 without EXCESS / SHORTAGE columns is recognised as PAGE2', P.pageKindOf(plain) === 'page2');
+  const pm = P.readMonthPages([{ file: "CRS 1 JULY'26 - CRS PAGE2 .pdf", items: plain }], { crsId: 1, month: 7, year: 2026 });
+  check('…and read: TRANSFER in its own column (+100), no excess or shortage', pm.rows.BRA.transfer === 100 && pm.rows.BRA.excess === 0 && pm.rows.BRA.closing === 1500, J(pm.rows.BRA));
+  // A file named as a PAGE2 that is not laid out as one: said plainly.
+  const notP2 = { file: "CRS 1 JULY'26 - CRS PAGE2 .pdf", items: [at("Monthly report for the month of JULY'2026", 200, 20), at('CRS NO: 1', 400, 34), at('B.RICE', 20, 60)] };
+  // A Closing left blank (CRS 1's C.BOX / P.GUNNY) is Total − Sales; a printed 0 is 0.
+  const blankCb = P.readPage2(page2(1, 7, { 'P.GUNNY': { open: [102, ''], receipt: [16, ''], total: [118, ''], sales: [74, ''] } }, { adjustments: false }));
+  check('a blank Closing is Total − Sales (P.GUNNY 118 − 74 = 44), not 0', blankCb.EMPTY_BAG.closing === 44, J(blankCb.EMPTY_BAG));
+  const zeroCb = refused(() => P.readPage2(page2(1, 7, { 'P.GUNNY': { open: [102, ''], total: [102, ''], sales: [74, ''], closing: [0, ''] } }, { adjustments: false })));
+  check('…but a PRINTED Closing of 0 that does not add up is still refused', !!zeroCb && /Closing says 0/.test(zeroCb), zeroCb);
+  const r10 = refused(() => P.readMonthPages([notP2], { crsId: 1, month: 7, year: 2026 }));
+  check('a PAGE2 file that cannot be read is an error naming it, not a silent wait',
+    !!r10 && /July 2026 CRS PAGE2 could not be read — CRS 1 JULY'26 - CRS PAGE2 \.pdf .*Please upload the correct PDF/.test(r10), r10);
 }
 
 // ── 3. The chain ─────────────────────────────────────────────────────────
@@ -348,6 +436,20 @@ const gun = (a, b, c) => ({ ss50: a, poly: b, cbox: c });
   // Police ration given in August: the police section starts there.
   const mid = Q.chainQuarter(12, [{ ...jul, police: null }, aug, sep]);
   check('police from August: opens at August\'s O.B, no July mismatch', mid.ok && mid.police.PB_BRA.open === 0 && mid.police.PB_BRA.receipt === 10, J(mid.ok ? mid.police : mid.problems));
+
+  // GUNNY is optional for an uploaded month: gunny then starts at the first
+  // month that has it.
+  const noGunJul = Q.chainQuarter(9, [{ ...jul, gunny: null }, aug, sep]);
+  check('no GUNNY sheet for July: gunny opens at August\'s figure, no mismatch', noGunJul.ok && noGunJul.gunny.ss50.opening === 110 && noGunJul.gunny.ss50.receipt === 20, J(noGunJul.ok ? noGunJul.gunny.ss50 : noGunJul.problems));
+  const noGunAug = Q.chainQuarter(9, [jul, { ...aug, gunny: null }, { ...sep, gunny: gun(G(110, 0, 10), G(5, 0, 0), G(0, 0, 0)) }]);
+  check('no GUNNY sheet for August: July carries straight to September', noGunAug.ok && noGunAug.gunny.ss50.closing === 100, J(noGunAug.ok ? noGunAug.gunny.ss50 : noGunAug.problems));
+  // POLICE missing in the middle month: stepped over, and the carry is still checked.
+  const noPolAug = Q.chainQuarter(9, [jul, { ...aug, police: null }, sep]);
+  check('no CRS POLICE for August: police steps over it and still checks July → September',
+    !noPolAug.ok && noPolAug.problems.some((p) => /July 2026 closes at 0, but September 2026 opens at 5/.test(p)), J(noPolAug.problems ?? []));
+  // A shop without police ration: a police sheet uploaded anyway is left out.
+  check('a police sheet uploaded for a shop without police ration is not printed',
+    Q.pdfQuarterMonth({ crsId: 2, month: 7, year: 2026, rows: {}, gunny: null, police: { PB_BRA: F(1, 0, 0) }, notes: [], skipped: [] }, false).police === null);
 
   // No note anywhere: no note line.
   const nn = Q.chainQuarter(9, [{ ...jul, notes: [] }, { ...aug, notes: [] }, sep]);

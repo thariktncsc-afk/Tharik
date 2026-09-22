@@ -33,7 +33,8 @@ export type QuarterMonth = {
   label: string;
   source: 'pdf' | 'system';
   rows: Record<string, Flow>;
-  gunny: Record<GunnyKey, GunnyFlow>;
+  /** Null when no GUNNY sheet was uploaded for this month. */
+  gunny: Record<GunnyKey, GunnyFlow> | null;
   /** Null when this month has no police section at all. */
   police: Record<string, Flow> | null;
   notes: string[];
@@ -71,9 +72,12 @@ export const monthLabel = (month: number, year: number) => `${MN[month]} ${year}
 const ZERO: Flow = { open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0 };
 const GZERO: GunnyFlow = { opening: 0, receipt: 0, total: 0, issues: 0, closing: 0 };
 
-/** Uploaded PDFs → a quarter month. */
-export function pdfQuarterMonth(m: PdfMonth): QuarterMonth {
-  return { label: monthLabel(m.month, m.year), source: 'pdf', rows: m.rows, gunny: m.gunny, police: m.police, notes: m.notes };
+/**
+ * Uploaded PDFs → a quarter month. A shop without police ration (CRS_MASTER)
+ * prints no police section, so a police sheet uploaded for it is left out.
+ */
+export function pdfQuarterMonth(m: PdfMonth, hasPolice = true): QuarterMonth {
+  return { label: monthLabel(m.month, m.year), source: 'pdf', rows: m.rows, gunny: m.gunny, police: hasPolice ? m.police : null, notes: m.notes };
 }
 
 type Stores = {
@@ -225,24 +229,27 @@ export function chainQuarter(crsId: number, months: QuarterMonth[]): QuarterResu
     if (r) rows[id] = r;
   }
 
-  // Police: only if some month has a police section. It starts at the first
-  // month that has one (a shop given police ration mid-quarter opens there).
+  // Police: only if some month has a police section, and only over the
+  // months that have one — the CRS POLICE sheet is optional, so the first
+  // month with it opens the section, and a month without it is stepped over
+  // (the next month must then open where the last one with it closed).
   let police: Record<string, QuarterRow> | null = null;
   if (months.some((m) => m.police)) {
     police = {};
-    const firstWith = months.findIndex((m) => m.police);
     for (const c of lists.b) {
-      const r = chainFlows(c.id, months.slice(firstWith).map((m) => ({ label: m.label, flow: m.police ? m.police[c.id] ?? { ...ZERO } : { ...ZERO } })), `${c.en}`, problems);
+      const r = chainFlows(c.id, months.map((m) => ({ label: m.label, flow: m.police ? m.police[c.id] ?? { ...ZERO } : undefined })), `${c.en}`, problems);
       if (r) police[c.id] = r;
     }
   }
 
-  // Gunny: the same carry, in pieces.
+  // Gunny: the same carry, in pieces, over the months that have a GUNNY
+  // sheet (optional for an uploaded month; the current month always has it).
   const gunny = {} as Record<GunnyKey, GunnyFlow>;
   for (const [k, label] of [['ss50', '50 KG SS GUNNY'], ['poly', 'POLYTHENE'], ['cbox', 'C.BOX']] as const) {
     const q = { opening: 0, receipt: 0, issues: 0, closing: 0 };
     let prev: { label: string; closing: number } | null = null;
     for (const m of months) {
+      if (!m.gunny) continue;
       const g = m.gunny[k] ?? GZERO;
       if (!prev) q.opening = g.opening;
       else if (!eq(g.opening, prev.closing)) {
@@ -259,8 +266,10 @@ export function chainQuarter(crsId: number, months: QuarterMonth[]): QuarterResu
     gunny[k] = { opening: r3(q.opening), receipt: r3(q.receipt), total: r3(q.opening + q.receipt), issues: r3(q.issues), closing: r3(q.closing) };
   }
 
-  // The quarter must add up as a whole, too.
+  // The quarter must add up as a whole, too. A commodity already reported as
+  // not carrying cannot add up either — saying so again is just noise.
   for (const r of [...Object.values(rows), ...Object.values(police ?? {})]) {
+    if (problems.some((p) => p.startsWith(`${r.name}: `))) continue;
     const calc = r.open + r.receipt + r.transfer + r.excess - r.sales - r.shortage;
     if (!eq(calc, r.closing)) problems.push(`${r.name}: the quarter does not add up — ${fmt(calc)} worked out, ${fmt(r.closing)} as the last Closing.`);
   }

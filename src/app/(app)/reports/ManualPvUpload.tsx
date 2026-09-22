@@ -4,31 +4,61 @@
  * Manual 3-Month PV — the quarter's past months from the office's statement
  * PDFs, the current month straight from this system (office, 2026-09-22).
  *
- *   A past month      → upload its PDFs: CRS PAGE2 and GUNNY, plus CRS POLICE
- *                       for a shop with police ration. Several files at once;
- *                       each page is recognised by its own title, and must be
- *                       this shop and this month (pvPdfParse.ts).
+ *   A past month      → upload its PDFs. CRS PAGE2 is the one sheet it needs;
+ *                       GUNNY and CRS POLICE are read when uploaded. Several
+ *                       files at once, any file names: each page is recognised
+ *                       by what is on it, and must be this shop and this month
+ *                       (pvPdfParse.ts). The month is complete the moment its
+ *                       PAGE2 has been read — no monthly record is waited for.
  *   The current month → nothing to upload: it is worked out from the saved
  *                       data the moment the PV is generated (pvQuarter.ts).
  *   A later month     → not yet — it has not happened.
  *
- * Generate stays off until every past month has its sheets and the current
+ * Generate stays off until every past month has its PAGE2 and the current
  * month has loaded. It then chains the months (July → August → September):
  * a month that does not open where the last one closed stops the PV with the
  * difference, commodity by commodity, rather than printing it.
  *
- * Uploaded PDFs live only in this screen's state. Nothing is saved.
+ * Uploaded PDFs are never saved to the system. The pages read from them are
+ * kept in this browser tab (sessionStorage, per shop and quarter) so a
+ * refresh does not lose them.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { monthName, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { PdfReadError, readMonthPages, type PdfMonth, type TextItem } from '@/lib/engine/pvPdfParse';
 import { chainQuarter, pdfQuarterMonth, type QuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
 
 type Page = { file: string; items: TextItem[] };
-type Slot = { files: string[]; pages: Page[]; data: PdfMonth | null; error: string; pending: string; noPolice: boolean };
-const EMPTY_SLOT: Slot = { files: [], pages: [], data: null, error: '', pending: '', noPolice: false };
+/**
+ * One uploaded month. `fileKeys` (name + size) makes picking the same file
+ * again a no-op; `notices` are per-file messages that do not decide the month
+ * (a duplicate ignored, a file that would not open and was not added).
+ */
+type Slot = { files: string[]; fileKeys: string[]; pages: Page[]; data: PdfMonth | null; error: string; pending: string; notices: string[] };
+type Saved = Pick<Slot, 'files' | 'fileKeys' | 'pages'>;
+const EMPTY_SLOT: Slot = { files: [], fileKeys: [], pages: [], data: null, error: '', pending: '', notices: [] };
 
 const keyOf = (m: YearMonth) => `${m.year}-${m.month}`;
+const storeKey = (scope: string) => `pvq:${scope}`;
+
+function loadSaved(scope: string): Record<string, Saved> {
+  try {
+    const raw = sessionStorage.getItem(storeKey(scope));
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+function saveSlots(scope: string, slots: Record<string, Slot>) {
+  try {
+    const keep: Record<string, Saved> = {};
+    for (const [k, s] of Object.entries(slots)) if (s.pages.length) keep[k] = { files: s.files, fileKeys: s.fileKeys, pages: s.pages };
+    if (Object.keys(keep).length) sessionStorage.setItem(storeKey(scope), JSON.stringify(keep));
+    else sessionStorage.removeItem(storeKey(scope));
+  } catch {
+    // Storage full or blocked: the upload still works, it just won't survive a refresh.
+  }
+}
 
 export default function ManualPvUpload({
   period,
@@ -49,22 +79,54 @@ export default function ManualPvUpload({
   systemMonth: (m: YearMonth) => QuarterMonth;
   onGenerate: (q: Extract<QuarterResult, { ok: true }>) => void;
 }) {
-  const [slots, setSlots] = useState<Record<string, Slot>>({});
+  const scopeId = `${crsId}|${period.months.map(keyOf).join('|')}`;
+
+  /** Re-read a slot from every page it now holds. */
+  const settle = (m: YearMonth, s: Slot): Slot => {
+    if (!s.pages.length) return { ...s, data: null, error: '', pending: '' };
+    try {
+      return { ...s, data: readMonthPages(s.pages, { crsId, month: m.month, year: m.year }), error: '', pending: '' };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // "still needs CRS PAGE2" is a month part-way through, not a fault.
+      if (e instanceof PdfReadError && / still needs /.test(msg)) return { ...s, data: null, error: '', pending: msg };
+      return { ...s, data: null, error: msg, pending: '' };
+    }
+  };
+  /** This shop and quarter's uploads as this tab last held them, read again from their pages. */
+  const restore = (): Record<string, Slot> => {
+    const saved = loadSaved(scopeId);
+    const out: Record<string, Slot> = {};
+    for (const m of period.months) {
+      const s = saved[keyOf(m)];
+      if (s?.pages?.length) out[keyOf(m)] = settle(m, { ...EMPTY_SLOT, ...s });
+    }
+    return out;
+  };
+
+  const [slots, setSlotsState] = useState<Record<string, Slot>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
+  /** Every change is kept for a refresh, under this shop and quarter only. */
+  const setSlots = (fn: (p: Record<string, Slot>) => Record<string, Slot>) =>
+    setSlotsState((p) => {
+      const next = fn(p);
+      saveSlots(scopeId, next);
+      return next;
+    });
 
-  // A new shop or period means the old files no longer belong to these slots.
-  const scopeId = `${crsId}|${period.months.map(keyOf).join('|')}`;
-  const [seen, setSeen] = useState(scopeId);
   // Where a PDF still being read must land — or nowhere, if the shop or
-  // period changed while it was read.
+  // quarter changed while it was read.
   const scopeRef = useRef(scopeId);
   scopeRef.current = scopeId;
-  if (seen !== scopeId) {
-    setSeen(scopeId);
-    setSlots({});
+  // On opening, and on a new shop or quarter: its own uploads (if this tab
+  // has any), never the last one's. After mount, not during the first render —
+  // the server has no sessionStorage, and the two renders must agree.
+  useEffect(() => {
+    setSlotsState(restore());
     setProblems([]);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeId]);
 
   const kindOf = (m: YearMonth): 'pdf' | 'system' | 'future' => {
     const a = m.year * 12 + m.month;
@@ -83,52 +145,54 @@ export default function ManualPvUpload({
     }
   }, [current, systemMonth]);
 
-  /** Re-read a slot from every page it now holds. */
-  const settle = (m: YearMonth, s: Slot): Slot => {
-    if (!s.pages.length) return { ...s, data: null, error: '', pending: '' };
-    try {
-      const data = readMonthPages(s.pages, { crsId, month: m.month, year: m.year, needsPolice: hasPolice && !s.noPolice });
-      return { ...s, data, error: '', pending: '' };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // "still needs GUNNY" is where a clerk is part-way through, not a fault.
-      if (e instanceof PdfReadError && / still needs /.test(msg)) return { ...s, data: null, error: '', pending: msg };
-      return { ...s, data: null, error: msg, pending: '' };
-    }
-  };
-
   const addFiles = async (m: YearMonth, list: File[]) => {
     if (!list.length) return;
     const k = keyOf(m);
     const startedIn = scopeId;
+    const label = `${monthName(m.month)} ${m.year}`;
     setBusy(k);
     setProblems([]);
+    const have = new Set((slots[k] ?? EMPTY_SLOT).fileKeys);
+    const pages: Page[] = [];
+    const names: string[] = [];
+    const keys: string[] = [];
+    const notices: string[] = [];
     try {
-      const { pdfPages } = await import('@/lib/engine/pvPdfLoad');
-      const pages: Page[] = [];
-      const names: string[] = [];
-      for (const f of list) {
-        if (!/\.pdf$/i.test(f.name)) throw new PdfReadError(`${f.name}: upload the statement as PDF.`);
-        pages.push(...(await pdfPages(f)));
-        names.push(f.name);
+      try {
+        const { pdfPages } = await import('@/lib/engine/pvPdfLoad');
+        for (const f of list) {
+          const fk = `${f.name}|${f.size}`;
+          if (have.has(fk)) {
+            notices.push(`${f.name} is already uploaded for ${label} — not read again.`);
+            continue;
+          }
+          if (!/\.pdf$/i.test(f.name)) {
+            notices.push(`${f.name} is not a PDF — not added. Please upload the statement as PDF.`);
+            continue;
+          }
+          try {
+            pages.push(...(await pdfPages(f)));
+            names.push(f.name);
+            keys.push(fk);
+            have.add(fk);
+          } catch {
+            notices.push(`${f.name} could not be opened as a PDF — not added. Please upload the correct PDF.`);
+          }
+        }
+      } catch (e) {
+        notices.push(`The PDF reader could not start (${e instanceof Error ? e.message : String(e)}). Reload the page and try again.`);
       }
-      if (scopeRef.current !== startedIn) return; // another shop or period now
+      if (scopeRef.current !== startedIn) return; // another shop or quarter now
       setSlots((p) => {
         const cur = p[k] ?? EMPTY_SLOT;
-        return { ...p, [k]: settle(m, { ...cur, files: [...cur.files, ...names], pages: [...cur.pages, ...pages] }) };
+        return {
+          ...p,
+          [k]: settle(m, { ...cur, files: [...cur.files, ...names], fileKeys: [...cur.fileKeys, ...keys], pages: [...cur.pages, ...pages], notices }),
+        };
       });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (scopeRef.current !== startedIn) return;
-      setSlots((p) => ({ ...p, [k]: { ...(p[k] ?? EMPTY_SLOT), error: /password|Invalid PDF/i.test(msg) ? 'This file could not be opened as a PDF.' : msg } }));
     } finally {
       setBusy(null);
     }
-  };
-
-  const setNoPolice = (m: YearMonth, v: boolean) => {
-    const k = keyOf(m);
-    setSlots((p) => ({ ...p, [k]: settle(m, { ...(p[k] ?? EMPTY_SLOT), noPolice: v }) }));
   };
 
   const pdfMonths = period.months.filter((m) => kindOf(m) === 'pdf');
@@ -139,7 +203,7 @@ export default function ManualPvUpload({
 
   const generate = () => {
     const months: QuarterMonth[] = period.months.map((m) =>
-      kindOf(m) === 'system' ? systemMonth(m) : pdfQuarterMonth(slots[keyOf(m)].data!),
+      kindOf(m) === 'system' ? systemMonth(m) : pdfQuarterMonth(slots[keyOf(m)].data!, hasPolice),
     );
     const q = chainQuarter(crsId, months);
     if (!q.ok) {
@@ -152,6 +216,7 @@ export default function ManualPvUpload({
 
   const card: React.CSSProperties = { border: '1px solid var(--border)', borderRadius: 12, background: '#fff', padding: 14, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 160 };
   const btn: React.CSSProperties = { display: 'block', textAlign: 'center', borderRadius: 7, padding: '8px 0', fontSize: 12, fontWeight: 700 };
+  const line = (ok: boolean): React.CSSProperties => ({ color: ok ? '#15803D' : 'var(--muted)', fontWeight: ok ? 700 : 400 });
 
   return (
     <div className="card mb-4">
@@ -195,45 +260,57 @@ export default function ManualPvUpload({
               );
             }
             const s = slots[k] ?? EMPTY_SLOT;
-            const ok = !!s.data;
-            const tone = ok ? 'ok' : s.error ? 'err' : s.pending ? 'pending' : 'idle';
+            const d = s.data;
+            const tone = d ? 'ok' : s.error ? 'err' : s.pending ? 'pending' : 'idle';
             const border = { ok: '#86EFAC', err: '#FCA5A5', pending: '#FDE68A', idle: 'var(--border)' }[tone];
             const bg = { ok: '#F0FDF4', err: '#FEF2F2', pending: '#FFFBEB', idle: '#fff' }[tone];
             return (
               <div key={k} style={{ ...card, borderColor: border, background: bg }}>
-                <div style={{ fontWeight: 800, fontSize: 13, color: ok ? '#15803D' : s.error ? '#B91C1C' : 'var(--text)', textTransform: 'uppercase', letterSpacing: '.03em' }}>📄 {monthName(m.month)} {m.year}</div>
+                <div style={{ fontWeight: 800, fontSize: 13, color: d ? '#15803D' : s.error ? '#B91C1C' : 'var(--text)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
+                  {d ? '✓' : '📄'} {monthName(m.month)} {m.year}
+                </div>
                 <div style={{ fontSize: 12, fontWeight: 700 }}>Upload PDF</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
-                  CRS PAGE2 + GUNNY{hasPolice ? ' + CRS POLICE' : ''} — several PDFs at once is fine
+                  CRS PAGE2 (required) · GUNNY{hasPolice ? ' · CRS POLICE' : ''} when you have them — several PDFs at once is fine
                 </div>
                 {s.files.length ? <div style={{ fontSize: 11, wordBreak: 'break-all' }}>{s.files.map((f) => <div key={f}>• {f}</div>)}</div> : null}
-                {ok ? (
-                  <div style={{ fontSize: 12, color: '#15803D', fontWeight: 700 }}>
-                    ✅ {Object.keys(s.data!.rows).length} commodities · Gunny{s.data!.police ? ' · Police' : ''}
-                    {s.data!.notes.length ? <div style={{ fontWeight: 600, marginTop: 3 }}>Note: {s.data!.notes.join('; ')}</div> : null}
+                {d ? (
+                  <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                    <div style={line(true)}>✓ {monthName(m.month)} {m.year} CRS PAGE2 uploaded · {Object.keys(d.rows).length} commodities</div>
+                    <div style={line(!!d.gunny)}>{d.gunny ? '✓ GUNNY uploaded' : '– No GUNNY uploaded (optional)'}</div>
+                    {hasPolice ? (
+                      <div style={line(!!d.police)}>{d.police ? '✓ CRS POLICE uploaded' : '– No CRS POLICE uploaded (optional)'}</div>
+                    ) : d.police ? (
+                      <div style={line(false)}>– CRS POLICE not used: CRS {crsId} has no police ration</div>
+                    ) : null}
+                    {d.notes.length ? <div style={{ color: '#15803D', fontWeight: 600 }}>Note: {d.notes.join('; ')}</div> : null}
                   </div>
                 ) : s.error ? (
                   <div style={{ fontSize: 11, color: '#B91C1C', lineHeight: 1.5 }}>{s.error}</div>
                 ) : s.pending ? (
                   <div style={{ fontSize: 11, color: '#92400E', lineHeight: 1.5 }}>{s.pending}</div>
                 ) : null}
-                {hasPolice ? (
-                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: 'var(--muted)', textTransform: 'none', letterSpacing: 0, margin: 0, cursor: 'pointer' }}>
-                    <input type="checkbox" style={{ width: 'auto', margin: 0, flex: 'none' }} checked={s.noPolice} onChange={(e) => setNoPolice(m, e.target.checked)} />
-                    No police ration this month
-                  </label>
-                ) : null}
+                {s.notices.map((n) => (
+                  <div key={n} style={{ fontSize: 11, color: /already uploaded/.test(n) ? 'var(--muted)' : '#B91C1C', lineHeight: 1.5 }}>{n}</div>
+                ))}
                 <div style={{ display: 'flex', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
-                  <label style={{ flex: 1, minWidth: 90 }}>
+                  <label style={{ flex: 1, minWidth: 90, margin: 0 }}>
                     <span style={{ ...btn, background: busy === k ? '#94A3B8' : 'var(--navy, #0369A1)', color: '#fff', cursor: busy === k ? 'default' : 'pointer' }}>
                       {busy === k ? 'Reading…' : s.files.length ? 'Add PDF' : 'Browse PDF'}
                     </span>
-                    <input type="file" accept=".pdf,application/pdf" multiple disabled={busy === k} style={{ display: 'none' }} onChange={(e) => {
-                      // Copied out first: clearing the input (so the same file can be picked again) empties its list.
-                      const picked = Array.from(e.target.files ?? []);
-                      e.target.value = '';
-                      void addFiles(m, picked);
-                    }} />
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      multiple
+                      disabled={busy === k}
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        // Copied out first: clearing the input (so the same file can be picked again) empties its list.
+                        const picked = Array.from(e.target.files ?? []);
+                        e.target.value = '';
+                        void addFiles(m, picked);
+                      }}
+                    />
                   </label>
                   {s.files.length ? (
                     <button type="button" onClick={() => setSlots((p) => ({ ...p, [k]: EMPTY_SLOT }))} style={{ ...btn, flex: 1, minWidth: 90, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', cursor: 'pointer' }}>

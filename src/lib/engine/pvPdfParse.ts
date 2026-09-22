@@ -58,9 +58,13 @@ export type PdfMonth = {
   month: number;
   year: number;
   rows: Record<string, Flow>;
-  gunny: Record<GunnyKey, GunnyFlow>;
+  /** Null when no GUNNY sheet was uploaded for the month — it is optional. */
+  gunny: Record<GunnyKey, GunnyFlow> | null;
+  /** Null when no CRS POLICE sheet was uploaded — optional too. */
   police: Record<string, Flow> | null;
   notes: string[];
+  /** Other sheets of the workbook that were stepped over (Page 1, RBI, B6…). */
+  skipped: string[];
 };
 
 export class PdfReadError extends Error {}
@@ -106,9 +110,13 @@ export function crsOf(text: string): number | null {
 
 /**
  * Which sheet this page is. B6, Free Com and Cost Com share CRS PAGE2's title
- * ("Monthly report for the month of …"), so PAGE2 is told apart by its
- * columns: it is the one sheet with both a SHORTAGE column and RATE / AMOUNT
- * (B6 has no money columns; Free and Cost Com no adjustments).
+ * ("Monthly report for the month of …"), so PAGE2 is told apart by what is
+ * on it: RATE / AMOUNT columns (B6 has none) and both a B.RICE and a SUGAR
+ * row (Free Com has no SUGAR, Cost Com no B.RICE).
+ *
+ * NOT by its adjustment columns: shops' workbooks differ in whether PAGE2
+ * carries EXCESS / SHORTAGE at all — CRS 1's has neither, and requiring
+ * SHORTAGE stepped its PAGE2 over as "another sheet" (2026-09-22).
  */
 export function pageKindOf(items: TextItem[]): PageKind | null {
   const text = norm(items.map((i) => i.str).join(' '));
@@ -116,8 +124,7 @@ export function pageKindOf(items: TextItem[]): PageKind | null {
   if (text.includes('POLICE RECEIPT FOR THE MONTH')) return 'police';
   if (text.includes('MONTHLY REPORT FOR THE MONTH')) {
     const words = new Set(items.map((i) => norm(i.str)));
-    const shortage = [...words].some((w) => w.startsWith('SHORTAG'));
-    if (shortage && words.has('RATE') && words.has('AMOUNT')) return 'page2';
+    if (words.has('RATE') && words.has('AMOUNT') && words.has('B.RICE') && words.has('SUGAR')) return 'page2';
   }
   return null;
 }
@@ -228,7 +235,12 @@ export function readPage2(items: TextItem[]): Record<string, Flow> {
       return PIECES.has(id) ? (s.BAGS ?? s.KGS ?? 0) : (s.KGS ?? 0);
     };
     const open = qty('open'), receipt = qty('receipt'), excess = qty('excess'), shortage = qty('shortage');
-    const transferCell = qty('transfer'), total = qty('total'), sales = qty('sales'), closing = qty('closing');
+    const transferCell = qty('transfer'), total = qty('total'), sales = qty('sales');
+    // A CLOSING cell left blank is Total − Sales, not 0: CRS 1 leaves C.BOX and
+    // P.GUNNY's Closing unprinted, and its next month opens at exactly Total −
+    // Sales (July C.BOX 343 + 55 = 398 → August opens 398; P.GUNNY 118 − 74 →
+    // 44). A PRINTED Closing — 0 included — is still read and still checked.
+    const closing = cell.closing ? qty('closing') : r3(total - sales);
     rows[id] = checkedFlow(`CRS PAGE2 · ${label}`, { open, receipt, excess, shortage, transferCell, total, sales, closing });
   }
   if (!Object.keys(rows).length) throw new PdfReadError('CRS PAGE2: no commodity rows were read.');
@@ -371,44 +383,60 @@ export function readPage(items: TextItem[]): PageRead {
 }
 
 /**
- * A month from its pages — any number of PDFs, any number of pages. Needs one
- * CRS PAGE2 and one GUNNY, and a CRS POLICE when `needsPolice`; every page
- * read must be this shop and this month. Other sheets (Page 1, RBI, Receipt…)
- * are stepped over, so the whole workbook saved as one PDF can be uploaded.
+ * A month from its pages — any number of PDFs, any number of pages, in any
+ * order. **CRS PAGE2 is the one sheet a month needs**; GUNNY and CRS POLICE are
+ * read when they are there (office, 2026-09-22). Every page read must be this
+ * shop and this month. Other sheets (Page 1, RBI, B6…) are stepped over and
+ * named in `skipped`, so the whole workbook saved as one PDF can be uploaded.
+ *
+ * The same sheet twice with the same figures (a file picked again) counts
+ * once; twice with DIFFERENT figures is refused — which one is right is not
+ * this reader's to guess.
  */
 export function readMonthPages(
   pages: { file: string; items: TextItem[] }[],
-  want: { crsId: number; month: number; year: number; needsPolice: boolean },
+  want: { crsId: number; month: number; year: number },
 ): PdfMonth {
   const MN = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const mon = `${MN[want.month]} ${want.year}`;
   let page2: Record<string, Flow> | null = null;
   let gunny: Record<GunnyKey, GunnyFlow> | null = null;
   let police: Record<string, Flow> | null = null;
   let notes: string[] = [];
+  const skipped: string[] = [];
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   for (const p of pages) {
     if (!p.items.some((i) => i.str.trim())) continue; // a blank page
-    if (!pageKindOf(p.items)) continue; // a sheet the PV does not use
+    if (!pageKindOf(p.items)) {
+      if (!skipped.includes(p.file)) skipped.push(p.file);
+      continue;
+    }
     let r: PageRead;
     try {
       r = readPage(p.items);
     } catch (e) {
-      throw new PdfReadError(`${p.file}: ${e instanceof Error ? e.message : String(e)}`);
+      throw new PdfReadError(`${p.file} could not be read — ${e instanceof Error ? e.message : String(e)} Please upload the correct PDF.`);
     }
     if (r.crsId !== want.crsId) throw new PdfReadError(`${p.file}: this is CRS ${r.crsId}'s statement, not CRS ${want.crsId}'s.`);
-    if (r.month !== want.month || r.year !== want.year) throw new PdfReadError(`${p.file}: this is ${MN[r.month]} ${r.year}, not ${MN[want.month]} ${want.year}.`);
+    if (r.month !== want.month || r.year !== want.year) throw new PdfReadError(`${p.file}: this is ${MN[r.month]} ${r.year}, not ${mon}.`);
     if (r.kind === 'page2') {
-      if (page2) throw new PdfReadError(`${p.file}: a second CRS PAGE2 for ${MN[want.month]} — upload it once.`);
+      if (page2 && !same(page2, r.rows)) throw new PdfReadError(`${p.file}: a second CRS PAGE2 for ${mon} with different figures — remove the wrong one.`);
       page2 = r.rows;
     } else if (r.kind === 'gunny') {
-      if (gunny) throw new PdfReadError(`${p.file}: a second GUNNY sheet for ${MN[want.month]} — upload it once.`);
+      if (gunny && !same(gunny, r.gunny)) throw new PdfReadError(`${p.file}: a second GUNNY sheet for ${mon} with different figures — remove the wrong one.`);
       gunny = r.gunny;
       notes = r.notes;
     } else {
-      if (police) throw new PdfReadError(`${p.file}: a second CRS POLICE for ${MN[want.month]} — upload it once.`);
+      if (police && !same(police, r.rows)) throw new PdfReadError(`${p.file}: a second CRS POLICE for ${mon} with different figures — remove the wrong one.`);
       police = r.rows;
     }
   }
-  const missing = [!page2 && 'CRS PAGE2', !gunny && 'GUNNY', want.needsPolice && !police && 'CRS POLICE'].filter(Boolean);
-  if (missing.length) throw new PdfReadError(`${MN[want.month]} ${want.year}: still needs ${missing.join(' and ')}.`);
-  return { crsId: want.crsId, month: want.month, year: want.year, rows: page2!, gunny: gunny!, police, notes };
+  if (!page2) {
+    // A file was given but is not a PAGE2 this reader recognises: say so
+    // plainly rather than leave the month waiting.
+    const likely = skipped.filter((f) => /PAGEs*-?s*2/i.test(f));
+    if (likely.length) throw new PdfReadError(`${mon} CRS PAGE2 could not be read — ${likely.join(', ')} is not laid out as a CRS PAGE2. Please upload the correct PDF.`);
+    throw new PdfReadError(`${mon}: still needs CRS PAGE2.`);
+  }
+  return { crsId: want.crsId, month: want.month, year: want.year, rows: page2, gunny, police, notes, skipped };
 }
