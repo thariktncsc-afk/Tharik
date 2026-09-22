@@ -106,6 +106,18 @@ console.log('\nthe shop username moves with the person');
   check('a name is not a shop username', A.isShopUsername('Pandi') === false);
 }
 
+console.log('\nthe Add / Edit User form never overwrites a sign-in username (2026-09-22)');
+{
+  // The form used to send `username: name` on every save: editing CRS 8's
+  // Anand turned `crs8` into `Anand`, and crs8 could no longer sign in.
+  check('editing CRS 8\'s Anand (role, phone, name) leaves "crs8" alone', A.signInUsernameFor({ username: 'crs8', crsId: 8 }, 8) === null);
+  check('…whatever the name typed — the username is not taken from it', A.signInUsernameFor({ username: 'crs8', crsId: 8 }, 8) !== 'Anand');
+  check('editing an account moved to another shop: crs8 → crs12', A.signInUsernameFor({ username: 'crs8', crsId: 8 }, 12) === 'crs12');
+  check('a person\'s own username is never changed by an edit, even across shops', A.signInUsernameFor({ username: 'Sivadharanya', crsId: 24 }, 7) === null);
+  check('a new account at CRS 8 signs in as crs8', A.signInUsernameFor(null, 8) === 'crs8');
+  check('a new account at CRS 20 signs in as crs20 (beside its existing BC — sign-in asks which)', A.signInUsernameFor(null, 20) === 'crs20');
+}
+
 console.log('\nplanning a transfer');
 {
   const p = A.planTransfer(ROSTER, ROSTER[0], 7, 'BC');

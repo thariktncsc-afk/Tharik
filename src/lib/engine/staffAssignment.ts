@@ -82,6 +82,24 @@ export function usernameOnTransfer(username: string, fromCrsId: number | null, t
   return next === String(username).trim() ? null : next;
 }
 
+/**
+ * The sign-in username the Add / Edit User form should send, or null to leave
+ * the stored one alone.
+ *
+ * A shop's people sign in with the SHOP's username (`crs8`), shared by its
+ * Bill Clerk and Packer. The form used to send the person's name as the
+ * username on every save, so editing CRS 8's Anand (2026-09-22) replaced
+ * `crs8` with `Anand` and the shop could no longer sign in. Now:
+ *   - a new account takes its shop's username;
+ *   - an edit leaves the username alone — unless the account moves shop,
+ *     when a shop username follows it exactly as a transfer does
+ *     (`usernameOnTransfer`); a person's own username is never changed.
+ */
+export function signInUsernameFor(editing: { username: string; crsId: number | null } | null, crsId: number): string | null {
+  if (!editing) return `crs${crsId}`;
+  return usernameOnTransfer(editing.username, editing.crsId, crsId);
+}
+
 /** Is this a shop-scoped username rather than a person's own? */
 export const isShopUsername = (username: string) => SHOP_USERNAME.test(String(username ?? '').trim());
 

@@ -39,8 +39,8 @@ const CSS = `
 .crs-ss{animation:crsSsIn .34s cubic-bezier(.2,.9,.3,1.25) both}
 .crs-ss-leaving{animation:crsSsOut .26s ease-in forwards}
 .crs-ss-badge{animation:crsSsPop .42s cubic-bezier(.2,.9,.3,1.4) both}
-.crs-ss-ring{animation:crsSsRing .9s ease-out .18s both}
-.crs-ss-tick{stroke-dasharray:32;stroke-dashoffset:32;animation:crsSsTick .34s ease-out .22s forwards}
+.crs-ss-ring{animation:crsSsRing .9s ease-out .06s both}
+.crs-ss-tick{stroke-dasharray:32;stroke-dashoffset:32;animation:crsSsTick .3s ease-out .08s forwards}
 @media (prefers-reduced-motion:reduce){
   .crs-ss,.crs-ss-leaving,.crs-ss-badge,.crs-ss-ring,.crs-ss-tick{animation:none!important}
   .crs-ss-tick{stroke-dashoffset:0}

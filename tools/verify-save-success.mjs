@@ -160,5 +160,45 @@ console.log('\nThe tick waits for the database (dataStore.saveConfirmed)');
   check('a good save after a refusal is confirmed again', (await crsData.saveConfirmed()) === true && server.rows.entryStore.data['7_2026-09-19'].a.BRA.sales === 190);
 }
 
+console.log('\nThe tick comes the moment the database answers (office, 2026-09-22)');
+{
+  // A save in flight is WAITED ON, not polled: the answer to the press
+  // arrives within a few ms of the save landing. It used to check every
+  // 120 ms, which could hold the tick back that long after the save was in.
+  keyed('20', 200);
+  let open;
+  server.gate = new Promise((r) => (open = r));
+  const inFlight = crsData.save();
+  let answeredAt = 0;
+  const pressed = crsData.saveConfirmed().then((v) => ((answeredAt = performance.now()), v));
+  await new Promise((r) => setTimeout(r, 30)); // the save is held open for a moment
+  const landedAt = performance.now();
+  open();
+  server.gate = null;
+  await inFlight;
+  const ok = await pressed;
+  const lag = Math.round(answeredAt - landedAt);
+  check(`the press is answered as soon as the save lands (${lag} ms after, no 120 ms polling step)`, ok === true && lag < 60, `lag ${lag} ms`);
+
+  // Two presses in the same instant send the records once.
+  let posts = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, init = {}) => {
+    if (String(url).includes('/api/state') && init.method === 'POST') posts++;
+    return realFetch(url, init);
+  };
+  keyed('21', 210);
+  const [a, b] = await Promise.all([crsData.saveConfirmed(), crsData.saveConfirmed()]);
+  globalThis.fetch = realFetch;
+  check('a double press sends ONE save request, and both presses are answered "stored"', posts === 1 && a === true && b === true, `posts=${posts} a=${a} b=${b}`);
+  check('…and the day is in the database', server.rows.entryStore.data['7_2026-09-21'].a.BRA.sales === 210);
+
+  // A failed save still shows no tick, however quickly it fails.
+  server.refuse = true;
+  keyed('22', 220);
+  check('a refused save is answered "not stored" (no tick) — speed never overrides the database', (await crsData.saveConfirmed()) === false && !server.rows.entryStore.data['7_2026-09-22']);
+  server.refuse = false;
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nSAVE SUCCESS OK');
 process.exitCode = failures ? 1 : 0;

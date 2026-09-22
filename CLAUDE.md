@@ -108,6 +108,23 @@ looked like "invalid credentials" and took a while to find.
 
 Every seeded account still shares the password `pds123`.
 
+**A sign-in never hangs.** `login()` (authClient.tsx) abandons the request
+after `SIGN_IN_TIMEOUT_MS` (20 s) and says so, and the login page always takes
+the button back from "Connecting…" (try/finally) — it used to wait for ever on
+a request that never answered. The sign-in's activity-log row is written with
+`after()`, so the answer no longer waits for three log round trips.
+
+**A shop's sign-in username is the shop's — `crs8` — never the person's
+name.** The Users screen's Add / Edit form used to send `username: name` on
+every save, so editing an account silently renamed its login: on 2026-09-22
+an admin edit of CRS 8's Anand turned `crs8` into `Anand`, and `crs8` /
+`pds123` answered "Incorrect username or password" (verify_login found no
+row — its `lower(username) = lower(input)` match was never the problem).
+`signInUsernameFor()` (engine/staffAssignment.ts) now decides: a new account
+takes `crs<N>`; an edit sends no username, unless the account moves shop,
+when a shop username follows it as a transfer does. #5016 was restored to
+`crs8` (backup in `backups/user-5016-…`). `npm run verify:staff`.
+
 ## Paid downloads
 
 Shop users pay per sheet before a statement can be opened; **ADMIN downloads are
@@ -164,6 +181,17 @@ projection already states them) and receipts before a shop's first sheet. The
 DSS fee (`daysWithEntries` in `/api/payments`) counts the same set, so a shop
 pays for exactly the pages it gets. The legacy DSS builder is unchanged — it
 is handed the augmented entryStore. `npm run verify:dss-days`.
+
+### The DSS viewer on a phone
+
+`17-dss-export.js`, the viewer's own CSS: an `@media screen and (max-width:560px)`
+block (office, 2026-09-22). The title and the Excel / Print-PDF / Close buttons
+wrap into two rows; the table sits in `.dss-tbl-wrap` and scrolls inside it,
+sized to its content (≈ 770px — a fixed width cut the Tamil headings), with the
+commodity column pinned while it scrolls. Markup is the same apart from the
+wrapper and `dssv-*` class names, so every figure is identical (all 10 of CRS
+19's September pages compared old vs new), and tablet, desktop and the printed
+page lay out exactly as before (compared position for position at 768 and 1280).
 
 ### Payment Access Control (shop-wise switches)
 
@@ -331,6 +359,16 @@ role.
 
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
+
+**An Initial Opening keyed into the wrong commodity's box** is corrected with
+`node tools/swap-opening.mjs --crs=N --date=YYYY-MM-DD --a=ID --b=ID` (dry run)
+then `--write`. It trades the two Openings on the shop's chain-start sheet
+(refusing any later, carried day), moves each Total and Closing by the same
+amount, then does what a Daily Entry save does — rebuilds the month and the
+chain after it — and writes only that shop's records, backed up and under
+version. It first proves that rebuilding the untouched month reproduces the
+stored one. Used for CRS 10 on 2026-09-22: PHH BRA 2056.02 ↔ PHH FRK 1195.982
+on 01-09-2026 (backup `backups/swap-opening-crs10-…`).
 
 ## Daily Entry — which day is on screen
 
@@ -818,6 +856,20 @@ duplicate rule, so both can be checked without a browser.
 - The popup never takes the pointer and sits above the modals (z 9900 over
   9800), so it blocks nothing and is never hidden behind a dialog.
 
+**No delay between the database and the tick** (office, 2026-09-22):
+- `saveConfirmed()` WAITS on the save already in flight (`inFlight`) rather
+  than polling every 120 ms — the press is answered the moment it lands.
+- `/api/state` writes its stores side by side (`Promise.all`; each keeps its
+  own version check, so each still lands or conflicts exactly as before) and
+  records the activity log with next/server `after()`, once the response is
+  sent. `reconcileShops` stays BEFORE the response: the next save's
+  Initial-Opening guard reads what it writes.
+- Receipt uses `saveConfirmed()` (it used `save()`, which says "not saved"
+  while the autosave is sending); Sales Close shows its tick as soon as the
+  save lands, not after its dialog is dismissed; Daily and Receipt save
+  buttons ignore a second tap while a save runs.
+- The popup's tick draws 0.08 s after the card (was 0.22 s) — same design.
+
 `npm run verify:save-success`.
 
 ## Activity log (admin only)
@@ -956,7 +1008,11 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 
 - Set all four env vars in Vercel (`.env.local` is local only)
 - Vercel → Functions region **Mumbai (`bom1`)** — users are in Tamil Nadu, and
-  the default `iad1` round-trips every request through Virginia
+  the default `iad1` round-trips every request through Virginia. Now pinned in
+  `vercel.json` (`"regions": ["bom1"]`) — it was never set in the dashboard: on
+  2026-09-22 the live site's `X-Vercel-Id` read `bom1::iad1`, every function in
+  Virginia, and a CRS 17 sign-in on a phone sat on "Connecting…" until the clerk
+  closed the tab
 - Run any new migration against the live database as an explicit step —
   `0004_payments.sql` included, or the Payments screen 503s and every download
   silently stays free
@@ -968,6 +1024,20 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 
 Backups live in `backups/`, gitignored because they contain staff names and
 phone numbers.
+
+## Which shops have police ration
+
+`__crsMaster[].police` (live) — CRS 1, 5, 9, 10, 11, **12**, 15, 17, 19, 20, 23, 24,
+27, 28, 30 as of 2026-09-22, when the office assigned CRS 12 police ration. It
+is read by the CRS Master screen, the dashboard shop card ("Had Police") and
+the COLL statement's POLICE block (`d.hasPolice`); Daily and Monthly Entry show
+Section B and the CRS Police statement is offered for every shop regardless.
+
+The CRS Master screen shows the flag but cannot change it. Use
+`node tools/set-crs-police.mjs --crs=N --on|--off` (dry run) then `--write`:
+one field of one shop, the row backed up to `backups/` first, written under
+its version. The compiled default in `23-crs-master.js` is the seed only —
+keep it in step so a re-seed cannot undo the office's change.
 
 ## Open items
 

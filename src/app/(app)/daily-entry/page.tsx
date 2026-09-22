@@ -246,6 +246,22 @@ export default function DailyEntryPage() {
   const opened = useRef('');
   /** The form as last filled from the store — what "untouched" is measured against. */
   const filled = useRef('');
+  /**
+   * One save at a time from the buttons: a second tap while a save (or Sales
+   * Close) is still running is ignored, so it cannot raise the confirmation
+   * twice or build the sheet twice. The data layer already refuses to send
+   * the same records twice; this stops the handler itself running twice.
+   */
+  const busy = useRef(false);
+  const once = (fn: () => Promise<unknown>) => async () => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      await fn();
+    } finally {
+      busy.current = false;
+    }
+  };
   const [remoteChanged, setRemoteChanged] = useState(false);
   const applyFill = (f: FormFill) => {
     setRows(f.rows);
@@ -829,6 +845,10 @@ export default function DailyEntryPage() {
       d[scKey] = { date, ...agg, updatedAt: new Date().toISOString() };
     });
     const stored = await crsData.saveConfirmed();
+    // The tick as soon as the database has it — it sits above the dialog
+    // (z 9900 over 9800), so it no longer waits for the figures below to be
+    // read and dismissed.
+    if (stored) saveSuccess(monthlySaved(crsVal, m, y));
     await appAlert({
       title: 'Sales Close marked',
       tone: 'primary',
@@ -838,11 +858,6 @@ export default function DailyEntryPage() {
         (prev && prev.date !== date ? `\n(previous mark on ${prev.date.split('-').reverse().join('/')} was replaced)` : '') +
         `\n\nMonth totals up to this date:\n  Sales Gunny = ${agg.gunny}  → 50 KG SS Receipt\n  Sales Poly  = ${agg.poly}  → POLY Receipt\n  Sales C.Box = ${agg.cbox}  → C.BOX Receipt`,
     });
-    // After the figures have been read and the dialog dismissed, so the tick
-    // is not hidden behind it.
-    if (stored) {
-      saveSuccess(monthlySaved(crsVal, m, y));
-    }
   };
 
   const resetForm = () => {
@@ -1758,10 +1773,10 @@ export default function DailyEntryPage() {
                     margin that does the pushing — each keeps its own colour,
                     padding, title and handler. On a phone the two stack full
                     width, Daily on top (.de-close in responsive.css). */}
-                <button className="de-close de-close-month" onClick={() => void markSalesClose()} title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style={{ background: 'linear-gradient(135deg,#B45309,#F59E0B)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(245,158,11,.3)' }}>
+                <button className="de-close de-close-month" onClick={() => void once(markSalesClose)()} title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style={{ background: 'linear-gradient(135deg,#B45309,#F59E0B)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(245,158,11,.3)' }}>
                   🔒 மாத விற்பனை நிறைவு
                 </button>
-                <button className="de-close de-close-day" onClick={() => void save()} title="Save this day sheet. Requires at least one remittance." style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
+                <button className="de-close de-close-day" onClick={() => void once(() => save())()} title="Save this day sheet. Requires at least one remittance." style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
                   💾 தினசரி விற்பனை நிறைவு
                 </button>
               </div>
