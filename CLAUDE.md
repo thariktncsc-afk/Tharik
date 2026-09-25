@@ -657,6 +657,38 @@ not have (office request 2026-09-21). The quantities are still blank: there
 is no source for them. Every shop's COLL was rendered before and after and
 is byte-identical outside that block.
 
+**An Advance receipt never reaches COLL's closing balance** (office,
+2026-09-25). `npm run verify:coll-advance`.
+
+- A receipt typed **Advance** on the Receipt Entry page is stock drawn ahead
+  for next month. The Collector's sheet states this month's own movement, so
+  the advance is out of RECEIVED FROM GODOWN, TOTAL **and** the CLOSING
+  BALANCE, and prints instead in the ADVANCE FOR THE MONTH OF … table under
+  the report, commodity by commodity, from the receipts actually keyed.
+- **It was reaching the closing balance because two functions did not exist.**
+  `collRow` has always asked for `rcpHasRowsInMonth` / `rcpRegularQty`, but
+  they lived in `33-receipt-type.js`, which went in the port — nothing defined
+  them in the generated module, the `typeof … === 'function'` guard was false
+  on every render, and COLL fell back to the monthly receipt figure, which
+  counts both types. They now live in `24-coll.js`, its only reader. A row
+  with no `type` is a Regular receipt: the field was added later.
+- The stored monthly close counts an Advance receipt like any other (the grain
+  IS in the shop — `receiptRollup.ts` says so), so COLL takes the advance back
+  off that figure and changes nothing else in it; C.S and the rest stand.
+- **Only COLL.** CRS PAGE2, RBI, the DSS, Daily and Monthly Entry all still
+  count an Advance receipt as stock received. Checked by rendering every
+  section of every shop before and after: the only file that changed is COLL.
+- The office's second "PHH FRK" row (its sheet, row 42) **is PHH BRA** —
+  confirmed 2026-09-25. A commodity taken in advance that the office's table
+  has no row for (AAY, the police lines) gets a row added under them: it has
+  been kept out of the closing balance, so leaving it off would lose it.
+- Live, September 2026: one advance receipt exists (CRS 7, 24-09 — BRA 5000,
+  PHH BRA 1950, WHEAT 500, T.DHALL 500, P.OIL 400, SUGAR 700, AAY 250, AAY
+  SUGAR 13). Every other shop's COLL changes only in that row label.
+- The **Advance LOAD** (`meAdvanceStore`, keyed on Monthly Entry) is a
+  different, older lever and is unchanged: it still only nets off RECEIVED and
+  says so in the note under the table. No shop has ever keyed one.
+
 **COLL has no signature line** — the staff name and AREA SUPERVISOR under
 its tables were taken off (office, 2026-09-21); it ends with the Advance
 table. Every other sheet keeps its own. COLL also stretches to its page like
@@ -1029,6 +1061,7 @@ npm run verify:receipt-rows  Receipt statement: a row per receipt, none reserved
 npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every figure in one column
 npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
 npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
+npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
