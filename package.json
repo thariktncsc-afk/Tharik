@@ -41,7 +41,8 @@
     "verify:page1-card-allot": "node tools/verify-page1-card-allot.mjs",
     "verify:staff-posts": "node tools/verify-staff-posts.mjs",
     "verify:daily-date-nav": "node tools/verify-daily-date-nav.mjs",
-    "verify:pv-quarter": "node tools/verify-pv-quarter.mjs"
+    "verify:pv-quarter": "node tools/verify-pv-quarter.mjs",
+    "verify:coll-advance": "node tools/verify-coll-advance.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",

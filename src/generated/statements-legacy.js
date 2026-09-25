@@ -3854,6 +3854,48 @@ if(typeof BACKUP_STORES !== 'undefined'){
 
    Concatenated last by tools/bundle-engine.mjs. */
 
+// ── RECEIPT REGISTER: Regular vs Advance ────────────────────────────────────
+// 33-receipt-type.js went with the rest of the ported engine, so these two
+// helpers — which collRow below has always asked for by name — were defined
+// NOWHERE in the generated module. `typeof rcpHasRowsInMonth === 'function'`
+// was therefore false on every render, COLL fell back to the monthly receipt
+// figure, and an Advance receipt counted as a regular one: it reached RECEIVED
+// FROM GODOWN, TOTAL and the CLOSING BALANCE, which is exactly what an advance
+// must not do (CRS 7, September 2026: PHH BRA 1950 keyed Advance on 24-09 sat
+// in the Collector's closing balance). They live here because COLL is their
+// only reader; the Receipt Register screen has its own.
+//
+// A row with no `type` is a Regular receipt — the field was added later, and
+// every row keyed before it is an ordinary godown delivery.
+function rcpRowsInMonth(crsId, month, year){
+  if(typeof receiptStore === 'undefined' || !receiptStore) return [];
+  var mo = String(month).length < 2 ? '0' + month : String(month);
+  var pre = year + '-' + mo + '-';
+  return receiptStore.filter(function(r){
+    return r && String(r.crsId) === String(crsId) && String(r.date || '').indexOf(pre) === 0;
+  });
+}
+function rcpHasRowsInMonth(crsId, month, year){
+  return rcpRowsInMonth(crsId, month, year).length > 0;
+}
+function rcpQtyOf(item){
+  if(item === null || item === undefined) return 0;
+  var raw = (typeof item === 'object') ? item.qty : item;
+  var n = parseFloat(raw);
+  return isFinite(n) ? n : 0;
+}
+function rcpQtyByType(crsId, month, year, id, advance){
+  var t = 0;
+  rcpRowsInMonth(crsId, month, year).forEach(function(r){
+    var isAdv = String(r.type || 'regular') === 'advance';
+    if(isAdv !== !!advance) return;
+    t += rcpQtyOf((r.items || {})[id]);
+  });
+  return t;
+}
+function rcpRegularQty(crsId, month, year, id){ return rcpQtyByType(crsId, month, year, id, false); }
+function rcpAdvanceQty(crsId, month, year, id){ return rcpQtyByType(crsId, month, year, id, true); }
+
 // {crsId_month_year: {commodityId: qty}}
 var meAdvanceStore = {};
 
@@ -3920,10 +3962,22 @@ stmtGetData = function(crsId, month, year){
       var excess   = d.getVal(id, 'excess');
       var tot      = ob + allot + rec - shortage + excess;
       var sal      = d.getVal(id, 'sales');
-      var cb       = d.hasVal(id, 'close') ? d.getVal(id, 'close') : tot - sal;
+
+      // The CLOSING BALANCE must not carry an advance either (office,
+      // 2026-09-25). The stored monthly close counts BOTH receipt types —
+      // receiptRollup totals an Advance receipt like any other, because the
+      // grain is physically in the shop — so the advance kept out of RECEIVED
+      // above is taken back off here, and only here. Everything else in that
+      // figure (C.S, and any other monthly adjustment) is left exactly as the
+      // month published it. The advance itself prints in the ADVANCE FOR THE
+      // MONTH OF … table at the foot of the sheet.
+      var advReceipt = (typeof rcpAdvanceQty === 'function') ? rcpAdvanceQty(crsId, month, year, id) : 0;
+      var cb = d.hasVal(id, 'close')
+        ? d.getVal(id, 'close') - advReceipt - advance   // stored close: take the advance back off
+        : tot - sal;                                     // worked out: `tot` already excludes it
       return {ob:ob, allot:allot, received:received, regular:regular,
-              advance:advance, rec:rec, tot:tot, shortage:shortage, excess:excess,
-              adjusted:tot, sal:sal, cb:cb};
+              advance:advance, advReceipt:advReceipt, rec:rec, tot:tot,
+              shortage:shortage, excess:excess, adjusted:tot, sal:sal, cb:cb};
     };
   }catch(e){}
   return d;
@@ -3994,10 +4048,37 @@ buildColl = function(d){
   // figure source: the quantity cells print blank, as the block always has.
   var nextMo=STMT_MONTHS_SHORT[(d.month%12)+1] || '';
   var nextYr=d.month===12 ? d.yr+1 : d.yr;
-  var ADV=['NPHH FRK','PHH FRK','BRA','RRA','SUGAR','AAY SUGAR','PHH FRK','AAY FRK','WHEAT','T.DHALL','P.OIL'];
+  // The office's rows, in the office's order, each now printing the advance
+  // receipt actually keyed for that commodity this month (office, 2026-09-25).
+  // The sheet's second "PHH FRK" (row 42) is PHH BRA — confirmed 2026-09-25;
+  // the pair then reads as it does in the report above, and a PHH BRA advance
+  // has somewhere to print.
+  var ADV=[['NPHH FRK','NPHH_FRK'],['PHH FRK','PHH_FRK'],['BRA','BRA'],['RRA','RRA'],
+           ['SUGAR','SUGAR'],['AAY SUGAR','AAY_SUGAR'],['PHH BRA','PHH_BRA'],['AAY FRK','AAY_FRK'],
+           ['WHEAT','WHEAT'],['T.DHALL','TOOR'],['P.OIL','PALM']];
+  function advQty(id){
+    return (typeof rcpAdvanceQty === 'function') ? rcpAdvanceQty(d.crsId, d.month, d.yr, id) : 0;
+  }
+  // A commodity taken in advance that the office's sheet has no row for (AAY,
+  // the police lines…) gets one added under them. It has been kept out of the
+  // closing balance, so leaving it off the sheet altogether would lose it.
+  var advSeen={};
+  ADV.forEach(function(r){ advSeen[r[1]]=1; });
+  var advLabels={};
+  MAIN_TOP.concat(MAIN_REST).forEach(function(r){ advLabels[r[1]]=r[0]; });
+  POLICE.forEach(function(r){ advLabels[r[1]]='POLICE '+r[0]; });
+  var advExtra=[];
+  Object.keys(advLabels).forEach(function(id){
+    if(!advSeen[id] && advQty(id) > 0) advExtra.push([advLabels[id], id]);
+  });
+
   var advTbl='<div class="cl-adv-title">ADVANCE FOR THE MONTH OF '+nextMo.toUpperCase()+"'"+nextYr+'</div>'+
     '<table class="cl-tbl cl-adv"><colgroup><col style="width:62%"><col style="width:38%"></colgroup><tbody>'+
-    ADV.map(function(l){ return '<tr>'+L(l)+'<td class="r"></td></tr>'; }).join('')+
+    ADV.concat(advExtra).map(function(r){
+      var q = advQty(r[1]);
+      // Nothing taken in advance leaves the cell blank, as the ruled form has it.
+      return '<tr>'+L(r[0])+'<td class="r">'+(q ? nz(q) : '')+'</td></tr>';
+    }).join('')+
     '</tbody></table>';
 
   var crs=(typeof CRS_LIST!=='undefined')?CRS_LIST.find(function(c){return String(c.id)===String(d.crsId);}):null;
