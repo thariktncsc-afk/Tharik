@@ -505,6 +505,29 @@ function openDSSPreview(){
   entryStore = __s.entryStore || {};
   inspectionStore = __s.inspectionStore || {};
 
+  // ── Rates come from the SAVED Commodity Master ───────────────────────────
+  // DSS_A / DSS_B are sliced out of 03-daily-entry.js with the rates compiled
+  // into it, so a rate the office edits on the Commodities screen never
+  // reached the DSS: CIS was changed to 10.00 on 2026-09-22 and every DSS page
+  // went on printing 12.00 and pricing its sales by it (office, 2026-09-26).
+  // The master is the app's one rate list, so the DSS reads it here and any
+  // later change follows on its own. Only the RATE is taken from it — which
+  // commodities exist, their order and which are free stay the engine's.
+  (function(){
+    var __m = ctx.commodityMaster || [];
+    if (!__m.length) return;
+    var __by = {};
+    for (var __i = 0; __i < __m.length; __i++) if (__m[__i] && __m[__i].id) __by[__m[__i].id] = __m[__i];
+    [DSS_A, DSS_B].forEach(function(list){
+      list.forEach(function(c){
+        var row = __by[c.id];
+        if (!row || row.rate === undefined || row.rate === null || row.rate === '') return;
+        var v = parseFloat(row.rate);
+        if (isFinite(v)) c.rate = v;
+      });
+    });
+  })();
+
   // The viewer's toolbar buttons carry inline onclick strings that resolve
   // against the page's window at click time.
   if (window && __realDoc) window.downloadDSSExcel = downloadDSSExcel;
