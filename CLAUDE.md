@@ -572,6 +572,48 @@ are not where those bags come from).
 
 `npm run verify:gunny-rows` has the live CRS 19 case and each source in turn.
 
+## C.Box and Poly: the sale is the Gunny issue
+
+Office, 2026-09-26. `npm run verify:gunny-sales`.
+
+Empty Card+Box and Empty Polythene Bag are **not stocked on the sales grid** —
+the bags they cover are held in Gunny Stock Management. Selling 166 boxes on a
+grid that stocks none printed a closing of **−166.000**, because the binding
+ran the wrong way: typing **Issues** in the Gunny table WROTE those sales rows
+(`onIssuesToMonthly`). It now runs the way the office keys it.
+
+- **The sale is the Issues figure.** `gunnyRowFor` (and its legacy twin
+  `42-gunny-live.js`, so the Gunny statement agrees) takes POLY and C.BOX
+  Issues from the month's own EMPTY_BAG / EMPTY_BOX **sales**. A keyed figure
+  — an administrator's correction — still wins. **50 KG SS has no commodity
+  row of its own and stays hand-keyed**, by the shop as before.
+- **The entry row shows no Closing for those two** (`NO_CLOSING`,
+  engine/commodities.ts), on Daily and Monthly Entry alike. Display only:
+  what is stored, what the statements print and what the DSS prices are
+  untouched — every section of every shop renders byte-identical on live data.
+- **Deducted once.** Sale → amount → remittance → gunny Issues → statement
+  sales. Nothing else subtracts those bags.
+- **The gunny figures are the office's.** Opening, Receipt, Total, Closing and
+  the two automatic Issues are read-only for shop staff; an administrator may
+  correct Opening and Receipt (which writes `receiptImported`, the override
+  the engine already reads). **Total and Closing stay derived for everyone** —
+  they are `Opening + Receipt` and `Total − Issues`, and a typable one only
+  lets a row disagree with itself, the same rule the commodity grid keeps.
+- **Enforced on the server**: `stockGuard.ts` rule 5 (`inspectGunnyWrite`),
+  run from `/api/state`. A shop user's write must agree with what the rule
+  works out — which is what the screen sends, since it stores those derived
+  copies. Refusals are labelled `Gunny Stock`. There was **no server rule at
+  all** before: the guard only ever looked at entryStore, meManualStore and
+  monthlyStore.
+- **Monthly Entry writes the gunny rows out on save**, because a shop can now
+  key a whole month without touching that table and **next month's Opening is
+  the Closing stored here**. The derived Issues are deliberately NOT stored: a
+  stored figure reads as keyed and would stop following the sales.
+- **No TOTAL summary** under the gunny table: sacks, bags and boxes added into
+  one figure state a quantity of nothing. Each row keeps its own Total.
+- Live, 2026-09-26: no month has C.Box/Poly sales and every gunny Issues is
+  blank, so none of this moves an existing figure.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1121,6 +1163,7 @@ npm run verify:pv-quarter      3-month PV: office PDFs read by position, July �
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
+npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]

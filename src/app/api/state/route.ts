@@ -245,7 +245,8 @@ export async function POST(req: Request) {
     const broken = inspectStockWrite(stored, stores, isAdmin);
     if (broken.length) {
       await logEvent(null, 'blocked', session, `Stock field guard refused: ${describeStock(broken)}`);
-      await refuse(broken[0].store === 'entryStore' ? 'Daily Sales' : 'Monthly Entry', broken[0].crsId, `Refused: ${describeStock(broken.slice(0, 3))}`);
+      const brokenIn = broken[0].store === 'entryStore' ? 'Daily Sales' : broken[0].store === 'meGunnyStore' ? 'Gunny Stock' : 'Monthly Entry';
+      await refuse(brokenIn, broken[0].crsId, `Refused: ${describeStock(broken.slice(0, 3))}`);
       return NextResponse.json(
         { error: describeStock(broken.slice(0, 3)) + (broken.length > 3 ? ` (+${broken.length - 3} more)` : ''), stockViolations: broken },
         { status: 403 },

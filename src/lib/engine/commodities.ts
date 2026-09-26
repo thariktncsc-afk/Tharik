@@ -81,6 +81,18 @@ export function stockListsFor(crsId: number | null | undefined): { a: Commodity[
   return isCrs29(crsId) ? { a: CRS29_STOCK, b: [] } : { a: DSS_A, b: DSS_B };
 }
 
+/**
+ * Commodities that show no Closing on the Daily / Monthly entry row (office,
+ * 2026-09-26). The two packing lines are not stocked on the sales grid: the
+ * bags they cover are held in Gunny Stock Management, where the same sale is
+ * the Issues figure and the closing balance is worked out. A closing here only
+ * ever went negative the moment a sale was keyed.
+ *
+ * DISPLAY ONLY — what is saved on the sheet, what the statements print and
+ * what the DSS prices are all untouched.
+ */
+export const NO_CLOSING = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
+
 export type EntryRecord = { open?: number; receipt?: number; sales?: number; close?: number; amount?: number };
 export type DayEntry = { a?: Record<string, EntryRecord>; b?: Record<string, EntryRecord> };
 

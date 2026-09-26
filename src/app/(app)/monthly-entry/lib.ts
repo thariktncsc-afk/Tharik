@@ -3,6 +3,7 @@
  * 05-monthly-entry.js, 15-monthly-extras.js, 22-allotment.js, 40-cs-column.js.
  */
 import { CRS29_STOCK, DSS_A, isCrs29, type Commodity } from '@/lib/engine/commodities';
+export { NO_CLOSING } from '@/lib/engine/commodities';
 import type { MonthlyBlock } from '@/lib/engine/monthlyRollup';
 
 export type GunnyRec = {
@@ -36,6 +37,8 @@ export type GunnyRow = {
   openingAuto: boolean;
   rc: { val: number; src: string; imported: boolean };
   issues: number | '';
+  /** True when Issues is the month's own C.Box / Poly sales rather than a keyed figure. */
+  issuesAuto: boolean;
   total: number;
   closing: number;
 };
@@ -48,6 +51,11 @@ export type GunnyRow = {
  *   Opening  this month's own figure, else last month's Closing carried
  *   Receipt  the office's imported figure, else the Sales Close totals,
  *            else the month's own sales bag counts for that pack type
+ *   Issues   POLY and C.BOX: the month's own Empty Polythene Bag / Empty
+ *            Card+Box SALES, so the bags leave the gunny stock exactly once
+ *            and by the figure the shop keyed (office, 2026-09-26). An
+ *            administrator's keyed figure still wins. 50 KG SS has no
+ *            commodity row of its own, so it stays hand-keyed.
  *   Total    Opening + Receipt;   Closing = Total − Issues
  */
 export function gunnyRowFor(
@@ -56,6 +64,8 @@ export function gunnyRowFor(
   prevMonth: Record<string, GunnyRec>,
   salesClose: SalesClose | undefined,
   gridGunnySales: Record<string, number>,
+  /** The month's sales per commodity id — EMPTY_BAG / EMPTY_BOX are the two read here. */
+  packSales?: Record<string, number>,
 ): GunnyRow {
   const rec = month[id] ?? {};
   const prevClosing = prevMonth[id]?.closing;
@@ -73,10 +83,18 @@ export function gunnyRowFor(
   } else {
     rc = { val: monthlySalesBags(ME_GUNNY_TYPE[id], gridGunnySales), src: `Auto from Monthly Entry Sales (${ME_GUNNY_TYPE[id].toLowerCase()} counts)`, imported: false };
   }
-  const issues = rec.issues !== undefined && rec.issues !== '' ? Number(rec.issues) : '';
+  // Issues: a keyed figure (an administrator's correction) wins; otherwise
+  // POLY and C.BOX take the month's own sales of those bags, which is the one
+  // place they are counted. The deduction therefore happens once, here, from
+  // the figure the shop keyed on the sales grid.
+  const keyed = rec.issues !== undefined && rec.issues !== '' ? Number(rec.issues) : null;
+  const commId = ME_GUNNY_TO_COMM[id];
+  const derived = commId && packSales ? Math.round((Number(packSales[commId]) || 0) * 1000) / 1000 : null;
+  const issuesAuto = keyed === null && derived !== null;
+  const issues: number | '' = keyed !== null ? keyed : derived !== null ? derived : '';
   const total = opening + rc.val;
   const closing = total - (Number(issues) || 0);
-  return { rec, opening, openingVal, openingAuto, rc, issues, total, closing };
+  return { rec, opening, openingVal, openingAuto, rc, issues, issuesAuto, total, closing };
 }
 
 export const ME_MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -110,6 +128,7 @@ export const ME_CARD_TYPES = [
 
 /** Commodities with no gunny sub-columns on the monthly grid. */
 export const NO_GUNNY = new Set(['EMPTY_BOX', 'EMPTY_BAG', 'PB_SUGAR', 'PB_WHEAT', 'PB_TOOR', 'PB_PALM', 'KERO']);
+
 
 /** Not allotted: packet lines, packing materials, police ration (22-allotment). */
 const ME_ALLOT_EXCLUDE = new Set(['SALT_CIS', 'SALT_RFFS', 'OOTY', 'TAN', 'EMPTY_BOX', 'EMPTY_BAG']);

@@ -62,6 +62,7 @@ import { isProjectedSheet } from '@/lib/engine/monthProjection';
 import { buildChainIndex, isOpenFixed, openingFor, type ChainIndex } from '@/lib/engine/stockChain';
 import { firstStockDates, initialDate, isInitialized, readStockInit, STOCK_INIT_KEY, type StockInit } from '@/lib/engine/stockInit';
 import { txnsOf } from '@/lib/engine/remittance';
+import { gunnyRowFor, type GunnyRec, type SalesClose } from '@/app/(app)/monthly-entry/lib';
 
 /** Kilos carry three decimals; anything under half a gram is float noise. */
 export const TOLERANCE = 0.005;
@@ -72,7 +73,8 @@ export type StockViolationKind =
   | 'remittance-locked'
   | 'receipt-not-keyable'
   | 'total-mismatch'
-  | 'closing-mismatch';
+  | 'closing-mismatch'
+  | 'gunny-locked';
 
 export type StockViolation = {
   store: string;
@@ -401,7 +403,105 @@ export function inspectStockWrite(
       );
     }
   }
+
+  inspectGunnyWrite(stored, incoming, isAdmin, out);
   return out;
+}
+
+/**
+ * Rule 5 — Gunny Stock Management is the office's record (office, 2026-09-26).
+ *
+ * Opening, Receipt, Total and Closing are not shop staff's to key: Opening is
+ * last month's Closing carried, Receipt is derived, Total and Closing are
+ * arithmetic, and POLY / C.BOX Issues are the month's own sales of those bags.
+ * The screen shows them read-only; this is the half that holds, because a
+ * screen can be bypassed and /api/state cannot.
+ *
+ * A shop user's write must therefore agree with what the rule works out
+ * (`gunnyRowFor`, the same function the screen draws from) — which is exactly
+ * what the screen sends, since it stores those derived copies. 50 KG SS
+ * Issues stay hand-keyed: that variety has no commodity row to take a sale
+ * from. An administrator is not checked here at all.
+ */
+function inspectGunnyWrite(
+  stored: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+  isAdmin: boolean,
+  out: StockViolation[],
+): void {
+  if (isAdmin) return;
+  const after = incoming.meGunnyStore;
+  if (!isObj(after)) return;
+  const beforeAll = isObj(stored.meGunnyStore) ? (stored.meGunnyStore as Record<string, unknown>) : {};
+  const monthlyAll = (isObj(incoming.monthlyStore) ? incoming.monthlyStore : stored.monthlyStore) as Record<string, unknown> | undefined;
+  const salesCloseAll = (isObj(incoming.salesCloseStore) ? incoming.salesCloseStore : stored.salesCloseStore) as Record<string, unknown> | undefined;
+
+  for (const [key, rec] of Object.entries(after)) {
+    const prevRec = beforeAll[key];
+    if (prevRec !== undefined && JSON.stringify(prevRec) === JSON.stringify(rec)) continue;
+    const m = MONTH_KEY.exec(key);
+    if (!m || !isObj(rec)) continue;
+    const crsId = Number(m[1]);
+    const month = Number(m[2]);
+    const year = Number(m[3]);
+    const prevKey = `${crsId}_${month === 1 ? 12 : month - 1}_${month === 1 ? year - 1 : year}`;
+
+    // The figures the rule is worked out from: the month as it STANDS in the
+    // database, never the record being written — otherwise a changed Opening
+    // would be used to justify itself.
+    const ownStored = isObj(beforeAll[key]) ? (beforeAll[key] as Record<string, GunnyRec>) : {};
+    const prevStored = isObj(beforeAll[prevKey]) ? (beforeAll[prevKey] as Record<string, GunnyRec>) : {};
+    const monthly = isObj(monthlyAll?.[key]) ? (monthlyAll![key] as Record<string, unknown>) : {};
+    const bags: Record<string, number> = {};
+    const sales: Record<string, number> = {};
+    for (const sec of ['a', 'b'] as const) {
+      const block = isObj(monthly[sec]) ? (monthly[sec] as Record<string, unknown>) : {};
+      for (const [id, row] of Object.entries(block)) {
+        if (!isObj(row)) continue;
+        bags[id] = num(row.g_sales);
+        sales[id] = num(row.sales);
+      }
+    }
+    const salesClose = salesCloseAll?.[key] as SalesClose | undefined;
+
+    for (const [itemId, row] of Object.entries(rec)) {
+      if (!isObj(row)) continue;
+      const wasRow = isObj(ownStored[itemId]) ? (ownStored[itemId] as Record<string, unknown>) : {};
+      if (JSON.stringify(wasRow) === JSON.stringify(row)) continue;
+      const want = gunnyRowFor(itemId, ownStored, prevStored, salesClose, bags, sales);
+      const say = (field: string, got: number, expected: number) =>
+        out.push({
+          store: 'meGunnyStore',
+          key,
+          crsId,
+          section: 'a',
+          commodity: `Gunny ${itemId.toUpperCase()}`,
+          kind: 'gunny-locked',
+          detail: `${field} is the office's figure: ${fmt(expected)} — ${fmt(got)} was sent. An administrator can correct it.`,
+        });
+
+      // Opening: what carries in, or the figure already stored. Blank is fine
+      // — the screen sends nothing until the row is touched.
+      if (row.opening !== undefined && row.opening !== '' && !near(num(row.opening), want.opening)) say('Opening', num(row.opening), want.opening);
+      if (row.receipt !== undefined && !near(num(row.receipt), want.rc.val)) say('Receipt', num(row.receipt), want.rc.val);
+      if (row.receiptImported !== undefined && String(row.receiptImported) !== String(wasRow.receiptImported ?? '')) {
+        say('Receipt (imported)', num(row.receiptImported), num(wasRow.receiptImported));
+      }
+      // POLY and C.BOX Issues follow the month's sales; 50 KG SS is keyed.
+      if (want.issuesAuto && row.issues !== undefined && row.issues !== '' && !near(num(row.issues), Number(want.issues) || 0)) {
+        say('Issues', num(row.issues), Number(want.issues) || 0);
+      }
+      // Total and Closing are arithmetic on the figures above, so they are
+      // judged against what those figures give — including a hand-keyed
+      // 50 KG SS Issues, which is this write's own.
+      const issuesNow = want.issuesAuto ? Number(want.issues) || 0 : row.issues !== undefined && row.issues !== '' ? num(row.issues) : Number(want.issues) || 0;
+      const openNow = row.opening !== undefined && row.opening !== '' ? num(row.opening) : want.opening;
+      if (row.total !== undefined && !near(num(row.total), openNow + want.rc.val)) say('Total', num(row.total), openNow + want.rc.val);
+      if (row.closing !== undefined && !near(num(row.closing), openNow + want.rc.val - issuesNow)) {
+        say('Closing', num(row.closing), openNow + want.rc.val - issuesNow);
+      }
+    }
+  }
 }
 
 /** One line per broken rule, for the error message and the audit row. */
