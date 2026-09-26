@@ -81,6 +81,28 @@ function openDSSViewer(titleText, subText, bodyHTML, cssBlock){
   document.body.appendChild(ov);
 }
 
+// ── What was actually banked for a sales date ───────────────────────────────
+// The account line at the foot of a DSS page states money REMITTED, so it is
+// read from the day sheet's own deposits — never worked out from the day's
+// sales (office, 2026-09-26). CRS 8, 21-09-2026: the shop banked 4640 and the
+// page said 4639.50, because it was adding the commodity amounts up instead.
+//
+// Same reading as engine/remittance.ts `txnsOf`: the `remits` array when the
+// sheet has one, and otherwise the single `remitAmount` a sheet saved before
+// deposits had ids carries. An administrator's correction, an added deposit
+// and a removed one all land in that array, so the next DSS shows them; the
+// sheet is read when the DSS is opened, so nothing is cached.
+function dssRemitOf(sheet){
+  if(!sheet) return 0;
+  var t = 0;
+  if(Object.prototype.toString.call(sheet.remits) === '[object Array]' && sheet.remits.length){
+    sheet.remits.forEach(function(r){ t += parseFloat((r||{}).amount) || 0; });
+  } else {
+    t = parseFloat(sheet.remitAmount) || 0;
+  }
+  return Math.round(t * 100) / 100;
+}
+
 // ── Lazy-load the Excel writer (xlsx-js-style — supports cell borders/fonts/merges) ──
 function ensureXLSX(cb){
   if(window.XLSX){ cb(); return; }
@@ -171,7 +193,11 @@ function downloadDSSExcel(){
       // Section rows writer
       function writeSection(comms, sec, startRow, spareTo){
         var tot=0, r=startRow;
-        var sum={open:0, rec:0, total:0, sales:0, closing:0};
+        // Still added up, and no longer printed: the TOTAL row carries the
+        // money alone (office, 2026-09-26). Kept so the figures are one line
+        // away should the office ask for a column back.
+        // Added up but not printed — see the TOTAL row below.
+    var sum={open:0, rec:0, total:0, sales:0, closing:0};
         comms.forEach(function(c,i){
           var d=(saved[sec]&&saved[sec][c.id])?saved[sec][c.id]:{};
           var ei=(insp[sec]&&insp[sec][c.id])||{};
@@ -203,9 +229,12 @@ function downloadDSSExcel(){
       var totCtr={font:{sz:12,bold:true},alignment:{horizontal:'center'},border:allThin};
       var totMoney={font:{sz:12,bold:true},alignment:{horizontal:'right'},border:allThin,numFmt:'0.00'};
       P(ws,'B35',25,totCtr); P(ws,'C35','\u0bae\u0bca\u0ba4\u0bcd\u0ba4\u0bae\u0bcd',totS);
+      // The TOTAL row carries the money only (office, 2026-09-26): a column of
+      // kilos added down the page \u2014 opening + receipt + total + sales +
+      // closing \u2014 is not a figure the form asks for. The cells keep their
+      // ruled box; only what was printed in them is gone.
       var totNumS={font:{sz:12,bold:true},alignment:{horizontal:'right'},border:allThin,numFmt:'0.000'};
-      [['D',A.sum.open],['E',A.sum.rec],['F',A.sum.total],['G',A.sum.sales],['H',A.sum.closing]]
-        .forEach(function(p){ P(ws,p[0]+'35',num(p[1]),totNumS); });
+      ['D','E','F','G','H'].forEach(function(col){ P(ws,col+'35','',{border:allThin}); });
       P(ws,'I35',RUPEE,{font:{sz:12,bold:true},alignment:{horizontal:'center'},border:allThin});
       P(ws,'J35',Math.round(A.total*100)/100,totMoney);
 
@@ -217,14 +246,14 @@ function downloadDSSExcel(){
       // Police section rows 37..41, spare to 42 (6), total row 43
       var B=writeSection(DSS_B,'b',37,6);
       P(ws,'B43',7,totCtr); P(ws,'C43','\u0bae\u0bca\u0ba4\u0bcd\u0ba4\u0bae\u0bcd',totS);
-      [['D',B.sum.open],['E',B.sum.rec],['F',B.sum.total],['G',B.sum.sales],['H',B.sum.closing]]
-        .forEach(function(p){ P(ws,p[0]+'43',num(p[1]),totNumS); });
+      ['D','E','F','G','H'].forEach(function(col){ P(ws,col+'43','',{border:allThin}); });
       P(ws,'I43',RUPEE,{font:{sz:12,bold:true},alignment:{horizontal:'center'},border:allThin});
       P(ws,'J43',Math.round(B.total*100)/100,totMoney);
 
       // Account line row 45, footer rows 47/48
-      // [C4] amount remitted = main section + police ration card, not main alone
-      var dssRemitTotal = Math.round((A.total + B.total) * 100) / 100;
+      // The money BANKED for this sales date, from the sheet's own deposits —
+      // not the day's sales added up (office, 2026-09-26).
+      var dssRemitTotal = dssRemitOf(saved);
       P(ws,'D45',APP_CONFIG.accountLabel+' = '+cerealAccountNo(crsId)+' = ',{font:{sz:14,bold:true},alignment:{horizontal:'center'}});   // [M3]
       P(ws,'G45',dssRemitTotal,{font:{sz:12,bold:true},alignment:{horizontal:'center'},numFmt:'0.00',border:bd(undefined,{style:'double',color:BLK},undefined,undefined)});   // [C4]
       P(ws,'C47',APP_CONFIG.submitToOffice,{font:{sz:12}});   // [M3]
@@ -326,19 +355,21 @@ function openDSSPreview(){
     var dlbl=dObj.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
 
     var A=sectionRows(DSS_A,'a',saved,insp,24);
+    // The TOTAL row carries the money only (office, 2026-09-26): a column of
+    // kilos added down the page \u2014 opening + receipt + total + sales + closing
+    // \u2014 is not a figure the form asks for. The cells keep their ruled box.
     var totalRowA='<tr class="tot"><td>25</td><td class="nm">\u0bae\u0bca\u0ba4\u0bcd\u0ba4\u0bae\u0bcd</td>'+
-      '<td>'+ft3(A.sum.open)+'</td><td>'+ft3(A.sum.rec)+'</td><td>'+ft3(A.sum.total)+'</td>'+
-      '<td>'+ft3(A.sum.sales)+'</td><td>'+ft3(A.sum.closing)+'</td>'+
+      '<td></td><td></td><td></td><td></td><td></td>'+
       '<td class="rt">'+RUPEE+'</td><td class="rt">'+A.total.toFixed(2)+'</td></tr>';
     var policeHdr='<tr class="sec"><td></td><td class="nm">\u0b95\u0bbe\u0bb5\u0bb2\u0bb0\u0bcd \u0b85\u0b9f\u0bcd\u0b9f\u0bc8</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>';
     var B=sectionRows(DSS_B,'b',saved,insp,6);
     var totalRowB='<tr class="tot"><td>7</td><td class="nm">\u0bae\u0bca\u0ba4\u0bcd\u0ba4\u0bae\u0bcd</td>'+
-      '<td>'+ft3(B.sum.open)+'</td><td>'+ft3(B.sum.rec)+'</td><td>'+ft3(B.sum.total)+'</td>'+
-      '<td>'+ft3(B.sum.sales)+'</td><td>'+ft3(B.sum.closing)+'</td>'+
+      '<td></td><td></td><td></td><td></td><td></td>'+
       '<td class="rt">'+RUPEE+'</td><td class="rt">'+B.total.toFixed(2)+'</td></tr>';
 
-    // [C4] amount remitted = main section + police ration card, not main alone
-    var dssRemitTotal = Math.round((A.total + B.total) * 100) / 100;
+    // The money BANKED for this sales date, from the sheet's own deposits \u2014
+    // not the day's sales added up (office, 2026-09-26).
+    var dssRemitTotal = dssRemitOf(saved);
 
     pages.push('<div class="dss-page">'+
       '<div class="dss-title">\u0ba4\u0bae\u0bbf\u0bb4\u0bcd\u0ba8\u0bbe\u0b9f\u0bc1 \u0ba8\u0bc1\u0b95\u0bb0\u0bcd\u0baa\u0bca\u0bb0\u0bc1\u0bb3\u0bcd \u0bb5\u0bbe\u0ba3\u0bbf\u0baa\u0b95\u0bcd\u0b95\u0bb4\u0b95\u0bae\u0bcd, \u0bae\u0ba4\u0bc1\u0bb0\u0bc8 \u0bae\u0ba3\u0bcd\u0b9f\u0bb2\u0bae\u0bcd</div>'+

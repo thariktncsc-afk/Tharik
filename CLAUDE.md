@@ -223,6 +223,33 @@ export, one print — all three read the same list, so they cannot disagree.
 
 `npm run verify:dss-rates`.
 
+### The DSS TOTAL row, and what the C A/C line states
+
+Both changed on the office's asking (2026-09-26); `npm run verify:dss-totals`.
+
+- **The TOTAL row carries the money alone.** It used to add the kilo columns
+  down the page — opening + receipt + total + sales + closing — figures the
+  form does not ask for. Those five cells are now blank (their ruled box
+  kept), and the row keeps its number, its மொத்தம் label, ரூபாய் and the
+  amount. Both TOTAL rows: the main one and the police one.
+  `sectionRows` / `writeSection` still add the sums up; nothing prints them.
+- **The C A/C line is the money BANKED for that sales date**, read from the
+  day sheet's own deposits (`dssRemitOf`, the same reading as
+  `engine/remittance.ts` `txnsOf`: the `remits` array, else the single
+  `remitAmount` an older sheet carries). It used to be `A.total + B.total`,
+  the day's sales priced out — CRS 8's 21-09-2026 page said **4639.50** where
+  the shop had banked **4640**.
+  - Every deposit on the date counts, Cereal and Non-Cereal alike: the line
+    states what reached the bank, and shops key Non-Cereal only, so a
+    cereal-only reading would print 0.00 on nearly every page.
+  - An administrator's correction, an added deposit and a removed one all
+    land in that array, and the sheet is read when the DSS is opened — so the
+    next DSS shows them, and nothing is cached. A date with no deposit prints
+    **0.00**, which is what the shop banked.
+- Preview, Print/PDF and the .xlsx (D–H of rows 35 and 43, G45) all changed
+  together; the commodity rows, the rates and the OB→CB arithmetic are
+  untouched.
+
 ### Payment Access Control (shop-wise switches)
 
 `/payment-access` (admin only) sets, per shop, whether the **DSS** and the
@@ -1093,6 +1120,7 @@ npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, sa
 npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
+npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
