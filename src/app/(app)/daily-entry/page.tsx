@@ -958,6 +958,10 @@ export default function DailyEntryPage() {
       CRS_LIST: shops,
       APP_CONFIG: crsData.get('__config') ?? {},
       CRS_ACCOUNTS: crsData.get('__accounts') ?? {},
+      // Rates as the Commodities screen has them saved, read at the moment the
+      // DSS is opened — the engine's own lists carry the rates that were
+      // compiled into it (CIS 12.00 long after the office moved it to 10.00).
+      commodityMaster: crsData.get('__commodityMaster') ?? [],
       alert: (m: string) => void appAlert(m),
     });
     engine.openPreview(crsVal, date);
