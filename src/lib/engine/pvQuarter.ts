@@ -133,10 +133,16 @@ export function systemQuarterMonth(
   // Gunny: the Gunny Stock screen's own rule, on this month's own sales bags.
   const prevKey = `${crsId}_${month === 1 ? 12 : month - 1}_${month === 1 ? year - 1 : year}`;
   const gridGunnySales: Record<string, number> = {};
-  for (const sec of ['a', 'b'] as const) for (const [id, r] of Object.entries(merged[sec])) gridGunnySales[id] = Number(r.g_sales) || 0;
+  // …and the month's own sales, from which POLY and C.BOX take their Issues,
+  // exactly as the Gunny Stock screen does (office, 2026-09-26).
+  const packSales: Record<string, number> = {};
+  for (const sec of ['a', 'b'] as const) for (const [id, r] of Object.entries(merged[sec])) {
+    gridGunnySales[id] = Number(r.g_sales) || 0;
+    packSales[id] = Number(r.sales) || 0;
+  }
   const gunny = {} as Record<GunnyKey, GunnyFlow>;
   for (const k of ['ss50', 'poly', 'cbox'] as const) {
-    const g = gunnyRowFor(k, stores.meGunnyStore[key] ?? {}, stores.meGunnyStore[prevKey] ?? {}, stores.salesCloseStore[key], gridGunnySales);
+    const g = gunnyRowFor(k, stores.meGunnyStore[key] ?? {}, stores.meGunnyStore[prevKey] ?? {}, stores.salesCloseStore[key], gridGunnySales, packSales);
     gunny[k] = { opening: g.opening, receipt: g.rc.val, total: g.total, issues: Number(g.issues) || 0, closing: g.closing };
   }
   return { label: monthLabel(month, year), source: 'system', rows, gunny, police, notes: [] };

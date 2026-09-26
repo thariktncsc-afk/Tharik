@@ -62,7 +62,7 @@ import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
 import GunnyTable from './GunnyTable';
 import RemitTable from './RemitTable';
-import { ME_GUNNY_TO_COMM, ME_MONTH_NAMES, NO_GUNNY, monthCloseBlock, sectionSaved, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
+import { ME_GUNNY_ITEMS, ME_MONTH_NAMES, NO_CLOSING, NO_GUNNY, gunnyRowFor, mePrevKey, monthCloseBlock, sectionSaved, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
 
 type ShopRec = { name: string };
 type InspDay = { a?: Record<string, { excess?: number; shortage?: number; transfer?: number }>; b?: Record<string, { excess?: number; shortage?: number; transfer?: number }> };
@@ -377,17 +377,22 @@ export default function MonthlyEntryPage() {
     return out;
   }, [rows]);
 
+  /**
+   * The month's sales per commodity, in the commodity's own unit — the Gunny
+   * table reads Empty Polythene Bag and Empty Card+Box out of it for POLY and
+   * C.BOX Issues (office, 2026-09-26). It is the grid's live figure, so a
+   * sale typed a moment ago is already in the gunny row.
+   */
+  const gridSales = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const r of [...rows.a, ...rows.b]) out[r.c.id] = r.sales;
+    return out;
+  }, [rows]);
+
   const setEdit = (sec: 'a' | 'b', id: string, patch: Partial<GridEdit>) =>
     setEdits((prev) => ({ ...prev, [`${sec}:${id}`]: { ...prev[`${sec}:${id}`], ...patch } }));
   const setGunnyEdit = (sec: 'a' | 'b', id: string, f: string, val: string) =>
     setEdits((prev) => ({ ...prev, [`${sec}:${id}`]: { ...prev[`${sec}:${id}`], g: { ...prev[`${sec}:${id}`]?.g, [f]: val } } }));
-
-  /** Gunny Issues → the Empty Bag / Empty Box sales rows (rule in 15-monthly-extras). */
-  const issuesToMonthly = (itemId: string, issues: string) => {
-    const commId = ME_GUNNY_TO_COMM[itemId];
-    if (!commId || isCrs29(crsId)) return;
-    setEdit('a', commId, { sales: issues === '' ? '' : String(Number(issues) || 0) });
-  };
 
   /**
    * Clear drops the unsaved edits only — it never wrote to the database. But
@@ -598,6 +603,43 @@ export default function MonthlyEntryPage() {
       lists,
     );
     for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
+
+    /**
+     * The month's Gunny rows, written out with the month (office,
+     * 2026-09-26). POLY and C.BOX take their Issues from the sales now, so a
+     * shop can key a whole month without ever touching that table — and the
+     * NEXT month's Opening is the Closing stored here. Without this, October
+     * would carry nothing from September.
+     *
+     * The derived Issues are deliberately NOT stored: a stored figure reads
+     * as the office's own and would stop following the sales. Opening,
+     * Receipt, Total and Closing are the derived copies the table has always
+     * kept — and exactly what stockGuard rule 5 expects from a shop user.
+     */
+    crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
+      const own = d[ctx.key] ?? {};
+      const prev = d[mePrevKey(ctx.crsId, ctx.month, ctx.year)] ?? {};
+      const next = { ...own };
+      for (const item of ME_GUNNY_ITEMS) {
+        const r = gunnyRowFor(item.id, own, prev, salesCloseStore[ctx.key], gridGunnySales, gridSales);
+        const cur = next[item.id] ?? {};
+        const ownOpening = cur.opening !== undefined && cur.opening !== '';
+        next[item.id] = {
+          itemName: cur.itemName ?? item.label,
+          crsId: String(ctx.crsId),
+          month: ctx.month,
+          year: ctx.year,
+          ...cur,
+          opening: ownOpening ? cur.opening : r.openingVal !== '' ? Number(r.openingVal) : undefined,
+          openingAuto: ownOpening ? cur.openingAuto : r.openingAuto,
+          receipt: r.rc.val,
+          total: r.total,
+          closing: r.closing,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      d[ctx.key] = next;
+    });
     // The tick waits for the write to land — a refused or conflicting save
     // shows nothing. Nothing above this line changed.
     if (await crsData.saveConfirmed()) {
@@ -810,7 +852,16 @@ export default function MonthlyEntryPage() {
                     </>
                   ) : null}
                   {gunnyCell(r, 'close')}
-                  <td style={{ padding: '3px 4px', borderBottom: bdr }}>{roKgs(r.close, r.close < 0 ? { color: '#DC2626', background: '#FEF2F2', fontWeight: 800 } : undefined)}</td>
+                  {/* C.Box and Poly hold no closing balance of their own: the
+                      bags they cover are stocked in Gunny Stock Management,
+                      where the sale below deducts them. Printing one here only
+                      produced a negative as soon as a sale was keyed (office,
+                      2026-09-26). The statements are unchanged. */}
+                  <td style={{ padding: '3px 4px', borderBottom: bdr, ...(NO_CLOSING.has(r.c.id) ? { textAlign: 'center', fontSize: 10, color: '#D1D5DB', background: '#FAFAFA' } : {}) }}>
+                    {NO_CLOSING.has(r.c.id)
+                      ? <span title="Stocked in Gunny Stock Management — the sale deducts it there">—</span>
+                      : roKgs(r.close, r.close < 0 ? { color: '#DC2626', background: '#FEF2F2', fontWeight: 800 } : undefined)}
+                  </td>
                   <td style={{ padding: '5px 4px', textAlign: 'center', borderBottom: bdr, background: '#FFFBEB' }}>
                     {r.c.free ? <span style={{ color: '#16A34A', fontWeight: 600, fontSize: 10 }}>Free</span> : <span style={{ fontWeight: 700, fontSize: 11, color: '#D97706' }}>₹{r.c.rate.toFixed(2)}</span>}
                   </td>
@@ -1132,7 +1183,7 @@ export default function MonthlyEntryPage() {
               </div>
 
               <RemitTable ctx={ctx} remit={meRemitStore} entryStore={entryStore} subtitle={subtitle} />
-              <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} onIssuesToMonthly={issuesToMonthly} subtitle={subtitle} />
+              <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} packSales={gridSales} isAdmin={isAdmin} subtitle={subtitle} />
               <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} allotConfirmed={meAllotConfirmed} subtitle={subtitle} />
             </div>
           </div>
