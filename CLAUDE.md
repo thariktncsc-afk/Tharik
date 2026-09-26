@@ -193,6 +193,36 @@ wrapper and `dssv-*` class names, so every figure is identical (all 10 of CRS
 19's September pages compared old vs new), and tablet, desktop and the printed
 page lay out exactly as before (compared position for position at 768 and 1280).
 
+### The DSS prices sales at the SAVED rate
+
+`DSS_A` / `DSS_B` are sliced out of `03-daily-entry.js` by the module builder,
+**rates and all**, so every rate in the generated engine is frozen at whatever
+was compiled into that file. The office moved CIS to ₹10.00 on the Commodities
+screen on 2026-09-22 and every DSS page went on printing 12.00 — and pricing
+the day's salt sales by it (office, 2026-09-26).
+
+The DSS engine now takes `ctx.commodityMaster` (Daily Entry passes
+`__commodityMaster`, read when the DSS is opened) and **overwrites the rate of
+any commodity the master names**, in `DSS_EPILOGUE`. One preview, one Excel
+export, one print — all three read the same list, so they cannot disagree.
+
+- **Only the rate.** Which commodities exist, their order, their Tamil labels
+  and which are free stay the engine's; a master row for a commodity the DSS
+  has no line for adds nothing. A missing, blank or non-numeric rate leaves
+  the compiled one; a rate of `0` is a rate.
+- The lists are created fresh inside each `createDssEngine` call, so the
+  override cannot leak between instances.
+- Live, 2026-09-26: **CIS is the only commodity whose saved rate differs from
+  the compiled one** (10 vs 12) — every other rate and free flag already
+  agrees, which is why this changes exactly that one figure.
+- **The statement engine still uses the compiled rates** (`c.rate` in
+  `12-statement-builders.js`, e.g. the Sale Tax sheet), so a statement prints
+  CIS at 12.00 while the DSS now prints 10.00. Same fix would apply — the
+  statements were left alone because their output is checked byte-for-byte
+  against the goldens and that is the office's call.
+
+`npm run verify:dss-rates`.
+
 ### Payment Access Control (shop-wise switches)
 
 `/payment-access` (admin only) sets, per shop, whether the **DSS** and the
@@ -1062,6 +1092,7 @@ npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every f
 npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
 npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
+npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
