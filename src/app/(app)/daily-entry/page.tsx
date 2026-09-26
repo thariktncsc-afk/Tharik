@@ -23,7 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
 import { appAlert, appConfirm } from '@/components/dialog';
-import { isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { isCrs29, NO_CLOSING, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { holidayOn, type GovtHolidayMap } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
@@ -1206,10 +1206,21 @@ export default function DailyEntryPage() {
                       {isAdmin && !sheetProjected ? adminInput(sec, c, 'total', d2) : roCell(d2.total, { background: '#EFF6FF', color: '#0284C7', fontWeight: 700 })}
                     </td>
                     <td style={{ padding: '4px 5px', borderBottom: bdr }}>{numInput(sec, c, 'sales', d2, { fontWeight: 700 })}</td>
-                    <td style={{ padding: '4px 5px', borderBottom: bdr }}>
-                      {isAdmin && !sheetProjected
-                        ? adminInput(sec, c, 'close', d2, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5' } : undefined)
-                        : roCell(d2.close, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5', fontWeight: 800 } : undefined)}
+                    {/* C.Box and Poly hold no closing balance on this row: the
+                        bags are stocked in Gunny Stock Management, where the
+                        sale keyed here is the Issues figure and the closing is
+                        worked out. Showing one here only produced a negative
+                        the moment a sale was keyed (office, 2026-09-26). What
+                        is saved, and what the statements and the DSS print,
+                        are unchanged. */}
+                    <td style={{ padding: '4px 5px', borderBottom: bdr, ...(NO_CLOSING.has(c.id) ? { textAlign: 'center', fontSize: 11, color: '#D1D5DB', background: '#FAFAFA' } : {}) }}>
+                      {NO_CLOSING.has(c.id) ? (
+                        <span title="Stocked in Gunny Stock Management — the sale deducts it there">—</span>
+                      ) : isAdmin && !sheetProjected ? (
+                        adminInput(sec, c, 'close', d2, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5' } : undefined)
+                      ) : (
+                        roCell(d2.close, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5', fontWeight: 800 } : undefined)
+                      )}
                     </td>
                     <td style={{ padding: '4px 5px', borderBottom: bdr }}>
                       {c.free ? (
