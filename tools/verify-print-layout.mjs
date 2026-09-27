@@ -100,5 +100,42 @@ console.log('\n5. No screen prints the whole application');
     /afterprint/.test(helper) && /classList\.remove/.test(helper));
 }
 
+console.log('\n6. The statements print without a pop-up window');
+{
+  // window.open is allowed only while the page is answering a click. The
+  // document is built on the server first, so a window opened after that
+  // `await` — or a second one opened from `afterprint` — was blocked:
+  // "The print window was blocked by the browser". A same-origin frame needs
+  // no permission at all (lib/statements/printFrame.ts).
+  const page = readFileSync(join(root, 'src/app/(app)/statements/page.tsx'), 'utf8');
+  check('the Statements page opens no window to print', !/window\.open\(/.test(page));
+  check('…it prints through the frame', /printInFrame\(/.test(page));
+  check('…and clears any frame an earlier print left, before building the next', /clearPrintFrame\(\)/.test(page));
+  const frame = readFileSync(join(root, 'src/lib/statements/printFrame.ts'), 'utf8');
+  check('the frame is written with srcdoc and printed from ITS window', /frame\.srcdoc = doc/.test(frame) && /win\.print\(\)/.test(frame));
+  check('only one frame can exist: each print removes the last', /clearPrintFrame\(\);\s*return new Promise/.test(frame));
+  check('no wait inside it can hang a print (animation frames do not run in a hidden tab)', /Promise\.race/.test(frame));
+  check('the second job of a mixed print waits for the office to ask for it', /appConfirm\(/.test(page) && /Print portrait statements/.test(page));
+}
+
+console.log('\n7. Exactly the statements ticked now');
+{
+  const src = readFileSync(join(root, 'src/lib/statements/selection.ts'), 'utf8');
+  // Evaluate the helper itself rather than a copy of its logic.
+  const fn = new Function(`${src.replace(/export /g, '').replace(/: readonly string\[\]|: Readonly<Record<string, boolean>>|: string\[\]/g, '')}; return selectedInOrder;`)();
+  const offered = ['crs_page1', 'receipt', 'crs_page2', 'gunny', 'remittance', 'card_details', 'rbi'];
+  const J = (v) => JSON.stringify(v);
+  check('one ticked → that one', J(fn(offered, { rbi: true })) === J(['rbi']));
+  check('three ticked → those three, in the listed order, not click order',
+    J(fn(offered, { rbi: true, card_details: true, gunny: true })) === J(['gunny', 'card_details', 'rbi']));
+  check('select all → every offered statement, once', J(fn(offered, Object.fromEntries(offered.map((id) => [id, true])))) === J(offered));
+  check('five ticked, two unticked → the remaining three',
+    J(fn(offered, { crs_page2: true, gunny: false, remittance: true, rbi: true, card_details: false })) === J(['crs_page2', 'remittance', 'rbi']));
+  check('a tick for a statement no longer offered is not sent', J(fn(offered, { rbi: true, gone_section: true })) === J(['rbi']));
+  check('nothing ticked → nothing', J(fn(offered, {})) === '[]');
+  const page = readFileSync(join(root, 'src/app/(app)/statements/page.tsx'), 'utf8');
+  check('the Statements page builds its selection with it', /selectedInOrder\(sections\.map\(\(s\) => s\.id\), selected\)/.test(page));
+}
+
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');
 process.exit(failures ? 1 : 0);

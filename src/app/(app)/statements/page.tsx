@@ -16,13 +16,15 @@
  * changed.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { appAlert } from '@/components/dialog';
+import { appAlert, appConfirm } from '@/components/dialog';
 import PaymentDialog from '@/components/PaymentDialog';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
 import { formatRupees, quoteStatement } from '@/lib/payments/pricing';
 import { buildPreviewSheet, buildPrintDocument, orientationOf } from '@/lib/statements/printDoc';
+import { clearPrintFrame, printInFrame } from '@/lib/statements/printFrame';
+import { selectedInOrder } from '@/lib/statements/selection';
 import SheetPreview from '@/components/SheetPreview';
 import {
   ApiError,
@@ -107,7 +109,12 @@ export default function StatementsPage() {
 
   const labels = useMemo(() => Object.fromEntries(sections.map((s) => [s.id, s.label])), [sections]);
 
-  const selectedIds = useMemo(() => Object.keys(selected).filter((id) => selected[id]), [selected]);
+  /**
+   * What is ticked NOW, in the order the statements are listed — never click
+   * order, and never a section this shop and month no longer offer (a tick
+   * left over from another month would otherwise be sent, and refused).
+   */
+  const selectedIds = useMemo(() => selectedInOrder(sections.map((s) => s.id), selected), [selected, sections]);
   const unpaidSelected = useMemo(() => selectedIds.filter(locked), [selectedIds, locked]);
 
   const quote = access ? quoteStatement(unpaidSelected.length, access.settings) : null;
@@ -154,35 +161,19 @@ export default function StatementsPage() {
   };
 
   /**
-   * `doc` is a whole document built by printDoc.ts — every statement on a
-   * sheet of its own, A4, with the page rules appended last so they beat the
-   * A3 rule one builder carries. Nothing is concatenated here any more.
+   * Print one finished document (printDoc.ts) through a hidden same-origin
+   * frame — never a pop-up window, so Chrome has nothing to block
+   * (lib/statements/printFrame.ts). Any frame an earlier print left is
+   * removed first.
    */
-  const openPrintWindow = (doc: string, onDone?: () => void) => {
-    const win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) {
-      void appAlert('The print window was blocked by the browser. Allow pop-ups for this site and try again.');
-      onDone?.();
-      return;
+  const printDocument = async (doc: string): Promise<boolean> => {
+    try {
+      await printInFrame(doc);
+      return true;
+    } catch (e) {
+      void appAlert(e instanceof Error ? e.message : 'The statements could not be sent to the printer.');
+      return false;
     }
-    win.document.write(doc);
-    win.document.close();
-    win.focus();
-    if (onDone) {
-      // The next job waits for this one's dialog to close — printed or
-      // cancelled (`afterprint` fires for both) — or for the window to be
-      // shut, whichever comes first, and only once.
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        clearInterval(poll);
-        onDone();
-      };
-      win.addEventListener('afterprint', finish);
-      const poll = setInterval(() => { if (win.closed) finish(); }, 500);
-    }
-    setTimeout(() => win.print(), 600);
   };
 
   /**
@@ -197,15 +188,26 @@ export default function StatementsPage() {
    * the page empty. That is what the office was seeing on its EPSON.
    *
    * So a mixed selection prints as two jobs, landscape sheets first and then
-   * portrait, each opened after the last is done. Each job has one
-   * orientation, the dialog takes it from the document, and every sheet
-   * prints at its own size. A selection of one orientation is one job, as
-   * before.
+   * portrait. The second waits for the office to say so (one click on a
+   * notice, after the first dialog has closed): it is their printer, and a
+   * second dialog appearing by itself the moment the first closes reads as
+   * the first one coming back. A selection of one orientation is one job.
    */
-  const openPrintJobs = (jobs: string[]) => {
-    const [first, ...rest] = jobs;
-    if (!first) return;
-    openPrintWindow(first, rest.length ? () => openPrintJobs(rest) : undefined);
+  const printJobs = async (landscapeDoc: string | null, portraitDoc: string | null, portraitCount: number) => {
+    if (landscapeDoc && portraitDoc) {
+      if (!(await printDocument(landscapeDoc))) return;
+      const go = await appConfirm({
+        title: 'Now the portrait statements',
+        icon: '🖨️',
+        message: `The landscape statements have gone to the printer. The remaining ${portraitCount} portrait ${portraitCount === 1 ? 'statement prints' : 'statements print'} as a second job, so the printer sets portrait paper for ${portraitCount === 1 ? 'it' : 'them'}.`,
+        confirmLabel: 'Print portrait statements',
+        cancelLabel: 'Not now',
+      });
+      if (go) await printDocument(portraitDoc);
+      return;
+    }
+    const only = landscapeDoc ?? portraitDoc;
+    if (only) await printDocument(only);
   };
 
   const doPreview = async (section: Section) => {
@@ -221,19 +223,25 @@ export default function StatementsPage() {
   };
 
   const printSelected = async () => {
-    const out = await render(selectedIds, 'print');
+    // Nothing of an earlier print survives into this one.
+    clearPrintFrame();
+    // The selection as it stands at this click (selectedIds is rebuilt from
+    // the ticks on every change) — and the server returns exactly the
+    // sections it is sent, once each, in that order.
+    const ids = selectedIds;
+    const out = await render(ids, 'print');
     if (!out) return;
-    // Landscape sheets, then portrait — see openPrintJobs. The office's own
-    // order is kept within each.
+    // Landscape sheets, then portrait — see printJobs. The office's own order
+    // is kept within each.
     const title = `TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`;
     const landscape = out.sections.filter((s) => orientationOf(s.html, s.id) === 'landscape');
     const portrait = out.sections.filter((s) => orientationOf(s.html, s.id) !== 'landscape');
-    openPrintJobs(
-      [landscape, portrait]
-        .filter((group) => group.length)
-        .map((group) => buildPrintDocument(title, out.css, group)),
-    );
     out.sections.forEach((s) => record(s.label));
+    await printJobs(
+      landscape.length ? buildPrintDocument(title, out.css, landscape) : null,
+      portrait.length ? buildPrintDocument(title, out.css, portrait) : null,
+      portrait.length,
+    );
   };
 
   /**
@@ -281,7 +289,7 @@ export default function StatementsPage() {
   const sel = { width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13 } as const;
   const selectedCount = selectedIds.length;
   const working = busy !== '';
-  /** Both orientations ticked: the print goes out as two jobs (openPrintJobs). */
+  /** Both orientations ticked: the print goes out as two jobs (printJobs). */
   const mixedOrientations = new Set(selectedIds.map((id) => orientationOf('', id))).size > 1;
 
   return (
@@ -558,8 +566,8 @@ export default function StatementsPage() {
                   🖨️ Print
                 </button>
                 {mixedOrientations ? (
-                  <span style={{ flexBasis: '100%', fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
-                    Landscape and portrait statements are ticked, so this prints as <strong>two jobs</strong> — landscape sheets first, then portrait — so the printer sets the right paper for each. Save as PDF keeps them in one file.
+                  <span style={{ flexBasis: '100%', fontSize: 12, color: 'rgba(255,255,255,.92)', lineHeight: 1.5 }}>
+                    Landscape and portrait statements are ticked, so Print sends <strong>two jobs</strong> — the landscape sheets first, then (when you say so) the portrait ones — so the printer sets the right paper for each.
                   </span>
                 ) : null}
               </>
@@ -584,7 +592,7 @@ export default function StatementsPage() {
                   onClick={() => {
                     // The same sheet-per-copy document as Print, for the one
                     // statement on screen: two copies print as two pages.
-                    openPrintWindow(
+                    void printDocument(
                       buildPrintDocument(`${preview.section.label} - CRS ${crsId} ${MONTHS[month]} ${year}`, '', [
                         { id: preview.section.id, label: preview.section.label, copies: preview.section.copies, html: preview.html },
                       ]),
