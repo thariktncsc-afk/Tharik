@@ -53,7 +53,7 @@
     "@supabase/supabase-js": "^2.111.0",
     "@types/qrcode": "^1.5.6",
     "fflate": "^0.8.3",
-    "next": "^16.2.11",
+    "next": "^16.3.6",
     "pdfjs-dist": "^5.7.284",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
