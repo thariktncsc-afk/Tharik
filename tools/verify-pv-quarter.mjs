@@ -510,8 +510,27 @@ console.log('\n5. The automatic PV, unchanged');
       PB_BRA: { name: 'B.R.A', unit: 'KG', open: 15, receipt: 0, total: 15, issues: 15, closing: 0, amount: 0, free: false },
     };
     const opts = { commMap, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'SHOP', gunny: { ss50: { opening: 1186, receipt: 189, total: 1375, issues: 1300, closing: 75 } }, billClerk: 'BC', pvOfficer: 'O', pvDate: '01-10-2026' };
-    check('same input, byte-identical to dev\'s PV', S.buildPVTable(opts) === D.buildPVTable(opts));
-    check('…for a CRS 29 PV too', S.buildPVTable({ ...opts, crsId: 29 }) === D.buildPVTable({ ...opts, crsId: 29 }));
+    // The PRINT rules changed on 2026-09-27: the PV prints from the screen it
+    // is read on, and a FIXED print area prints its first page and drops the
+    // rest. Everything the PV SAYS must still be dev's to the byte, so the
+    // print <style> block is lifted out of both before they are compared, and
+    // checked on its own below.
+    const noPrintCss = (h) => h.replace(/<style>@media print\{[\s\S]*?<\/style>/, '<style>PRINT</style>');
+    check('same input, byte-identical to dev\'s PV (apart from the print rules)',
+      noPrintCss(S.buildPVTable(opts)) === noPrintCss(D.buildPVTable(opts)));
+    check('…for a CRS 29 PV too', noPrintCss(S.buildPVTable({ ...opts, crsId: 29 })) === noPrintCss(D.buildPVTable({ ...opts, crsId: 29 })));
+
+    const css = /<style>@media print\{([\s\S]*?)<\/style>/.exec(S.buildPVTable(opts))?.[1] ?? '';
+    check('the print area is absolute, not fixed — a fixed one prints page 1 and no more',
+      /#pv-print-area\{position:absolute/.test(css) && !/position:fixed/.test(css), css.slice(0, 200));
+    check('…on A4 landscape, the paper a PV is filed on', /@page\{size:A4 landscape/.test(css));
+    check('…with the wide-screen minimum width off, so no column falls off the paper',
+      /#pv-tbl\{min-width:0!important;width:100%!important/.test(css));
+    check('…and the screen scroller showing its whole width', /overflow:visible!important/.test(css));
+    check('dev had the faults this fixes: a fixed area, and the table still 1400px wide',
+      /position:fixed/.test(D.buildPVTable(opts)) && /min-width:1400px/.test(D.buildPVTable(opts)));
+    check('the PV on screen is unchanged: still the scroller and its 1400px table',
+      /min-width:1400px/.test(S.buildPVTable(opts)) && /overflow-x:auto/.test(S.buildPVTable(opts)));
   }
 }
 

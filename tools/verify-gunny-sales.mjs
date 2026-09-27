@@ -29,7 +29,7 @@ register(
   import.meta.url,
 );
 const imp = (p) => import(pathToFileURL(join(root, p)).href);
-const { gunnyRowFor, NO_CLOSING } = await imp('src/app/(app)/monthly-entry/lib.ts');
+const { gunnyRowFor, SALES_ONLY } = await imp('src/app/(app)/monthly-entry/lib.ts');
 const { inspectStockWrite, describeStock } = await imp('src/lib/stockGuard.ts');
 const { createStatementEngine } = await imp('src/generated/statements-legacy.js');
 
@@ -78,8 +78,11 @@ console.log('\n2. Deducted once, and only there');
   const prev = { cbox: { closing: 400 } };
   const row = gunnyRowFor('cbox', NONE, prev, undefined, {}, SALES);
   check('the sale is not counted twice: 400 − 166 = 234, not 68', row.closing === 234, J(row));
-  check('C.Box and Poly show no Closing on the entry grid', NO_CLOSING.has('EMPTY_BOX') && NO_CLOSING.has('EMPTY_BAG'));
-  check('every other commodity still shows its Closing', !NO_CLOSING.has('BRA') && !NO_CLOSING.has('SUGAR') && !NO_CLOSING.has('PALM') && NO_CLOSING.size === 2);
+  // Opening, Receipt, Total and Closing are not shown for these two at all:
+  // the entry row takes Sales, and those four are kept in the gunny table.
+  check('C.Box and Poly are keyed as Sales only on the entry grid', SALES_ONLY.has('EMPTY_BOX') && SALES_ONLY.has('EMPTY_BAG'));
+  check('no other commodity is: they all keep Opening, Receipt, Total and Closing',
+    !SALES_ONLY.has('BRA') && !SALES_ONLY.has('SUGAR') && !SALES_ONLY.has('PALM') && !SALES_ONLY.has('PB_SUGAR') && SALES_ONLY.size === 2, String(SALES_ONLY.size));
 }
 
 console.log('\n3. Next month opens where this one closed');

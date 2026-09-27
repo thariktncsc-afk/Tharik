@@ -302,7 +302,20 @@ export function buildPVTable(opts: {
 
   return (
     '<div id="pv-print-area">' +
-    '<style>@media print{body *{visibility:hidden}#pv-print-area,#pv-print-area *{visibility:visible}#pv-print-area{position:fixed;top:0;left:0;width:100%;z-index:9999;padding:8px}}</style>' +
+    // Printed from the screen it is read on, so the app around it is hidden
+    // and the PV lifted to the top-left of the paper. ABSOLUTE, not fixed: a
+    // fixed element prints its first page and nothing after it, and a PV runs
+    // to several (office, 2026-09-27). The table is laid out for a wide screen
+    // (min-width 1400px inside a scroller), which on paper is columns falling
+    // off the right-hand edge — on paper it is the width of the page instead.
+    '<style>@media print{' +
+    '@page{size:A4 landscape;margin:8mm}' +
+    'body *{visibility:hidden}#pv-print-area,#pv-print-area *{visibility:visible}' +
+    '#pv-print-area{position:absolute;top:0;left:0;width:100%;z-index:9999;padding:0}' +
+    '#pv-print-area div[style*="overflow"]{overflow:visible!important}' +
+    '#pv-tbl{min-width:0!important;width:100%!important;table-layout:fixed}' +
+    '#pv-tbl th,#pv-tbl td{word-break:break-word}' +
+    '}</style>' +
     '<div style="overflow-x:auto">' +
     '<table id="pv-tbl" style="border-collapse:collapse;font-family:Arial,sans-serif;width:100%;min-width:1400px">' +
     hdr + '<tbody>' + rows + '</tbody>' + footer + '</table></div></div>'

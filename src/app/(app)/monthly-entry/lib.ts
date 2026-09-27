@@ -3,7 +3,7 @@
  * 05-monthly-entry.js, 15-monthly-extras.js, 22-allotment.js, 40-cs-column.js.
  */
 import { CRS29_STOCK, DSS_A, isCrs29, type Commodity } from '@/lib/engine/commodities';
-export { NO_CLOSING } from '@/lib/engine/commodities';
+export { SALES_ONLY } from '@/lib/engine/commodities';
 import type { MonthlyBlock } from '@/lib/engine/monthlyRollup';
 
 export type GunnyRec = {

@@ -45,7 +45,8 @@
     "verify:coll-advance": "node tools/verify-coll-advance.mjs",
     "verify:dss-rates": "node tools/verify-dss-rates.mjs",
     "verify:dss-totals": "node tools/verify-dss-totals.mjs",
-    "verify:gunny-sales": "node tools/verify-gunny-sales.mjs"
+    "verify:gunny-sales": "node tools/verify-gunny-sales.mjs",
+    "verify:print-layout": "node tools/verify-print-layout.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
