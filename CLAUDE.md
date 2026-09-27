@@ -677,6 +677,41 @@ on `dev` for reasons that have nothing to do with any of this. Until it is
 refreshed — `node tools/dump-golden-stores.mjs`, then re-render and review —
 that check cannot see anything, receipt sections included.
 
+## What a SCREEN prints
+
+The statements print from a window of their own (`printDoc.ts`, below), which
+holds none of the app. A screen that prints ITSELF is the other case, and
+until 2026-09-27 **there was no `@media print` rule in the app at all**:
+`#sidebar` is `height:100vh` and stood down the left of every sheet, `#main`
+hides its overflow and `#content` scrolls, so the paper got a squeezed column
+of statement cut off at whatever happened to be on screen.
+
+`src/app/print.css` (loaded by the root layout) takes the furniture away and
+unclips the page; `src/lib/printArea.ts` marks one area as the thing being
+printed. `npm run verify:print-layout`.
+
+- **Nothing here changes how a statement looks** — its own styles still decide
+  that. The rules hide `#sidebar`, `#topbar` and `.no-print`, set
+  `overflow:visible` and `height:auto` on the shell, and make anything still
+  `fixed` or `sticky` static.
+- **`position: absolute`, never `fixed`.** A fixed element prints its first
+  page and nothing after it — which is how a multi-page PV lost everything
+  past page one. The DSS viewer got this right from the start
+  (17-dss-export.js) and is untouched.
+- **A wide-screen table is brought back to the paper's width** inside a print
+  area (`min-width:0;max-width:100%`): a `min-width:1400px` table in a
+  horizontal scroller keeps that width on paper and drops its right-hand
+  columns off the sheet, and because an absolutely placed area does not
+  scroll, nothing shows that they are gone.
+- Two screens print themselves: **Monthly Entry's statement preview** and the
+  **PV on Reports**. Both now call `printArea()` and mark their document
+  `.print-area`; the PV keeps its own `@page{size:A4 landscape}` and its
+  min-width reset, which is why `verify:pv-quarter` compares it to `dev`
+  **apart from** the print `<style>` block and checks those rules separately.
+- The check also refuses a NEW screen that calls `window.print()` without
+  either printing an area or opening a document of its own — which is how
+  this fault would come back.
+
 ## Exporting statements — PDF and Excel
 
 `src/lib/statements/`. The builders are NOT involved: they still produce
@@ -1169,6 +1204,7 @@ npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
+npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]

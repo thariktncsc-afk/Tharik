@@ -61,6 +61,7 @@ import type { ClearScope } from '@/lib/clearClient';
 import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
 import GunnyTable from './GunnyTable';
+import { printArea, PRINT_AREA_CLASS } from '@/lib/printArea';
 import RemitTable from './RemitTable';
 import { ME_GUNNY_ITEMS, ME_MONTH_NAMES, NO_GUNNY, SALES_ONLY, gunnyRowFor, mePrevKey, monthCloseBlock, sectionSaved, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
 
@@ -1218,11 +1219,15 @@ export default function MonthlyEntryPage() {
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>CRS {ctx.crsId} — {shops[ctx.crsId - 1]?.name ?? ''} · {ME_MONTH_NAMES[month]} {year}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-outline btn-sm" onClick={() => window.print()}>🖨️ Print</button>
+                    {/* The statement alone, on the paper — printing the screen
+                        put the navy sidebar down every sheet and cut the
+                        statement off at whatever was scrolled into view
+                        (office, 2026-09-27; src/app/print.css). */}
+                    <button className="btn btn-outline btn-sm" onClick={printArea}>🖨️ Print</button>
                     <button className="btn btn-outline btn-sm" onClick={() => setStmtOpen(false)}>✕ Close</button>
                   </div>
                 </div>
-                <div className="card-body">
+                <div className={`card-body ${PRINT_AREA_CLASS}`}>
                   <div style={{ textAlign: 'center', marginBottom: 14, padding: 14, background: 'linear-gradient(135deg,#0369A1,#0EA5E9)', borderRadius: 10 }}>
                     <div style={{ color: '#fff', fontSize: 15, fontWeight: 800 }}>Tamil Nadu Civil Supplies Corporation</div>
                     <div style={{ color: 'rgba(255,255,255,.8)', fontSize: 12, marginTop: 2 }}>Monthly Statement — Civil Ration Shop</div>
