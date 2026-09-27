@@ -159,27 +159,6 @@ console.log('\n2. The first statement gets its own paper');
   check('one statement on its own: a single A4 portrait page', alone.length === 1 && alone[0].orient === 'portrait' && alone[0].isA4, JSON.stringify(alone));
 }
 
-console.log('\n2b. A physical printer gets one orientation per job');
-{
-  // Save-as-PDF gives each page its own paper; a printer's dialog holds ONE
-  // layout for the job and Chrome takes it from the document only when every
-  // page agrees. So Print Selected sends a mixed selection as two jobs
-  // (statements/page.tsx openPrintJobs), split exactly as orientationOf splits
-  // them here. Each must be all one orientation, and together they must be
-  // the whole selection.
-  const { orientationOf } = await import(pathToFileURL(join(root, 'src/lib/statements/printDoc.ts')).href);
-  const landscapeJob = all.filter((s) => orientationOf(s.html, s.id) === 'landscape');
-  const portraitJob = all.filter((s) => orientationOf(s.html, s.id) !== 'landscape');
-  check('the selection splits into a landscape job and a portrait job', landscapeJob.length > 0 && portraitJob.length > 0, `${landscapeJob.length} / ${portraitJob.length}`);
-  const L = await pagesOf(landscapeJob, 'job-landscape');
-  const P = await pagesOf(portraitJob, 'job-portrait');
-  check('the landscape job is A4 landscape on every page', L.length > 0 && L.every((p) => p.isA4 && p.orient === 'landscape'), J(L.map((p) => p.orient)));
-  check('the portrait job is A4 portrait on every page', P.length > 0 && P.every((p) => p.isA4 && p.orient === 'portrait'), J(P.map((p) => p.orient)));
-  check('the two jobs together are every sheet of the selection, once', L.length + P.length === pages.length, `${L.length} + ${P.length} vs ${pages.length}`);
-  check('neither job is shrunk: same smallest type as the one-document print',
-    Math.min(...L.map((p) => p.smallestPt)) === Math.min(...pages.filter((p) => p.orient === 'landscape').map((p) => p.smallestPt)), '');
-}
-
 console.log('\n3. Nothing is shrunk to fit');
 {
   // A wide statement covers most of its page. If Chrome had shrunk the
@@ -199,5 +178,42 @@ console.log('\n3. Nothing is shrunk to fit');
     receiptPage.smallestPt >= 4.5, JSON.stringify(receiptPage));
 }
 
+console.log('\n4. ONE print session: the PDF the Print button actually prints');
+{
+  // /api/statements/pdf renders the print document with htmlToPdf
+  // (lib/statements/pdfServer.ts) — puppeteer driving Chrome, the production
+  // code path, not the command line used above. One file for the whole
+  // selection, every sheet on its own paper, in the order ticked.
+  const { htmlToPdf } = await import(pathToFileURL(join(root, 'src/lib/statements/pdfServer.ts')).href);
+  const pick = (ids) => ids.map((id) => all.find((s) => s.id === id)).filter(Boolean);
+  const readPdf = async (bytes) => {
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise;
+    const out = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const vp = (await doc.getPage(n)).getViewport({ scale: 1 });
+      const w = vp.width * PT_MM, h = vp.height * PT_MM;
+      out.push({ orient: w > h ? 'landscape' : 'portrait', isA4: (Math.abs(w - 210) < 3 && Math.abs(h - 297) < 3) || (Math.abs(w - 297) < 3 && Math.abs(h - 210) < 3) });
+    }
+    await doc.destroy();
+    return out;
+  };
+  const expectFor = (sections) => sections.flatMap((s) => Array(Math.max(1, s.copies)).fill(s));
+  const orientOf = (await import(pathToFileURL(join(root, 'src/lib/statements/printDoc.ts')).href)).orientationOf;
+
+  for (const [name, ids] of [
+    ['mixed portrait → landscape → portrait → landscape', ['crs_page1', 'crs_page2', 'sale_tax', 'rbi']],
+    ['landscape only', ['rbi', 'card_details', 'gunny']],
+    ['portrait only', ['crs_page1', 'remittance', 'sale_tax', 'coll']],
+  ]) {
+    const sections = pick(ids);
+    const pdfPages = await readPdf(await htmlToPdf(buildPrintDocument(`CRS ${CRS}`, engine.printCss, sections)));
+    const want = expectFor(sections).map((s) => orientOf(s.html, s.id));
+    check(`${name}: one file, ${want.length} pages, each in its own orientation, in the order ticked`,
+      J(pdfPages.map((p) => p.orient)) === J(want), `${J(pdfPages.map((p) => p.orient))} vs ${J(want)}`);
+    check(`…every page A4`, pdfPages.every((p) => p.isA4), '');
+  }
+}
+
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');
+// (the engine keeps one Chrome per process; exiting closes it)
 process.exit(failures ? 1 : 0);

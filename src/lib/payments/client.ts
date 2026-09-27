@@ -157,6 +157,30 @@ export async function renderStatements(input: {
   );
 }
 
+/**
+ * The selected statements as ONE PDF (/api/statements/pdf) — same gate as
+ * renderStatements, so an unpaid sheet comes back as the same 402 with the
+ * same `unpaid` list and the page raises the payment exactly as before.
+ */
+export async function statementsPdf(input: {
+  crsId: number;
+  month: number;
+  year: number;
+  sectionIds: string[];
+  purpose: 'print' | 'download';
+}): Promise<Blob> {
+  const res = await fetch('/api/statements/pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; unpaid?: string[] };
+    throw new ApiError(res.status, body.error || `Request failed (${res.status}).`, body.unpaid ?? []);
+  }
+  return res.blob();
+}
+
 export async function saveSettings(s: PaymentSettings): Promise<PaymentSettings> {
   const body = await json<{ settings: PaymentSettings }>(
     await fetch('/api/payments/settings', {
