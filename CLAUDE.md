@@ -730,6 +730,24 @@ output. `npm run verify:statement-export` drives both exports over all 306.
   portrait and landscape, 8 mm margins), assigned per sheet. A named page
   beats the builder's unnamed `@page` for the elements that use it, so the
   A3 rule can stay where it is and the goldens stay byte-identical.
+- **…but a named page cannot reach the FIRST page** (office, 2026-09-27).
+  Chrome takes page one's size from the document's own `@page` and changes
+  size only at a break, so the first statement printed on whatever the
+  default was — **A3 landscape**, from the Daily Sales builder — in an
+  otherwise A4 job, and every printer and Save-as-PDF then shrank the whole
+  document to fit that one page. That is why the statements came out small
+  and squeezed. Two rules fix it, both in `pageCss`:
+  - **an A4 default** (`@page{size:A4 landscape}`), which also overrides the
+    builder's A3. **Landscape**, because the default page is the box the
+    browser fits the document to: against a 210 mm portrait default every
+    landscape sheet is wider than its page and the whole job shrinks — the
+    Receipt's smallest type went 5.2 pt → 3.6 pt when it said portrait;
+  - **`@page :first`** carrying the first statement's own paper and margins.
+  Naming the page on the `<main>` wrapper does not work, and neither does
+  taking its box away with `display:contents` — both were tried against real
+  PDFs. `npm run verify:print-pdf` prints the document with headless Chrome
+  and reads the page sizes back out; it fails on all three counts against the
+  old rules.
 - **Orientation is measured, not listed**: `columnCount` reads the parsed
   grid, so a builder that gains a column keeps printing right. Over 9 columns
   goes landscape (Receipt is 37, Daily Sale 22, CRS Page 1 only 2).
@@ -1205,6 +1223,7 @@ npm run verify:dss-rates       DSS prices sales at the saved Commodity Master ra
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
+npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
