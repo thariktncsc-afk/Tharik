@@ -22,8 +22,8 @@ import { useAuth } from '@/lib/authClient';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
 import { formatRupees, quoteStatement } from '@/lib/payments/pricing';
-import { buildPreviewSheet, buildPrintDocument, orientationOf } from '@/lib/statements/printDoc';
-import { clearPrintFrame, printInFrame } from '@/lib/statements/printFrame';
+import { buildPreviewSheet, orientationOf } from '@/lib/statements/printDoc';
+import { clearPrintFrame, printPdfBlob } from '@/lib/statements/printFrame';
 import { selectedInOrder } from '@/lib/statements/selection';
 import SheetPreview from '@/components/SheetPreview';
 import {
@@ -32,6 +32,7 @@ import {
   fetchAccess,
   fetchOrders,
   renderStatements,
+  statementsPdf,
   STATUS_LABEL,
   STATUS_COLOR,
   type Access,
@@ -161,53 +162,62 @@ export default function StatementsPage() {
   };
 
   /**
-   * Print one finished document (printDoc.ts) through a hidden same-origin
-   * frame — never a pop-up window, so Chrome has nothing to block
-   * (lib/statements/printFrame.ts). Any frame an earlier print left is
-   * removed first.
+   * The selected statements as ONE PDF from the server (office, 2026-09-27)
+   * — every sheet on A4 in its own orientation, in the order ticked
+   * (/api/statements/pdf, the same paywall as the preview). Same flush and
+   * same payment handling as `render`.
    */
-  const printDocument = async (doc: string): Promise<boolean> => {
+  const pdfFor = async (ids: string[], what: 'print' | 'download'): Promise<Blob | null> => {
+    if (!crsId) {
+      void appAlert('Please select a CRS shop first.');
+      return null;
+    }
+    if (!ids.length) {
+      void appAlert('Please select at least one section.');
+      return null;
+    }
+    setBusy(what);
     try {
-      await printInFrame(doc);
-      return true;
+      await crsData.save();
+      return await statementsPdf({ crsId, month, year, sectionIds: ids, purpose: what });
     } catch (e) {
-      void appAlert(e instanceof Error ? e.message : 'The statements could not be sent to the printer.');
-      return false;
+      if (e instanceof ApiError && e.status === 402) {
+        await startPayment(e.unpaid.length ? e.unpaid : ids);
+        return null;
+      }
+      void appAlert(e instanceof Error ? e.message : 'Could not build the statements.');
+      return null;
+    } finally {
+      setBusy('');
     }
   };
 
   /**
-   * One print job per ORIENTATION (office, 2026-09-27).
+   * ONE print session for everything ticked (office, 2026-09-27).
    *
-   * Save-as-PDF takes a document that mixes landscape and portrait sheets
-   * and gives each page its own paper. A physical printer does not: the
-   * print dialog holds ONE layout for the whole job, and Chrome sets it from
-   * the document only when every page agrees. With a mixed job the dialog
-   * stays on the printer's default — Portrait — and every landscape sheet is
-   * shrunk sideways to fit portrait paper: small, pushed to the left, half
-   * the page empty. That is what the office was seeing on its EPSON.
-   *
-   * So a mixed selection prints as two jobs, landscape sheets first and then
-   * portrait. The second waits for the office to say so (one click on a
-   * notice, after the first dialog has closed): it is their printer, and a
-   * second dialog appearing by itself the moment the first closes reads as
-   * the first one coming back. A selection of one orientation is one job.
+   * An HTML print goes to a physical printer with a single Layout, so a
+   * selection mixing landscape and portrait sheets had half of them shrunk
+   * onto the wrong-shaped paper — and splitting it by orientation made two
+   * print sessions. A PDF carries a page size per page, and when it is
+   * printed the PDF viewer turns each page to the paper instead of shrinking
+   * it: one dialog, every sheet full size. The PDF is printed from a hidden
+   * frame on this page (printFrame.ts), never a pop-up window.
    */
-  const printJobs = async (landscapeDoc: string | null, portraitDoc: string | null, portraitCount: number) => {
-    if (landscapeDoc && portraitDoc) {
-      if (!(await printDocument(landscapeDoc))) return;
-      const go = await appConfirm({
-        title: 'Now the portrait statements',
+  const printPdf = async (blob: Blob) => {
+    try {
+      await printPdfBlob(blob);
+    } catch {
+      // A browser that will not print a PDF from a frame: open it instead,
+      // on the office's click, so nothing can be blocked.
+      const open = await appConfirm({
+        title: 'Open the statements to print',
         icon: '🖨️',
-        message: `The landscape statements have gone to the printer. The remaining ${portraitCount} portrait ${portraitCount === 1 ? 'statement prints' : 'statements print'} as a second job, so the printer sets portrait paper for ${portraitCount === 1 ? 'it' : 'them'}.`,
-        confirmLabel: 'Print portrait statements',
-        cancelLabel: 'Not now',
+        message: 'This browser would not print the statements directly. Open the PDF and print it from there — all the selected statements are in it, each on its own page.',
+        confirmLabel: 'Open PDF',
+        cancelLabel: 'Cancel',
       });
-      if (go) await printDocument(portraitDoc);
-      return;
+      if (open) window.open(URL.createObjectURL(blob), '_blank');
     }
-    const only = landscapeDoc ?? portraitDoc;
-    if (only) await printDocument(only);
   };
 
   const doPreview = async (section: Section) => {
@@ -225,23 +235,30 @@ export default function StatementsPage() {
   const printSelected = async () => {
     // Nothing of an earlier print survives into this one.
     clearPrintFrame();
-    // The selection as it stands at this click (selectedIds is rebuilt from
-    // the ticks on every change) — and the server returns exactly the
-    // sections it is sent, once each, in that order.
+    // The selection as it stands at this click (selectedInOrder), built into
+    // one PDF from scratch — the server returns exactly those statements,
+    // once each, in that order, every page on its own paper.
     const ids = selectedIds;
-    const out = await render(ids, 'print');
-    if (!out) return;
-    // Landscape sheets, then portrait — see printJobs. The office's own order
-    // is kept within each.
-    const title = `TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`;
-    const landscape = out.sections.filter((s) => orientationOf(s.html, s.id) === 'landscape');
-    const portrait = out.sections.filter((s) => orientationOf(s.html, s.id) !== 'landscape');
-    out.sections.forEach((s) => record(s.label));
-    await printJobs(
-      landscape.length ? buildPrintDocument(title, out.css, landscape) : null,
-      portrait.length ? buildPrintDocument(title, out.css, portrait) : null,
-      portrait.length,
-    );
+    const pdf = await pdfFor(ids, 'print');
+    if (!pdf) return;
+    ids.forEach((id) => record(labels[id] ?? id));
+    await printPdf(pdf);
+  };
+
+  /** The same PDF as Print, saved as a file. */
+  const downloadSelected = async () => {
+    const ids = selectedIds;
+    const pdf = await pdfFor(ids, 'download');
+    if (!pdf) return;
+    ids.forEach((id) => record(labels[id] ?? id));
+    const url = URL.createObjectURL(pdf);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `CRS${crsId}-${MONTHS[month]}-${year}-statements.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
   /**
@@ -289,8 +306,6 @@ export default function StatementsPage() {
   const sel = { width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13 } as const;
   const selectedCount = selectedIds.length;
   const working = busy !== '';
-  /** Both orientations ticked: the print goes out as two jobs (printJobs). */
-  const mixedOrientations = new Set(selectedIds.map((id) => orientationOf('', id))).size > 1;
 
   return (
     <div className="page active" id="page-statement">
@@ -559,17 +574,12 @@ export default function StatementsPage() {
                 <button onClick={() => void excelSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#16A34A', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
                   {busy === 'excel' ? 'Building…' : '📊 Excel'}
                 </button>
-                <button onClick={() => void printSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#DC2626', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
-                  {busy === 'print' ? 'Building…' : '📄 PDF'}
+                <button onClick={() => void downloadSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#DC2626', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
+                  {busy === 'download' ? 'Building…' : '📄 PDF'}
                 </button>
                 <button onClick={() => void printSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#D97706', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
-                  🖨️ Print
+                  {busy === 'print' ? 'Preparing…' : '🖨️ Print'}
                 </button>
-                {mixedOrientations ? (
-                  <span style={{ flexBasis: '100%', fontSize: 12, color: 'rgba(255,255,255,.92)', lineHeight: 1.5 }}>
-                    Landscape and portrait statements are ticked, so Print sends <strong>two jobs</strong> — the landscape sheets first, then (when you say so) the portrait ones — so the printer sets the right paper for each.
-                  </span>
-                ) : null}
               </>
             )}
           </div>
@@ -589,21 +599,12 @@ export default function StatementsPage() {
                   ✕ Close Preview
                 </button>
                 <button
-                  onClick={() => {
-                    // The same sheet-per-copy document as Print, for the one
-                    // statement on screen: two copies print as two pages.
-                    void printDocument(
-                      buildPrintDocument(`${preview.section.label} - CRS ${crsId} ${MONTHS[month]} ${year}`, '', [
-                        { id: preview.section.id, label: preview.section.label, copies: preview.section.copies, html: preview.html },
-                      ]),
-                    );
-                    // Printed from a preview already on screen — no server call
-                    // happens, so it is reported for the activity log.
-                    void fetch('/api/activity', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ module: 'Statements', action: 'printed', crsId, month, year, sections: [preview.section.label] }),
-                    }).catch(() => undefined);
+                  onClick={async () => {
+                    // The same PDF as Print, for the one statement on screen:
+                    // two copies print as two pages. The server records it.
+                    clearPrintFrame();
+                    const pdf = await pdfFor([preview.section.id], 'print');
+                    if (pdf) await printPdf(pdf);
                   }}
                   style={{ background: '#0284C7', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
                 >

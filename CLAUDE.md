@@ -145,7 +145,11 @@ totalled and reconciled against a bank statement.
 
 ### Where the gate actually is
 
-`/api/statements/render`, and nowhere else. The /statements page used to build
+`/api/statements/render` and `/api/statements/pdf` — and both run the ONE
+gate in `lib/statements/renderServer.ts` (`buildStatements`: validate →
+`authorise()` before anything is built → re-derive what the shop may ask for
+→ build exactly those). Do not give either route its own copy: a second copy
+of the gate is one forgotten check away from a free statement. The /statements page used to build
 sheets in the browser, which made any React gate advisory — the document was
 already in the page. The builders now run under Node in
 `src/lib/payments/server.ts` (`loadStatementEngine`), reading crs_state
@@ -748,32 +752,43 @@ output. `npm run verify:statement-export` drives both exports over all 306.
   PDFs. `npm run verify:print-pdf` prints the document with headless Chrome
   and reads the page sizes back out; it fails on all three counts against the
   old rules.
-- **A physical printer gets one orientation per job** (office, 2026-09-27).
-  Save-as-PDF takes a document that mixes landscape and portrait sheets and
-  gives each page its own paper — that is what `verify:print-pdf` proves.
-  A printer does not: Chrome's dialog holds ONE Layout for the job and takes
-  it from the document only when every page agrees, so with a mixed job it
-  stays on the printer's default (Portrait) and every landscape sheet is
-  shrunk sideways onto portrait paper — small, pushed to the left, half the
-  page empty. That is what the office saw on its EPSON even after the A4 fix
-  (its earlier PV PDF was on *Legal* paper at 3.8 pt for the same reason).
-  **Print Selected therefore sends a mixed selection as two jobs**
-  (`printJobs` in statements/page.tsx): landscape sheets first, then — once
-  the office clicks "Print portrait statements" on the notice that follows —
-  the portrait ones. Each job has one orientation, the dialog takes it from
-  the document, and every sheet prints at its own size. One orientation
-  ticked is one job; the page says so under the buttons when both are
-  ticked. The check prints both jobs and reads them back.
-- **No pop-up window** (office, 2026-09-27). The statements printed from
-  `window.open()`, which Chrome allows only while the page is answering a
-  click: opened after the server `await`, or from `afterprint` for the second
-  job, it came back "The print window was blocked by the browser". They now
-  print through a hidden same-origin `<iframe>` (`lib/statements/printFrame.ts`)
-  — `srcdoc` = the print document, then `contentWindow.print()`. It needs no
-  permission, it prints that document ALONE (none of the app's layout can
-  reach it), and each print removes the frame the last one left, so nothing
-  old is printed again. Its waits are time-bounded: a hidden tab runs no
-  animation frames. `verify:print-layout` §6.
+- **Print is ONE server-made PDF, printed in ONE session** (office,
+  2026-09-27). Why, in the order it was learnt:
+  - An HTML print reaches a physical printer with ONE Layout for the whole
+    job. The statements mix landscape and portrait sheets, so on the
+    office's EPSON (Layout = Portrait) every landscape sheet was shrunk
+    sideways onto portrait paper — small, pushed left, half the page empty.
+    Save-as-PDF hid it, because a PDF holds a size per page.
+  - Splitting the print into a landscape job and a portrait job fixed the
+    paper but made two print sessions, which the office would not accept;
+    and a second `window.open` from `afterprint` is not a click, so Chrome
+    blocked it ("The print window was blocked by the browser").
+  - So **`/api/statements/pdf` renders the print document (printDoc.ts,
+    unchanged) to ONE PDF in headless Chrome** (`lib/statements/pdfServer.ts`,
+    `preferCSSPageSize`, so each sheet keeps its own A4 orientation), and the
+    page prints that file from a hidden same-origin `<iframe>` loaded from a
+    `blob:` URL (`printPdfBlob`, `lib/statements/printFrame.ts`). One dialog,
+    every selected sheet in order, and the PDF viewer turns each page to the
+    paper instead of shrinking it. No pop-up; nothing of the app can reach
+    the paper, because the PDF is the whole document.
+  - The **📄 PDF** button downloads that same file; **Print This** in the
+    preview uses the same route for one statement.
+  - If a browser refuses to print a PDF from a frame, the office is offered
+    "Open PDF" — the only `window.open` left, and it runs on that click.
+  - `verify:print-pdf` §4 drives the production `htmlToPdf` over mixed
+    (P→L→P→L), landscape-only and portrait-only selections and reads the
+    pages back: one file, every page A4, each in its own orientation, in the
+    order ticked. `verify:print-layout` §6 holds the architecture.
+  - **Deploy:** Chrome on Vercel is `@sparticuz/chromium` (~60 MB), kept
+    out of the bundle with `serverExternalPackages` and shipped with
+    `outputFileTracingIncludes` (next.config.mjs). The route sets
+    `maxDuration = 60`; a cold start unpacks Chrome first (~5 s locally for
+    a four-statement PDF). Locally it uses the installed Chrome (or
+    `CHROME_PATH`). **Not yet proven on Vercel** — the first deploy is the
+    test; check the function's size, memory (Chrome wants ~1 GB+) and time.
+  - **Not provable from here:** that the office's printer driver turns
+    landscape PDF pages to the paper. Chrome's Windows PDF printing
+    auto-rotates; the office's first print is the confirmation.
 - **Exactly what is ticked now** (`lib/statements/selection.ts`,
   `selectedInOrder`): the offered sections in their listed order, filtered by
   the ticks — never click order, never an id the shop/month no longer offers.

@@ -100,22 +100,42 @@ console.log('\n5. No screen prints the whole application');
     /afterprint/.test(helper) && /classList\.remove/.test(helper));
 }
 
-console.log('\n6. The statements print without a pop-up window');
+console.log('\n6. One print session, no pop-up window');
 {
-  // window.open is allowed only while the page is answering a click. The
-  // document is built on the server first, so a window opened after that
-  // `await` — or a second one opened from `afterprint` — was blocked:
-  // "The print window was blocked by the browser". A same-origin frame needs
-  // no permission at all (lib/statements/printFrame.ts).
+  // window.open is allowed only while the page is answering a click, and the
+  // statements are built on the server first — so a window opened after that
+  // await was blocked. And an HTML print reaches a physical printer with ONE
+  // layout, so mixed portrait/landscape selections were shrunk or split into
+  // two sessions. Now: ONE PDF from the server (every sheet on its own paper),
+  // printed from a hidden frame on the page (lib/statements/printFrame.ts).
   const page = readFileSync(join(root, 'src/app/(app)/statements/page.tsx'), 'utf8');
-  check('the Statements page opens no window to print', !/window\.open\(/.test(page));
-  check('…it prints through the frame', /printInFrame\(/.test(page));
-  check('…and clears any frame an earlier print left, before building the next', /clearPrintFrame\(\)/.test(page));
+  check('Print asks the server for ONE PDF of the whole selection', /statementsPdf\(\{[^}]*sectionIds: ids/.test(page));
+  check('…and prints it through the frame', /printPdfBlob\(blob\)/.test(page));
+  check('…after clearing any frame an earlier print left', /clearPrintFrame\(\)/.test(page));
+  check('no second print job: nothing splits the selection by orientation',
+    !/printJobs|landscapeDoc|portraitDoc|Print portrait statements/.test(page));
+  // The one window.open left is the fallback for a browser that will not
+  // print a PDF from a frame — and it runs only after the office clicks
+  // "Open PDF", so it is always answering a click.
+  const opens = page.match(/window\.open\(/g) ?? [];
+  check('the only window it opens is the fallback, behind the office\'s click on "Open PDF"',
+    opens.length === 1 && /if \(open\) window\.open\(URL\.createObjectURL\(blob\)/.test(page), String(opens.length));
   const frame = readFileSync(join(root, 'src/lib/statements/printFrame.ts'), 'utf8');
-  check('the frame is written with srcdoc and printed from ITS window', /frame\.srcdoc = doc/.test(frame) && /win\.print\(\)/.test(frame));
-  check('only one frame can exist: each print removes the last', /clearPrintFrame\(\);\s*return new Promise/.test(frame));
-  check('no wait inside it can hang a print (animation frames do not run in a hidden tab)', /Promise\.race/.test(frame));
-  check('the second job of a mixed print waits for the office to ask for it', /appConfirm\(/.test(page) && /Print portrait statements/.test(page));
+  check('the frame loads the PDF from a blob: URL and prints ITS window', /URL\.createObjectURL/.test(frame) && /win\.print\(\)/.test(frame));
+  check('only one frame can exist: each print removes the last, and frees its file',
+    /clearPrintFrame\(\);\s*return new Promise/.test(frame) && /URL\.revokeObjectURL\(url\)/.test(frame));
+  check('a viewer that never loads cannot leave the office waiting', /setTimeout\(\(\) => finish\(new Error/.test(frame));
+
+  const route = readFileSync(join(root, 'src/app/api/statements/pdf/route.ts'), 'utf8');
+  check('the PDF route runs the same gate as the preview (buildStatements)', /buildStatements\(session, body\)/.test(route));
+  // Comments mention authorise() by name; the code must not call it any more.
+  const render = readFileSync(join(root, 'src/app/api/statements/render/route.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+  check('…and so does the preview route — one gate, not two copies', /buildStatements\(session, body\)/.test(render) && !/authorise\(/.test(render));
+  const engineSrc = readFileSync(join(root, 'src/lib/statements/pdfServer.ts'), 'utf8');
+  check('each page keeps its own paper: the size comes from the document, not one format',
+    /preferCSSPageSize: true/.test(engineSrc) && !/format:/.test(engineSrc));
 }
 
 console.log('\n7. Exactly the statements ticked now');

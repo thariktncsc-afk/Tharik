@@ -1,0 +1,96 @@
+/**
+ * The print document → ONE PDF, every page on its own paper (office,
+ * 2026-09-27).
+ *
+ * Why a PDF at all. A browser sends an HTML print job to a physical printer
+ * with ONE layout. The statements mix landscape sheets (CRS Page 2, Receipt,
+ * Gunny, Police, RBI…) with portrait ones (Page 1, Remittance, Sale Tax,
+ * COLL), so whichever layout the dialog holds, half of them were shrunk onto
+ * the wrong-shaped paper — small, pushed to one side, a strip of empty page
+ * beside them. Splitting the job by orientation fixed the paper but made two
+ * print sessions, which the office would not accept.
+ *
+ * A PDF carries a page size per page. This renders the SAME print document
+ * the statements have always printed from (printDoc.ts, with its per-sheet
+ * named pages and `@page :first`) in headless Chrome, so the PDF has each
+ * sheet on A4 in its own orientation. When that PDF is printed, the PDF
+ * viewer turns each page to match the paper instead of shrinking it: one
+ * print session, every sheet full size.
+ *
+ * Chrome: on Vercel (Linux) the serverless build in @sparticuz/chromium; on
+ * a developer's machine the Chrome already installed (or CHROME_PATH). One
+ * browser is kept per server process and a fresh page used per request.
+ */
+import type { Browser } from 'puppeteer-core';
+
+let browserPromise: Promise<Browser> | null = null;
+
+const LOCAL_CHROME = [
+  process.env.CHROME_PATH,
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+].filter(Boolean) as string[];
+
+async function launch(): Promise<Browser> {
+  const puppeteer = (await import('puppeteer-core')).default;
+  const serverless = process.platform === 'linux' && (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  if (serverless) {
+    const chromium = (await import('@sparticuz/chromium')).default;
+    return puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+  }
+  const fs = await import('node:fs');
+  const executablePath = LOCAL_CHROME.find((p) => fs.existsSync(p));
+  if (!executablePath) throw new Error('No Chrome found to build the PDF. Install Chrome or set CHROME_PATH.');
+  return puppeteer.launch({ executablePath, headless: true, args: ['--disable-gpu', '--no-first-run'] });
+}
+
+async function browser(): Promise<Browser> {
+  if (!browserPromise) {
+    browserPromise = launch().catch((e) => {
+      browserPromise = null;
+      throw e;
+    });
+  }
+  const b = await browserPromise;
+  if (!b.connected) {
+    browserPromise = null;
+    return browser();
+  }
+  return b;
+}
+
+/**
+ * Print `doc` (a whole HTML document from buildPrintDocument) to PDF.
+ * `preferCSSPageSize` is what lets each sheet keep its own page: the size
+ * comes from the document's @page rules, never from a single `format`.
+ */
+export async function htmlToPdf(doc: string): Promise<Uint8Array> {
+  const b = await browser();
+  const page = await b.newPage();
+  try {
+    await page.setContent(doc, { waitUntil: 'load', timeout: 30000 });
+    // The statements that fill their page are sized by a script as the
+    // document is read; wait for fonts, then let that layout settle.
+    await page.evaluate(async () => {
+      await document.fonts?.ready;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    });
+    const pdf = await page.pdf({
+      preferCSSPageSize: true,
+      printBackground: true,
+      displayHeaderFooter: false,
+      timeout: 45000,
+    });
+    return pdf;
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
