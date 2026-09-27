@@ -25,6 +25,11 @@ export type SheetPrint = {
   margins: { left: number; right: number; top: number; bottom: number };
   /** The office centres several sheets across the page. */
   centred: boolean;
+  /**
+   * Inches, for the printed page / PDF only, where it must differ from the
+   * workbook's (which the Excel export keeps). See `paperMargins`.
+   */
+  paper?: { left: number; right: number; top: number; bottom: number };
 };
 
 const M = (left: number, right: number, top: number, bottom: number) => ({ left, right, top, bottom });
@@ -40,12 +45,26 @@ export const TEMPLATE_PRINT: Record<string, SheetPrint> = {
   crs_daily_sale: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0, 0, 0.236, 0.197), centred: true },
   crs_page2: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.512, 0.236, 0.512, 0), centred: true },
   gunny: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0, 0, 0.984, 0.512), centred: true },
-  free_com: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.135, 0, 0.748, 0.748), centred: false },
-  cost_com: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.709, 0, 0.748, 0.748), centred: false },
+  // Free Com and Cost Com: the workbook's right margin is 0 — Excel's "printer
+  // minimum", but on the printed page the paper's edge, so both ran to 297.1 mm
+  // of 297 and CLOSING BALANCE, CRS NO and AREA SUPERVISOR were cut off (office,
+  // 2026-09-27). Printed, each is centred between equal margins instead:
+  // - Cost Com keeps its printable width (18.0 mm of margin, now 9 + 9), so the
+  //   table is the same size and simply moves 9 mm to the left;
+  // - Free Com had only 3.4 mm of margin in all, so there is no room to move it:
+  //   5 + 5 mm (as Remittance) makes it 6.6 mm (2.2%) narrower.
+  // The Excel export keeps the office's own margins.
+  free_com: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.135, 0, 0.748, 0.748), centred: false, paper: M(0.197, 0.197, 0.748, 0.748) },
+  cost_com: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.709, 0, 0.748, 0.748), centred: false, paper: M(0.3545, 0.3545, 0.748, 0.748) },
   // The office prints this one at 145%, not fitted — it is a short sheet and
   // they want it to fill the page.
   crs_police: { orientation: 'landscape', scale: 145, fitToPage: false, margins: M(0.25, 0.25, 0.25, 0), centred: true },
-  remittance: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.197, 0, 0.512, 0.512), centred: true },
+  // The workbook's right margin is 0 — in Excel that means "the printer's
+  // own minimum", but as a CSS page margin it means the paper's edge, so the
+  // table ran to 208.5 mm of 210 and printers cut off TOTAL AMOUNT and the
+  // signature (office, 2026-09-27). The right margin is the left one, 5 mm,
+  // so the sheet is centred with room on both sides.
+  remittance: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.197, 0.197, 0.512, 0.512), centred: true },
   coll: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.512, 0.236, 0.512, 0.236), centred: false },
   sale_tax: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(1.181, 0.709, 0.748, 0.748), centred: true },
   b6: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.673, 0, 0.21, 0.045), centred: false },
@@ -57,6 +76,12 @@ export const TEMPLATE_PRINT: Record<string, SheetPrint> = {
 /** What the office's workbook says, or portrait as a last resort. */
 export function printFor(sectionId: string): SheetPrint {
   return TEMPLATE_PRINT[sectionId] ?? { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.25, 0.25, 0.25, 0.25), centred: false };
+}
+
+/** The margins of the PRINTED page (and PDF): `paper` where set, else the workbook's. */
+export function paperMargins(sectionId: string): SheetPrint['margins'] {
+  const p = printFor(sectionId);
+  return p.paper ?? p.margins;
 }
 
 /** Does the workbook say how this statement prints? */
@@ -112,7 +137,8 @@ export function printableBoxPx(sectionId: string): { w: number; h: number } {
   const p = printFor(sectionId);
   const paper = p.orientation === 'landscape' ? { w: 297, h: 210 } : { w: 210, h: 297 };
   const side = (inches: number) => Math.max(mm(inches), SCREEN_MARGIN_MM);
-  const w = paper.w - side(p.margins.left) - side(p.margins.right);
-  const h = paper.h - side(p.margins.top) - side(p.margins.bottom);
+  const m = paperMargins(sectionId);
+  const w = paper.w - side(m.left) - side(m.right);
+  const h = paper.h - side(m.top) - side(m.bottom);
   return { w: Math.floor(w * PX_PER_MM), h: Math.floor(h * PX_PER_MM) };
 }

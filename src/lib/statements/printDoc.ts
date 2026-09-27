@@ -40,7 +40,7 @@
  */
 
 import { parseStatement } from '@/lib/statements/sheetModel';
-import { fillsPage, inTemplate, mm, printFor, printableBoxPx, stretchesToPage } from '@/lib/statements/pageSetup';
+import { fillsPage, inTemplate, mm, paperMargins, printFor, printableBoxPx, stretchesToPage } from '@/lib/statements/pageSetup';
 import { FILL_SCRIPT } from '@/lib/statements/fillPage';
 import TEMPLATE from '@/generated/statement-template.json';
 import { CAPTION_FILLED, evaluateFormulas, fillSection } from '@/lib/statements/templateFill';
@@ -108,7 +108,8 @@ function firstPageCss(id: string | undefined, html?: string): string[] {
   if (!id) return [];
   if (inTemplate(id)) {
     const p = printFor(id);
-    return [`@page :first{size:A4 ${p.orientation};margin:${mm(p.margins.top)}mm ${mm(p.margins.right)}mm ${mm(p.margins.bottom)}mm ${mm(p.margins.left)}mm}`];
+    const m = paperMargins(id);
+    return [`@page :first{size:A4 ${p.orientation};margin:${mm(m.top)}mm ${mm(m.right)}mm ${mm(m.bottom)}mm ${mm(m.left)}mm}`];
   }
   return [`@page :first{size:A4 ${orientationOf(html ?? '', id)};margin:${MARGIN_MM}mm}`];
 }
@@ -121,7 +122,8 @@ export function pageCss(sectionIds: string[] = [], firstHtml?: string): string {
   for (const id of new Set(sectionIds)) {
     if (!inTemplate(id)) continue;
     const p = printFor(id);
-    perSection.push(`@page ${pageName(id)}{size:A4 ${p.orientation};margin:${mm(p.margins.top)}mm ${mm(p.margins.right)}mm ${mm(p.margins.bottom)}mm ${mm(p.margins.left)}mm}`);
+    const m = paperMargins(id);
+    perSection.push(`@page ${pageName(id)}{size:A4 ${p.orientation};margin:${mm(m.top)}mm ${mm(m.right)}mm ${mm(m.bottom)}mm ${mm(m.left)}mm}`);
     perSection.push(`.stmt-sheet[data-section="${id}"]{page:${pageName(id)}${p.centred ? ';margin-left:auto;margin-right:auto' : ''}}`);
   }
   return [
