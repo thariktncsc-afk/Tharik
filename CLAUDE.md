@@ -758,12 +758,31 @@ output. `npm run verify:statement-export` drives both exports over all 306.
   page empty. That is what the office saw on its EPSON even after the A4 fix
   (its earlier PV PDF was on *Legal* paper at 3.8 pt for the same reason).
   **Print Selected therefore sends a mixed selection as two jobs**
-  (`openPrintJobs` in statements/page.tsx): landscape sheets first, then
-  portrait, the second opened when the first's dialog closes (`afterprint`,
-  or the window shut). Each job has one orientation, the dialog takes it from
+  (`printJobs` in statements/page.tsx): landscape sheets first, then — once
+  the office clicks "Print portrait statements" on the notice that follows —
+  the portrait ones. Each job has one orientation, the dialog takes it from
   the document, and every sheet prints at its own size. One orientation
-  ticked is one job, as before; the page says so under the buttons when both
-  are ticked. The check prints both jobs and reads them back.
+  ticked is one job; the page says so under the buttons when both are
+  ticked. The check prints both jobs and reads them back.
+- **No pop-up window** (office, 2026-09-27). The statements printed from
+  `window.open()`, which Chrome allows only while the page is answering a
+  click: opened after the server `await`, or from `afterprint` for the second
+  job, it came back "The print window was blocked by the browser". They now
+  print through a hidden same-origin `<iframe>` (`lib/statements/printFrame.ts`)
+  — `srcdoc` = the print document, then `contentWindow.print()`. It needs no
+  permission, it prints that document ALONE (none of the app's layout can
+  reach it), and each print removes the frame the last one left, so nothing
+  old is printed again. Its waits are time-bounded: a hidden tab runs no
+  animation frames. `verify:print-layout` §6.
+- **Exactly what is ticked now** (`lib/statements/selection.ts`,
+  `selectedInOrder`): the offered sections in their listed order, filtered by
+  the ticks — never click order, never an id the shop/month no longer offers.
+  The server then builds exactly those, de-duplicated, in that order. The
+  four `copies: 2` statements (CRS Page 2, Gunny, Remittance, CRS Police)
+  still print twice — the office confirmed the two-copy rule stays
+  (2026-09-27). `verify:print-layout` §7; the whole flow (single, three,
+  select-all, 5−2, stale tick, repeat print, zero `window.open`) was driven in
+  a real browser against live documents.
 - **Orientation is measured, not listed**: `columnCount` reads the parsed
   grid, so a builder that gains a column keeps printing right. Over 9 columns
   goes landscape (Receipt is 37, Daily Sale 22, CRS Page 1 only 2).
