@@ -875,7 +875,9 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
     narrower, column shares unchanged.
   Type unchanged (6.0–9.7 pt), one page; no cell overflows at the new widths
   in any of the 30 shops. The builders are untouched, so no golden changes.
-  **Still at the paper edge, not yet asked for:** Daily Sale, Gunny and B6
+  **B6** the same day, like Cost Com: its 17.1 mm split 8.55 + 8.55, same
+  size, moved 8.7 mm left (text 21.9 → 297.1 mm became 13.1 → 288.4 mm).
+  **Still at the paper edge, not yet asked for:** Daily Sale and Gunny
   (right margin 0, measured 297.1 mm of 297); Receipt has 3.9 mm.
 - **Remittance and Sale Tax stretch to the foot of the page**
   (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
