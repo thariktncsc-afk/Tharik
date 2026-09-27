@@ -846,6 +846,22 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   worked out from the office's widths and heights, never below its own
   percentage; on our markup (RBI) it is `fillSheets` measuring in the
   browser. The Excel export keeps the office's own 145% page setup.
+- **Remittance: CEREAL ACCOUNT is narrower, and the page has a right margin**
+  (office, 2026-09-27). Measured on the printed PDF, the table ran from
+  11.6 mm to **208.5 mm on 210 mm paper** — printers cut off TOTAL AMOUNT and
+  the signature. Two causes, both fixed:
+  - the workbook's right margin is 0 (Excel's "printer minimum", but as a CSS
+    page margin it is the paper's edge) → now 5 mm, the same as the left
+    (`pageSetup.ts`);
+  - CEREAL ACCOUNT, empty on most shops' sheets, was 16% of the width → 11%.
+    The table is 95% wide and centred (`buildRemittance`), with every other
+    column's width unchanged as a share of the page, so TOTAL AMOUNT moved
+    ~9.6 mm inward. The fill zoom is measured off the statement's wrapper, not
+    the table, so the narrower table is not stretched back.
+  After: borders ~10 mm from each edge, type unchanged (7.5–9.7 pt). Every
+  shop's Remittance was rendered before and after: only the table width and
+  the `<col>` widths differ. **An intended change to a statutory format, so
+  the `*_remittance.html` goldens no longer match** (like receipt and gunny).
 - **Remittance and Sale Tax stretch to the foot of the page**
   (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
   which only shrinks, so `fillSheets` enlarges them as far as the width

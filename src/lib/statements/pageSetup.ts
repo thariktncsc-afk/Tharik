@@ -45,7 +45,12 @@ export const TEMPLATE_PRINT: Record<string, SheetPrint> = {
   // The office prints this one at 145%, not fitted — it is a short sheet and
   // they want it to fill the page.
   crs_police: { orientation: 'landscape', scale: 145, fitToPage: false, margins: M(0.25, 0.25, 0.25, 0), centred: true },
-  remittance: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.197, 0, 0.512, 0.512), centred: true },
+  // The workbook's right margin is 0 — in Excel that means "the printer's
+  // own minimum", but as a CSS page margin it means the paper's edge, so the
+  // table ran to 208.5 mm of 210 and printers cut off TOTAL AMOUNT and the
+  // signature (office, 2026-09-27). The right margin is the left one, 5 mm,
+  // so the sheet is centred with room on both sides.
+  remittance: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.197, 0.197, 0.512, 0.512), centred: true },
   coll: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.512, 0.236, 0.512, 0.236), centred: false },
   sale_tax: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(1.181, 0.709, 0.748, 0.748), centred: true },
   b6: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.673, 0, 0.21, 0.045), centred: false },
