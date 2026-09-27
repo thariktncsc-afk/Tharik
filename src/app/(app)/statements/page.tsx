@@ -158,16 +158,54 @@ export default function StatementsPage() {
    * sheet of its own, A4, with the page rules appended last so they beat the
    * A3 rule one builder carries. Nothing is concatenated here any more.
    */
-  const openPrintWindow = (doc: string) => {
+  const openPrintWindow = (doc: string, onDone?: () => void) => {
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) {
       void appAlert('The print window was blocked by the browser. Allow pop-ups for this site and try again.');
+      onDone?.();
       return;
     }
     win.document.write(doc);
     win.document.close();
     win.focus();
+    if (onDone) {
+      // The next job waits for this one's dialog to close — printed or
+      // cancelled (`afterprint` fires for both) — or for the window to be
+      // shut, whichever comes first, and only once.
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearInterval(poll);
+        onDone();
+      };
+      win.addEventListener('afterprint', finish);
+      const poll = setInterval(() => { if (win.closed) finish(); }, 500);
+    }
     setTimeout(() => win.print(), 600);
+  };
+
+  /**
+   * One print job per ORIENTATION (office, 2026-09-27).
+   *
+   * Save-as-PDF takes a document that mixes landscape and portrait sheets
+   * and gives each page its own paper. A physical printer does not: the
+   * print dialog holds ONE layout for the whole job, and Chrome sets it from
+   * the document only when every page agrees. With a mixed job the dialog
+   * stays on the printer's default — Portrait — and every landscape sheet is
+   * shrunk sideways to fit portrait paper: small, pushed to the left, half
+   * the page empty. That is what the office was seeing on its EPSON.
+   *
+   * So a mixed selection prints as two jobs, landscape sheets first and then
+   * portrait, each opened after the last is done. Each job has one
+   * orientation, the dialog takes it from the document, and every sheet
+   * prints at its own size. A selection of one orientation is one job, as
+   * before.
+   */
+  const openPrintJobs = (jobs: string[]) => {
+    const [first, ...rest] = jobs;
+    if (!first) return;
+    openPrintWindow(first, rest.length ? () => openPrintJobs(rest) : undefined);
   };
 
   const doPreview = async (section: Section) => {
@@ -185,7 +223,16 @@ export default function StatementsPage() {
   const printSelected = async () => {
     const out = await render(selectedIds, 'print');
     if (!out) return;
-    openPrintWindow(buildPrintDocument(`TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`, out.css, out.sections));
+    // Landscape sheets, then portrait — see openPrintJobs. The office's own
+    // order is kept within each.
+    const title = `TNCSC Statements - CRS ${crsId} ${MONTHS[month]} ${year}`;
+    const landscape = out.sections.filter((s) => orientationOf(s.html, s.id) === 'landscape');
+    const portrait = out.sections.filter((s) => orientationOf(s.html, s.id) !== 'landscape');
+    openPrintJobs(
+      [landscape, portrait]
+        .filter((group) => group.length)
+        .map((group) => buildPrintDocument(title, out.css, group)),
+    );
     out.sections.forEach((s) => record(s.label));
   };
 
@@ -234,6 +281,8 @@ export default function StatementsPage() {
   const sel = { width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13 } as const;
   const selectedCount = selectedIds.length;
   const working = busy !== '';
+  /** Both orientations ticked: the print goes out as two jobs (openPrintJobs). */
+  const mixedOrientations = new Set(selectedIds.map((id) => orientationOf('', id))).size > 1;
 
   return (
     <div className="page active" id="page-statement">
@@ -508,6 +557,11 @@ export default function StatementsPage() {
                 <button onClick={() => void printSelected()} disabled={working} style={{ background: working ? '#94A3B8' : '#D97706', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 7, fontSize: 12, cursor: working ? 'default' : 'pointer', fontWeight: 700 }}>
                   🖨️ Print
                 </button>
+                {mixedOrientations ? (
+                  <span style={{ flexBasis: '100%', fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
+                    Landscape and portrait statements are ticked, so this prints as <strong>two jobs</strong> — landscape sheets first, then portrait — so the printer sets the right paper for each. Save as PDF keeps them in one file.
+                  </span>
+                ) : null}
               </>
             )}
           </div>

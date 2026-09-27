@@ -748,6 +748,22 @@ output. `npm run verify:statement-export` drives both exports over all 306.
   PDFs. `npm run verify:print-pdf` prints the document with headless Chrome
   and reads the page sizes back out; it fails on all three counts against the
   old rules.
+- **A physical printer gets one orientation per job** (office, 2026-09-27).
+  Save-as-PDF takes a document that mixes landscape and portrait sheets and
+  gives each page its own paper — that is what `verify:print-pdf` proves.
+  A printer does not: Chrome's dialog holds ONE Layout for the job and takes
+  it from the document only when every page agrees, so with a mixed job it
+  stays on the printer's default (Portrait) and every landscape sheet is
+  shrunk sideways onto portrait paper — small, pushed to the left, half the
+  page empty. That is what the office saw on its EPSON even after the A4 fix
+  (its earlier PV PDF was on *Legal* paper at 3.8 pt for the same reason).
+  **Print Selected therefore sends a mixed selection as two jobs**
+  (`openPrintJobs` in statements/page.tsx): landscape sheets first, then
+  portrait, the second opened when the first's dialog closes (`afterprint`,
+  or the window shut). Each job has one orientation, the dialog takes it from
+  the document, and every sheet prints at its own size. One orientation
+  ticked is one job, as before; the page says so under the buttons when both
+  are ticked. The check prints both jobs and reads them back.
 - **Orientation is measured, not listed**: `columnCount` reads the parsed
   grid, so a builder that gains a column keeps printing right. Over 9 columns
   goes landscape (Receipt is 37, Daily Sale 22, CRS Page 1 only 2).
