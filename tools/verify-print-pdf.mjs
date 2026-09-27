@@ -41,6 +41,7 @@ register(
   import.meta.url,
 );
 let failures = 0;
+const J = (v) => JSON.stringify(v);
 const check = (label, ok, detail = '') => {
   if (ok) console.log(`  ok    ${label}`);
   else {
@@ -156,6 +157,27 @@ console.log('\n2. The first statement gets its own paper');
   // One statement on its own.
   const alone = await pagesOf([all.find((s) => s.id === 'sale_tax')], 'alone');
   check('one statement on its own: a single A4 portrait page', alone.length === 1 && alone[0].orient === 'portrait' && alone[0].isA4, JSON.stringify(alone));
+}
+
+console.log('\n2b. A physical printer gets one orientation per job');
+{
+  // Save-as-PDF gives each page its own paper; a printer's dialog holds ONE
+  // layout for the job and Chrome takes it from the document only when every
+  // page agrees. So Print Selected sends a mixed selection as two jobs
+  // (statements/page.tsx openPrintJobs), split exactly as orientationOf splits
+  // them here. Each must be all one orientation, and together they must be
+  // the whole selection.
+  const { orientationOf } = await import(pathToFileURL(join(root, 'src/lib/statements/printDoc.ts')).href);
+  const landscapeJob = all.filter((s) => orientationOf(s.html, s.id) === 'landscape');
+  const portraitJob = all.filter((s) => orientationOf(s.html, s.id) !== 'landscape');
+  check('the selection splits into a landscape job and a portrait job', landscapeJob.length > 0 && portraitJob.length > 0, `${landscapeJob.length} / ${portraitJob.length}`);
+  const L = await pagesOf(landscapeJob, 'job-landscape');
+  const P = await pagesOf(portraitJob, 'job-portrait');
+  check('the landscape job is A4 landscape on every page', L.length > 0 && L.every((p) => p.isA4 && p.orient === 'landscape'), J(L.map((p) => p.orient)));
+  check('the portrait job is A4 portrait on every page', P.length > 0 && P.every((p) => p.isA4 && p.orient === 'portrait'), J(P.map((p) => p.orient)));
+  check('the two jobs together are every sheet of the selection, once', L.length + P.length === pages.length, `${L.length} + ${P.length} vs ${pages.length}`);
+  check('neither job is shrunk: same smallest type as the one-document print',
+    Math.min(...L.map((p) => p.smallestPt)) === Math.min(...pages.filter((p) => p.orient === 'landscape').map((p) => p.smallestPt)), '');
 }
 
 console.log('\n3. Nothing is shrunk to fit');
