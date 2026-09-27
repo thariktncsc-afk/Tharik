@@ -67,7 +67,10 @@ export const TEMPLATE_PRINT: Record<string, SheetPrint> = {
   remittance: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.197, 0.197, 0.512, 0.512), centred: true },
   coll: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(0.512, 0.236, 0.512, 0.236), centred: false },
   sale_tax: { orientation: 'portrait', scale: 100, fitToPage: true, margins: M(1.181, 0.709, 0.748, 0.748), centred: true },
-  b6: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.673, 0, 0.21, 0.045), centred: false },
+  // B6: the same fault as Cost Com — 17.1 mm on the left, 0 on the right, so
+  // the table ran to the paper's edge (office, 2026-09-27). Printed, the same
+  // 17.1 mm is split evenly: same size, 8.55 mm further left.
+  b6: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.673, 0, 0.21, 0.045), centred: false, paper: M(0.3365, 0.3365, 0.21, 0.045) },
   card_details: { orientation: 'landscape', scale: 100, fitToPage: true, margins: M(0.276, 0.189, 0.748, 0.748), centred: false },
   // Printed at 120%, not fitted.
   rbi: { orientation: 'landscape', scale: 120, fitToPage: false, margins: M(0.709, 0.709, 0.748, 0.748), centred: false },
