@@ -2472,7 +2472,11 @@ function buildRemittance(d){
     '.rm-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
     '.rm-title{text-align:center;font-weight:bold;font-size:13px;margin-bottom:2px}',
     '.rm-sub{text-align:center;font-size:11px;font-weight:bold;margin-bottom:6px}',
-    '.rm-tbl{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed}',
+    // 95% and centred, not 100%: the CEREAL ACCOUNT column is five points
+    // narrower than it was (office, 2026-09-27 — it is empty on most shops'
+    // statements and pushed TOTAL AMOUNT to the edge of the paper). Every
+    // other column keeps its exact width; the table simply ends sooner.
+    '.rm-tbl{width:95%;margin:0 auto;border-collapse:collapse;font-size:10px;table-layout:fixed}',
     '.rm-tbl th,.rm-tbl td{border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:middle;white-space:nowrap;overflow:hidden}',
     '.rm-tbl th{font-weight:bold;background:#fff;line-height:1.2}',
     '.rm-tbl td.l{text-align:left}',
@@ -2481,9 +2485,12 @@ function buildRemittance(d){
     '.rm-sig{display:flex;justify-content:flex-end;margin-top:26px;font-size:11px;font-weight:bold}',
   ].join('');
 
+  // Shares of the 95% table, so that of the full width the columns are
+  // 8 / 20 / 21 / 17 / 11 / 18 — the same as before except CEREAL ACCOUNT,
+  // 16 → 11 (office, 2026-09-27).
   var colgroup='<colgroup>'+
-    '<col style="width:8%"><col style="width:20%"><col style="width:21%">'+
-    '<col style="width:17%"><col style="width:16%"><col style="width:18%">'+
+    '<col style="width:8.421%"><col style="width:21.053%"><col style="width:22.105%">'+
+    '<col style="width:17.895%"><col style="width:11.579%"><col style="width:18.947%">'+
     '</colgroup>';
 
   var head='<thead><tr>'+
