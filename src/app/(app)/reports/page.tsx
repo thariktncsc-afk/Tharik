@@ -27,6 +27,7 @@ import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type Pv
 import { quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
+import { printArea, PRINT_AREA_CLASS } from '@/lib/printArea';
 
 type ShopRec = { name: string };
 type ReceiptRec = { crsId: number; date: string; items?: Record<string, { qty: number }> };
@@ -488,7 +489,9 @@ export default function ReportsPage() {
                   if (pvPeriod && crsVal) {
                     reportEvent('printed', type === 'quarterly' ? 'Quarterly PV (3-Month)' : 'Yearly PV', pvPeriod.months[0].month, pvPeriod.months[0].year, pvPeriod.label);
                   }
-                  window.print();
+                  // The PV alone on the paper — printing the screen put the
+                  // sidebar down every sheet (office, 2026-09-27; app/print.css).
+                  printArea();
                 }}
                 style={{ background: 'linear-gradient(135deg,#1B3A6B,#2563EB)', color: '#fff', border: 'none', padding: '9px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
               >
@@ -629,7 +632,7 @@ export default function ReportsPage() {
                     <strong>All {pvPeriod?.months.length} months published.</strong> This PV is complete for {pvPeriod?.label}.
                   </div>
                 )}
-                <div dangerouslySetInnerHTML={{ __html: pvHtml }} />
+                <div className={PRINT_AREA_CLASS} dangerouslySetInnerHTML={{ __html: pvHtml }} />
               </>
             ) : (
               <div style={{ textAlign: 'center', padding: 24, color: 'var(--muted)' }}>Please select a specific CRS shop to generate a PV Statement.</div>

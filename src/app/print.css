@@ -1,0 +1,109 @@
+/**
+ * What the app prints (office, 2026-09-27).
+ *
+ * The statements themselves print from their own window (printDoc.ts), which
+ * has none of this furniture in it. But a screen that prints ITSELF —
+ * Monthly Entry's statement preview, the PV on Reports — was printing the
+ * whole application: `#sidebar` is `height:100vh` and sits down the left of
+ * every sheet, `#main` is `overflow:hidden` and `#content` is a scroll box,
+ * so the paper got a squeezed column of statement beside a navy stripe, cut
+ * off at whatever the screen happened to be scrolled to. There was no
+ * `@media print` rule anywhere in the app at all.
+ *
+ * Nothing here changes a figure, a border or a font: the statement's own
+ * styles still decide how it looks. This only takes the furniture away and
+ * unclips the page, so the sheet has the paper to itself.
+ *
+ * The DSS viewer already did this for itself (17-dss-export.js) and is left
+ * alone.
+ */
+@media print {
+  /* ── The application's own chrome is screen furniture ───────────────── */
+  #sidebar,
+  #topbar,
+  .no-print {
+    display: none !important;
+  }
+
+  /* ── Nothing clips the page ─────────────────────────────────────────── */
+  /* #main hides its overflow and #content scrolls; on paper both would cut
+     the sheet down to the part that happened to be on screen. */
+  html,
+  body,
+  #main,
+  #content {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  body,
+  #content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* A statement is as wide as the paper, not as wide as the pane it was
+     read in. Any inner scroller shows its whole width. */
+  [style*='overflow'],
+  .stmt-scroll,
+  .tbl-wrap {
+    overflow: visible !important;
+  }
+
+  /* Sticky headers and floating buttons belong to a screen. A fixed element
+     prints on the first page only, so anything still fixed would take its
+     content off every page after it. */
+  [style*='position:fixed'],
+  [style*='position: fixed'],
+  [style*='position:sticky'],
+  [style*='position: sticky'] {
+    position: static !important;
+  }
+
+  /* ── One area, the whole paper ──────────────────────────────────────── */
+  /* A screen that prints a document inside itself marks it `.print-area`
+     and sets `printing-area` on the body for the duration of the print.
+     Everything else keeps its space but shows nothing (`visibility`, not
+     `display`, so the layout inside the area is not rebuilt), and the area
+     is lifted to the top-left of the page — ABSOLUTE, never fixed, or it
+     would print its first page and nothing after it. The DSS viewer has
+     done exactly this since it was written. */
+  body.printing-area * {
+    visibility: hidden !important;
+  }
+  body.printing-area .print-area,
+  body.printing-area .print-area * {
+    visibility: visible !important;
+  }
+  body.printing-area .print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+  /* A table laid out for a wide screen — a `min-width` inside a horizontal
+     scroller — keeps that width on paper and drops its right-hand columns off
+     the sheet. Worse, an absolutely placed area does not scroll, so nothing
+     shows that they are gone. On paper the page is the width there is. */
+  body.printing-area .print-area table,
+  body.printing-area .print-area img {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* An absolutely placed area is positioned against the nearest positioned
+     ancestor and clipped by any that hides its overflow — so on paper the
+     shell holds neither. */
+  body.printing-area #main,
+  body.printing-area #content,
+  body.printing-area .card {
+    position: static !important;
+    overflow: visible !important;
+  }
+}
