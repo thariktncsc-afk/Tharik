@@ -82,16 +82,23 @@ export function stockListsFor(crsId: number | null | undefined): { a: Commodity[
 }
 
 /**
- * Commodities that show no Closing on the Daily / Monthly entry row (office,
- * 2026-09-26). The two packing lines are not stocked on the sales grid: the
- * bags they cover are held in Gunny Stock Management, where the same sale is
- * the Issues figure and the closing balance is worked out. A closing here only
- * ever went negative the moment a sale was keyed.
+ * Commodities keyed as SALES ONLY on the Daily / Monthly entry row: Opening,
+ * Receipt, Total and Closing are not shown for them at all (office,
+ * 2026-09-27; the Closing alone went on 2026-09-26).
+ *
+ * The two packing lines are not stocked on the sales grid — the bags they
+ * cover are held in Gunny Stock Management, which is where Opening + Receipt
+ * = Total, the sale is the Issues figure, Total − Issues = Closing and this
+ * month's Closing becomes next month's Opening. Four empty boxes on the grid
+ * only invited a second, contradictory stock record; the Closing one went
+ * negative the moment a sale was keyed.
+ *
+ * Rate and Amount stay as they are, so the money still reaches remittance.
  *
  * DISPLAY ONLY — what is saved on the sheet, what the statements print and
  * what the DSS prices are all untouched.
  */
-export const NO_CLOSING = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
+export const SALES_ONLY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
 export type EntryRecord = { open?: number; receipt?: number; sales?: number; close?: number; amount?: number };
 export type DayEntry = { a?: Record<string, EntryRecord>; b?: Record<string, EntryRecord> };

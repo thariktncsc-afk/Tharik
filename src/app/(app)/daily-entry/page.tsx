@@ -23,7 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
 import { appAlert, appConfirm } from '@/components/dialog';
-import { isCrs29, NO_CLOSING, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { isCrs29, SALES_ONLY, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { holidayOn, type GovtHolidayMap } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
@@ -1145,6 +1145,16 @@ export default function DailyEntryPage() {
    * predictably next to a shorthand and warns about. Longhand here means the
    * base colour is always present and callers simply replace it.
    */
+  /**
+   * The cell a Sales-only commodity shows where Opening, Receipt, Total and
+   * Closing would be (office, 2026-09-27). Those four are kept in Gunny Stock
+   * Management for C.Box and Poly, which is the one place those bags are
+   * stocked; four empty boxes here only invited a second stock record.
+   */
+  const naTd: React.CSSProperties = { textAlign: 'center', background: '#FAFAFA' };
+  const naCell = (
+    <span title="Stocked in Gunny Stock Management — Opening, Receipt, Total and Closing are kept there" style={{ fontSize: 11, color: '#D1D5DB' }}>—</span>
+  );
   const roCell = (val: number, style?: React.CSSProperties) => (
     <input type="number" readOnly value={val ? val.toFixed(3) : ''} placeholder="0.000" style={{ width: '100%', borderWidth: 1, borderStyle: 'solid', borderColor: '#E2E8F0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', background: '#F8FAFC', color: 'var(--muted)', ...style }} />
   );
@@ -1197,13 +1207,22 @@ export default function DailyEntryPage() {
                     <td style={{ padding: 8, textAlign: 'center', borderBottom: bdr }}>
                       {c.free ? <span style={{ color: '#16A34A', fontWeight: 600, fontSize: 10 }}>Free</span> : <span style={{ fontSize: 12, fontWeight: 600 }}>₹{c.rate.toFixed(2)}</span>}
                     </td>
-                    <td style={{ padding: '4px 5px', borderBottom: bdr }}>{numInput(sec, c, 'open', d2)}</td>
-                    <td style={{ padding: '4px 5px', borderBottom: bdr }}>{numInput(sec, c, 'receipt', d2)}</td>
+                    {/* C.Box and Poly are keyed as Sales only (office,
+                        2026-09-27): Opening, Receipt, Total and Closing live
+                        in Gunny Stock Management, the one place those bags are
+                        stocked. Display only — nothing is stored differently,
+                        and the statements and the DSS are untouched. */}
+                    <td style={{ padding: '4px 5px', borderBottom: bdr, ...(SALES_ONLY.has(c.id) ? naTd : {}) }}>{SALES_ONLY.has(c.id) ? naCell : numInput(sec, c, 'open', d2)}</td>
+                    <td style={{ padding: '4px 5px', borderBottom: bdr, ...(SALES_ONLY.has(c.id) ? naTd : {}) }}>{SALES_ONLY.has(c.id) ? naCell : numInput(sec, c, 'receipt', d2)}</td>
                     {adjCell(d2.adj.excess, 'excess', bdr)}
                     {adjCell(d2.adj.shortage, 'shortage', bdr)}
                     {adjCell(d2.adj.transfer, 'transfer', bdr)}
-                    <td style={{ padding: '4px 5px', borderBottom: bdr, background: '#EFF6FF' }}>
-                      {isAdmin && !sheetProjected ? adminInput(sec, c, 'total', d2) : roCell(d2.total, { background: '#EFF6FF', color: '#0284C7', fontWeight: 700 })}
+                    <td style={{ padding: '4px 5px', borderBottom: bdr, background: SALES_ONLY.has(c.id) ? '#FAFAFA' : '#EFF6FF' }}>
+                      {SALES_ONLY.has(c.id)
+                        ? naCell
+                        : isAdmin && !sheetProjected
+                          ? adminInput(sec, c, 'total', d2)
+                          : roCell(d2.total, { background: '#EFF6FF', color: '#0284C7', fontWeight: 700 })}
                     </td>
                     <td style={{ padding: '4px 5px', borderBottom: bdr }}>{numInput(sec, c, 'sales', d2, { fontWeight: 700 })}</td>
                     {/* C.Box and Poly hold no closing balance on this row: the
@@ -1213,9 +1232,9 @@ export default function DailyEntryPage() {
                         the moment a sale was keyed (office, 2026-09-26). What
                         is saved, and what the statements and the DSS print,
                         are unchanged. */}
-                    <td style={{ padding: '4px 5px', borderBottom: bdr, ...(NO_CLOSING.has(c.id) ? { textAlign: 'center', fontSize: 11, color: '#D1D5DB', background: '#FAFAFA' } : {}) }}>
-                      {NO_CLOSING.has(c.id) ? (
-                        <span title="Stocked in Gunny Stock Management — the sale deducts it there">—</span>
+                    <td style={{ padding: '4px 5px', borderBottom: bdr, ...(SALES_ONLY.has(c.id) ? naTd : {}) }}>
+                      {SALES_ONLY.has(c.id) ? (
+                        naCell
                       ) : isAdmin && !sheetProjected ? (
                         adminInput(sec, c, 'close', d2, d2.close < 0 ? { color: '#DC2626', background: '#FEF2F2', borderColor: '#FCA5A5' } : undefined)
                       ) : (

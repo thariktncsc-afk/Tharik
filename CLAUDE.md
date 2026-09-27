@@ -587,10 +587,15 @@ ran the wrong way: typing **Issues** in the Gunny table WROTE those sales rows
   Issues from the month's own EMPTY_BAG / EMPTY_BOX **sales**. A keyed figure
   — an administrator's correction — still wins. **50 KG SS has no commodity
   row of its own and stays hand-keyed**, by the shop as before.
-- **The entry row shows no Closing for those two** (`NO_CLOSING`,
-  engine/commodities.ts), on Daily and Monthly Entry alike. Display only:
-  what is stored, what the statements print and what the DSS prices are
-  untouched — every section of every shop renders byte-identical on live data.
+- **The entry row takes Sales only for those two** (`SALES_ONLY`,
+  engine/commodities.ts), on Daily and Monthly Entry alike: Opening, Receipt,
+  Total and Closing are not shown at all (office, 2026-09-27; the Closing
+  alone went on 2026-09-26), because those four are kept in Gunny Stock
+  Management and four empty boxes on the grid only invite a second,
+  contradictory stock record. Rate and Amount are unchanged, so the money
+  still reaches remittance. Display only: what is stored, what the statements
+  print and what the DSS prices are untouched — every section of every shop
+  renders byte-identical on live data.
 - **Deducted once.** Sale → amount → remittance → gunny Issues → statement
   sales. Nothing else subtracts those bags.
 - **The gunny figures are the office's.** Opening, Receipt, Total, Closing and
