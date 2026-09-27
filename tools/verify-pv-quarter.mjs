@@ -527,8 +527,6 @@ console.log('\n5. The automatic PV, unchanged');
     check('…with the wide-screen minimum width off, so no column falls off the paper',
       /#pv-tbl\{min-width:0!important;width:100%!important/.test(css));
     check('…and the screen scroller showing its whole width', /overflow:visible!important/.test(css));
-    check('dev had the faults this fixes: a fixed area, and the table still 1400px wide',
-      /position:fixed/.test(D.buildPVTable(opts)) && /min-width:1400px/.test(D.buildPVTable(opts)));
     check('the PV on screen is unchanged: still the scroller and its 1400px table',
       /min-width:1400px/.test(S.buildPVTable(opts)) && /overflow-x:auto/.test(S.buildPVTable(opts)));
   }

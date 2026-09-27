@@ -8,6 +8,14 @@ const nextConfig = {
   // UA here opts all requests into blocking metadata, which this app loses
   // nothing by, and removes the outlet the overlay collides with.
   htmlLimitedBots: /.*/,
+  // The statements PDF (/api/statements/pdf) runs headless Chrome. Neither
+  // package may be bundled — @sparticuz/chromium reads its compressed Chrome
+  // from its own folder at run time — and that folder must be shipped with
+  // the function, which file tracing cannot see on its own.
+  serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
+  outputFileTracingIncludes: {
+    '/api/statements/pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
+  },
   // The legacy engine is served as classic scripts from /public/js and must not
   // be cached across a rebuild during development.
   async headers() {
