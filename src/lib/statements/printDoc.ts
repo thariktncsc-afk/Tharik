@@ -98,7 +98,22 @@ export function orientationOf(html: string, sectionId?: string): 'portrait' | 'l
  * own fonts, borders or column widths — the statements must keep looking
  * exactly as the office knows them.
  */
-export function pageCss(sectionIds: string[] = []): string {
+/**
+ * `@page :first` — the paper the FIRST statement in the job asked for, since
+ * that is the one page a named page cannot reach (see the note below).
+ * Its own page setup where the office's workbook has one, else A4 of the
+ * orientation the statement's own width calls for.
+ */
+function firstPageCss(id: string | undefined, html?: string): string[] {
+  if (!id) return [];
+  if (inTemplate(id)) {
+    const p = printFor(id);
+    return [`@page :first{size:A4 ${p.orientation};margin:${mm(p.margins.top)}mm ${mm(p.margins.right)}mm ${mm(p.margins.bottom)}mm ${mm(p.margins.left)}mm}`];
+  }
+  return [`@page :first{size:A4 ${orientationOf(html ?? '', id)};margin:${MARGIN_MM}mm}`];
+}
+
+export function pageCss(sectionIds: string[] = [], firstHtml?: string): string {
   // A named page per section the workbook covers, carrying that sheet's own
   // margins and centring, so a statement prints on the paper the office set
   // for it rather than on one house style.
@@ -110,6 +125,23 @@ export function pageCss(sectionIds: string[] = []): string {
     perSection.push(`.stmt-sheet[data-section="${id}"]{page:${pageName(id)}${p.centred ? ';margin-left:auto;margin-right:auto' : ''}}`);
   }
   return [
+    // THE DEFAULT PAGE IS A4. The Daily Sales builder carries
+    // `@media print{@page{size:A3 landscape}}` in its own <style>, and an
+    // unnamed @page is the DOCUMENT's page, not that sheet's. Any page box a
+    // named page does not claim therefore came out A3 — one 420mm page in an
+    // A4 job, which every printer and Save-as-PDF then shrinks the whole
+    // document to fit, and the statements print small and squeezed (office,
+    // 2026-09-27; it was CRS PAGE 1, the first page, at 32% of its width).
+    // This rule is written after the sections' own, so it is the one that
+    // stands; the named pages below still give each sheet its own paper.
+    //
+    // LANDSCAPE, because the default page is also the box the browser fits
+    // the document to: against a 210mm default, every landscape sheet is
+    // wider than its page and Chrome shrinks the WHOLE job to fit — the
+    // receipt's smallest type went from 5.2pt to 3.6pt when this said
+    // portrait. At 297mm nothing is wider than the default, so each sheet
+    // prints at its own size.
+    `@page{size:A4 landscape;margin:${MARGIN_MM}mm}`,
     // Named pages: one for each orientation, for anything the workbook has no
     // sheet for; the per-section rules below override them where it does.
     `@page stmtP{size:A4 portrait;margin:${MARGIN_MM}mm}`,
@@ -117,6 +149,22 @@ export function pageCss(sectionIds: string[] = []): string {
     '.stmt-sheet--portrait{page:stmtP}',
     '.stmt-sheet--landscape{page:stmtL}',
     ...perSection,
+    // THE FIRST PAGE IS THE FIRST STATEMENT'S. A page takes its name from the
+    // box that starts it, and the box starting page 1 was `<main>`, not the
+    // sheet inside it — so the first statement printed on whatever the
+    // document's default page happened to be while every later one (each
+    // starting its page after a break) got its own. CRS PAGE 1 came out on
+    // A3, and then, with an A4 default, on landscape split across two pages,
+    // while the other seventeen were right (office, 2026-09-27).
+    //
+    // A named page cannot fix it — Chrome takes the FIRST page's size from the
+    // document's page and only changes size at a break, so neither naming the
+    // wrapper's page nor taking the wrapper's box away (display:contents)
+    // moved it. `@page :first` does: the first sheet's own paper and margins,
+    // stated as the first page's, with the default left landscape so nothing
+    // is shrunk to fit. Checked by printing the real document to PDF and
+    // reading the page sizes back out of it.
+    ...firstPageCss(sectionIds[0], firstHtml),
     // One statement, one sheet. The last one takes no break after it, or every
     // print job ends on a blank page.
     '.stmt-sheet{break-after:page;page-break-after:always;break-inside:auto}',
@@ -176,12 +224,16 @@ function sheet(section: PrintSection, copy: number, copies: number): string {
  * office selected them.
  */
 export function buildPrintDocument(title: string, baseCss: string, sections: PrintSection[]): string {
+  // Joined with nothing between them: a newline is a text node, and a page
+  // that STARTS with one takes the document's default page rather than the
+  // sheet's own named one — which is how the first statement ended up on a
+  // different size of paper from the rest (office, 2026-09-27).
   const sheets = sections
     .flatMap((s) => {
       const copies = Math.max(1, Math.floor(s.copies) || 1);
       return Array.from({ length: copies }, (_, i) => sheet(s, i + 1, copies));
     })
-    .join('\n');
+    .join('');
   return (
     '<!DOCTYPE html><html><head><meta charset="utf-8"/>' +
     `<title>${title}</title>` +
@@ -193,7 +245,7 @@ export function buildPrintDocument(title: string, baseCss: string, sections: Pri
     `<main class="stmt-doc">${sheets}</main>` +
     // Last, so these page rules win over the ones a builder carries — and
     // carrying each section's own page setup from the office's workbook.
-    `<style>${pageCss(sections.map((s) => s.id))}</style>` +
+    `<style>${pageCss(sections.map((s) => s.id), sections[0]?.html)}</style>` +
     // Size the statements the office enlarges to fill their page, before the
     // print dialog opens (it is opened 600 ms after the window is written).
     (sections.some((s) => fillsPage(s.id)) ? `<script>${FILL_SCRIPT}</script>` : '') +
