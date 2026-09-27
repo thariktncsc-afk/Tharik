@@ -862,6 +862,21 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   shop's Remittance was rendered before and after: only the table width and
   the `<col>` widths differ. **An intended change to a statutory format, so
   the `*_remittance.html` goldens no longer match** (like receipt and gunny).
+- **Free Com and Cost Com print between equal margins** (office,
+  2026-09-27). Their workbook right margin is 0 too, so both ran to 297.1 mm
+  of 297 — CLOSING BALANCE, CRS NO and AREA SUPERVISOR cut off — and Cost Com
+  sat 18 mm in from the left. Changing their `margins` would also move the
+  Excel page setup, so the printed page / PDF takes `paper` instead
+  (`paperMargins()`, read by `printDoc.ts` and `printableBoxPx`; the Excel
+  export keeps the office's `margins`):
+  - Cost Com: 9 + 9 mm, the same 18 mm in all — the table is the same size
+    and moved exactly 9.0 mm left (CRS NO 283.5 → 274.5 mm);
+  - Free Com had only 3.4 mm of margin in all: 5 + 5 mm makes it 6.6 mm (2.2%)
+    narrower, column shares unchanged.
+  Type unchanged (6.0–9.7 pt), one page; no cell overflows at the new widths
+  in any of the 30 shops. The builders are untouched, so no golden changes.
+  **Still at the paper edge, not yet asked for:** Daily Sale, Gunny and B6
+  (right margin 0, measured 297.1 mm of 297); Receipt has 3.9 mm.
 - **Remittance and Sale Tax stretch to the foot of the page**
   (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
   which only shrinks, so `fillSheets` enlarges them as far as the width
