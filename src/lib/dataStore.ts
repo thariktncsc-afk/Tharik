@@ -116,6 +116,24 @@ class CrsDataStore {
     return this.stores[key] as T | undefined;
   }
 
+  /** Parsed once per saved JSON, so a subscriber gets one stable object until the database copy changes. */
+  private savedCache: Partial<Record<StoreKey, { json: string; value: unknown }>> = {};
+
+  /**
+   * A store as last CONFIRMED to be in the database — never a change still
+   * being sent, nor one the server refused. For figures that must describe
+   * what is saved (Daily Entry's "Last Entry Date"), not what is typed.
+   */
+  getSaved<T = unknown>(key: StoreKey): T | undefined {
+    const json = this.serverJson[key];
+    if (json === undefined) return undefined;
+    const hit = this.savedCache[key];
+    if (hit && hit.json === json) return hit.value as T;
+    const value = JSON.parse(json) as unknown;
+    this.savedCache[key] = { json, value };
+    return value as T;
+  }
+
   /** Replace a store's value outright. */
   set(key: StoreKey, value: unknown) {
     this.stores[key] = value;
@@ -343,6 +361,8 @@ class CrsDataStore {
         }
         this.lastError = '';
         sent = true;
+        // The saved copy moved: whatever reads it (useSavedStore) updates now.
+        this.emit();
         return true;
       }
       return false;
@@ -472,6 +492,15 @@ export function useStore<T = unknown>(key: StoreKey): T | undefined {
   return useSyncExternalStore(
     crsData.subscribe,
     () => crsData.get<T>(key),
+    () => undefined,
+  );
+}
+
+/** Subscribe to a store as SAVED in the database (see getSaved). */
+export function useSavedStore<T = unknown>(key: StoreKey): T | undefined {
+  return useSyncExternalStore(
+    crsData.subscribe,
+    () => crsData.getSaved<T>(key),
     () => undefined,
   );
 }

@@ -17,7 +17,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
-import { crsData, useStore } from '@/lib/dataStore';
+import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { bagsOf, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec, type SourceBlock } from '@/lib/engine/monthlyRollup';
@@ -60,6 +60,7 @@ import {
 import type { ClearScope } from '@/lib/clearClient';
 import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
+import { CARD_DETAILS_ID, cardDetailsJumpWanted, clearCardDetailsJump } from './jump';
 import GunnyTable from './GunnyTable';
 import { printArea, PRINT_AREA_CLASS } from '@/lib/printArea';
 import RemitTable from './RemitTable';
@@ -112,6 +113,55 @@ export default function MonthlyEntryPage() {
   const crsId = crsVal ? Number(crsVal) : null;
   const key = crsVal ? `${crsVal}_${month}_${year}` : '';
   const ctx = crsId ? { crsId, month, year, key } : null;
+
+  // Sent here for Card Details & Allotment (Dashboard → Quick Actions; jump.ts):
+  // scroll to that section once the month has loaded and it is on the page.
+  // An administrator has no shop yet, so the shop box is focused with a line
+  // saying why; choosing a shop then opens the section.
+  const { status: dataStatus } = useDataStatus();
+  const [cardJump, setCardJump] = useState(false);
+  const [cardFlash, setCardFlash] = useState(false);
+  const shopSelectRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (cardDetailsJumpWanted()) setCardJump(true);
+  }, []);
+  useEffect(() => {
+    if (!cardJump) return;
+    if (!ctx) {
+      shopSelectRef.current?.focus();
+      return;
+    }
+    if (dataStatus !== 'ready') return;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const go = () => {
+      const el = document.getElementById(CARD_DETAILS_ID);
+      if (!el) return false;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.focus({ preventScroll: true });
+      return true;
+    };
+    const raf = requestAnimationFrame(() => {
+      if (!go()) return;
+      setCardFlash(true);
+      // The tables above can still be growing as the month's figures render:
+      // settle on the section once more, then forget the request.
+      settle = setTimeout(() => {
+        go();
+        clearCardDetailsJump();
+        setCardJump(false);
+      }, 450);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      if (settle) clearTimeout(settle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardJump, ctx?.key, dataStatus]);
+  useEffect(() => {
+    if (!cardFlash) return;
+    const t = setTimeout(() => setCardFlash(false), 1800);
+    return () => clearTimeout(t);
+  }, [cardFlash]);
   const lists = useCommodityLists(crsId);
 
   // The one-time Initial Opening Balance, as on Daily Entry (engine/stockInit.ts):
@@ -965,7 +1015,7 @@ export default function MonthlyEntryPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 14, alignItems: 'end' }}>
             <div>
               <label className="form-label">CRS Shop</label>
-              <select value={crsVal} onChange={(e) => setCrsVal(e.target.value)}>
+              <select ref={shopSelectRef} value={crsVal} onChange={(e) => setCrsVal(e.target.value)}>
                 <option value="">Select CRS Shop...</option>
                 {shopIds.map((id) => (
                   <option key={id} value={String(id)}>
@@ -1021,9 +1071,13 @@ export default function MonthlyEntryPage() {
 
       {!ctx ? (
         <div style={{ textAlign: 'center', padding: '64px 24px', color: 'var(--muted)' }}>
-          <div style={{ fontSize: 52, marginBottom: 14 }}>📅</div>
-          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 6 }}>Select a CRS shop and month</div>
-          <div style={{ fontSize: 13 }}>The monthly commodity entry table will appear</div>
+          <div style={{ fontSize: 52, marginBottom: 14 }}>{cardJump ? '🪪' : '📅'}</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 6 }}>
+            {cardJump ? 'Choose a CRS shop for Card Details & Allotment' : 'Select a CRS shop and month'}
+          </div>
+          <div style={{ fontSize: 13 }}>
+            {cardJump ? 'Its Card Details & Allotment for the selected month opens as soon as you choose it' : 'The monthly commodity entry table will appear'}
+          </div>
         </div>
       ) : (
         <div>
@@ -1187,7 +1241,10 @@ export default function MonthlyEntryPage() {
 
               <RemitTable ctx={ctx} remit={meRemitStore} entryStore={entryStore} subtitle={subtitle} />
               <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} packSales={gridSales} isAdmin={isAdmin} subtitle={subtitle} />
-              <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} allotConfirmed={meAllotConfirmed} subtitle={subtitle} />
+              {/* The Dashboard's "Card Details & Allotment" lands here (jump.ts). */}
+              <div id={CARD_DETAILS_ID} tabIndex={-1} className={cardFlash ? 'jump-target flash' : 'jump-target'}>
+                <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} allotConfirmed={meAllotConfirmed} subtitle={subtitle} />
+              </div>
             </div>
           </div>
 

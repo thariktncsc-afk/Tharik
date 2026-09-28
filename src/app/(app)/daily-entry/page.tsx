@@ -21,7 +21,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
-import { crsData, useStore } from '@/lib/dataStore';
+import { crsData, useSavedStore, useStore } from '@/lib/dataStore';
+import { ddmmyyyy, entrySummary } from '@/lib/engine/entryDates';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { isCrs29, SALES_ONLY, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
@@ -162,6 +163,11 @@ export default function DailyEntryPage() {
   const salesCloseStore = useStore<Record<string, SalesClose>>('salesCloseStore') ?? {};
   const receiptStore = useStore<ReceiptRow[]>('receiptStore') ?? [];
   const holidays = useStore<GovtHolidayMap>('__holidays');
+  // "Last Entry Date" / "Total Entry Dates" describe what is SAVED: the
+  // database's copy of the day sheets, so a sheet still sending or refused
+  // never counts, and a save, an approved clear or another person's save
+  // moves them the moment it lands (engine/entryDates.ts).
+  const savedEntryStore = useSavedStore<Record<string, unknown>>('entryStore');
 
   const isCrsUser = !!user?.crsId && user.role !== 'ADMIN';
   const shopIds = isCrsUser ? [user!.crsId as number] : shops.map((_, i) => i + 1);
@@ -334,6 +340,7 @@ export default function DailyEntryPage() {
 
   // Sorted once per shop rather than per commodity — derive() runs it 30+ times.
   const priorDates = useMemo(() => (crsVal ? entryDatesDesc(entryStore, crsVal) : []), [entryStore, crsVal]);
+  const entries = useMemo(() => (crsVal ? entrySummary(savedEntryStore, crsVal) : null), [savedEntryStore, crsVal]);
 
   /**
    * The stock chain for this shop, indexed once and asked per commodity.
@@ -1328,6 +1335,17 @@ export default function DailyEntryPage() {
               </div>
             ) : null}
           </div>
+          {entries && savedEntryStore ? (
+            <div className="de-entry-summary" aria-live="polite">
+              <span>
+                Last Entry Date: <b>{entries.last ? ddmmyyyy(entries.last) : '—'}</b>
+              </span>
+              <span className="de-sep" aria-hidden="true">|</span>
+              <span>
+                Total Entry Dates: <b>{entries.count} {entries.count === 1 ? 'day' : 'days'}</b>
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
 
