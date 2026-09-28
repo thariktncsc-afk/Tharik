@@ -62,6 +62,14 @@ const dash = readFileSync(join(root, 'src/app/(app)/dashboard/page.tsx'), 'utf8'
 check('the Dashboard card: 🪪, the office\'s title and subtitle, the marker set before navigating',
   /quick\(CARD_DETAILS_HREF, '🪪', 'Card Details & Allotment', 'Manage monthly card details and allotment',[^\n]*requestCardDetailsJump\)\}/.test(dash) && /before\?\.\(\);\s*router\.push\(href\)/.test(dash));
 check('…in the one Quick Actions grid, five across (a phone stacks them, responsive.css)', /gridTemplateColumns: 'repeat\(5,1fr\)'/.test(dash));
+{
+  // The office's order (2026-09-28), the same on every screen: the markup IS the order.
+  const order = [...dash.matchAll(/\{quick\((?:'([^']+)'|(CARD_DETAILS_HREF))/g)].map((m) => m[1] ?? m[2]);
+  const want = ['/daily-entry', '/receipt', 'CARD_DETAILS_HREF', '/monthly-entry', '/statements'];
+  check('Quick Actions in the office\'s order: Daily Entry | Receipt | Card Details & Allotment | Monthly Entry | Statement',
+    JSON.stringify(order) === JSON.stringify(want), JSON.stringify(order));
+  check('…and nothing in the page re-orders them on a phone (no CSS order on the cards)', !/\.dash-quick[^{]*>\s*div[^{]*\{[^}]*order/.test(readFileSync(join(root, 'src/app/responsive.css'), 'utf8')));
+}
 const me = readFileSync(join(root, 'src/app/(app)/monthly-entry/page.tsx'), 'utf8');
 check('Monthly Entry wraps the EXISTING CardAllot — no second Card Details page',
   /<div id=\{CARD_DETAILS_ID\} tabIndex=\{-1\}[^>]*>\s*<CardAllot /.test(me) && (me.match(/<CardAllot /g) ?? []).length === 1);

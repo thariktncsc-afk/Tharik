@@ -555,14 +555,16 @@ export default function DashboardPage() {
         <div style={{ marginBottom: 14 }}>{sectionTitle('linear-gradient(180deg,#1B3A6B,#2563EB)', 'Quick Actions')}</div>
         {/* Five across on a wide screen, so the new card sits in the row, not alone under it;
             a phone's auto-fit rule (responsive.css) stacks them as before. */}
+        {/* The office's order (2026-09-28): Daily Entry | Receipt | Card Details &
+            Allotment | Monthly Entry, then Statement. One order in the markup, so a
+            phone — which stacks them (responsive.css) — reads them the same way. */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
           {quick('/daily-entry', '📝', 'Daily Entry', "Record today's sales", 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', '#BAE6FD', '#1D4ED8', '#60A5FA')}
-          {quick('/monthly-entry', '📅', 'Monthly Entry', 'Monthly totals & remittance', 'linear-gradient(135deg,#F0FDF4,#DCFCE7)', '#86EFAC', '#15803D', '#4ADE80')}
-          {/* Straight to the existing Card Details & Allotment section of Monthly
-              Entry (office, 2026-09-28) — the page scrolls to it once it has
-              loaded (monthly-entry/jump.ts). */}
-          {quick(CARD_DETAILS_HREF, '🪪', 'Card Details & Allotment', 'Manage monthly card details and allotment', 'linear-gradient(135deg,#ECFEFF,#CFFAFE)', '#67E8F9', '#0E7490', '#22D3EE', requestCardDetailsJump)}
           {quick('/receipt', '🧾', 'Receipt', 'Godown receipts', 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', '#FDE68A', '#B45309', '#FCD34D')}
+          {/* Straight to the existing Card Details & Allotment section of Monthly
+              Entry — the page scrolls to it once it has loaded (monthly-entry/jump.ts). */}
+          {quick(CARD_DETAILS_HREF, '🪪', 'Card Details & Allotment', 'Manage monthly card details and allotment', 'linear-gradient(135deg,#ECFEFF,#CFFAFE)', '#67E8F9', '#0E7490', '#22D3EE', requestCardDetailsJump)}
+          {quick('/monthly-entry', '📅', 'Monthly Entry', 'Monthly totals & remittance', 'linear-gradient(135deg,#F0FDF4,#DCFCE7)', '#86EFAC', '#15803D', '#4ADE80')}
           {quick('/statements', '📄', 'Statement', 'Generate reports', 'linear-gradient(135deg,#FDF4FF,#FAE8FF)', '#E879F9', '#7E22CE', '#C084FC')}
         </div>
         {isAdmin ? (
