@@ -187,3 +187,10 @@ input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,5
 .de-entry-summary b{color:#0369A1;font-weight:700}
 .de-entry-summary .de-sep{color:#7DD3FC}
 @media (max-width:560px){.de-entry-summary{flex-direction:column;align-items:flex-start;gap:2px}.de-entry-summary .de-sep{display:none}}
+
+/* Monthly Entry — where the Dashboard's "Card Details & Allotment" lands
+   (monthly-entry/jump.ts): clear of the top bar, and a brief glow so the eye
+   finds the section it was brought to. */
+.jump-target{scroll-margin-top:16px;border-radius:14px;outline:none}
+.jump-target.flash{animation:jumpFlash 1.8s ease-out}
+@keyframes jumpFlash{0%,35%{box-shadow:0 0 0 3px rgba(14,116,144,.55)}100%{box-shadow:0 0 0 3px rgba(14,116,144,0)}}

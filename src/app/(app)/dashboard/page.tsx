@@ -22,6 +22,7 @@ import { useShops, useStockLists } from '@/lib/masters';
 import { holidayOn, isHoliday, workingDayCounts, type GovtHolidayMap } from '@/lib/engine/holidays';
 import { feedLine, roleLabel, type FeedItem } from '@/lib/activityLog/core';
 import { buildChainIndex, closingAsAt } from '@/lib/engine/stockChain';
+import { CARD_DETAILS_HREF, requestCardDetailsJump } from '../monthly-entry/jump';
 
 /**
  * "Today, 10:42 AM" for today, otherwise a dated line. Times are rendered from
@@ -335,10 +336,13 @@ export default function DashboardPage() {
       <div />
     );
 
-  const quick = (href: string, icon: string, title: string, sub: string, grad: string, border: string, fg: string, subFg: string) => (
+  const quick = (href: string, icon: string, title: string, sub: string, grad: string, border: string, fg: string, subFg: string, before?: () => void) => (
     <div
       key={href}
-      onClick={() => router.push(href)}
+      onClick={() => {
+        before?.();
+        router.push(href);
+      }}
       style={{ background: grad, border: `1px solid ${border}`, borderRadius: 14, padding: '18px 12px', textAlign: 'center', cursor: 'pointer', transition: '.2s' }}
     >
       <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
@@ -549,9 +553,15 @@ export default function DashboardPage() {
       {/* ── QUICK ACTIONS ── (straight under the hero on a phone: responsive.css) */}
       <div className="dash-quick" style={{ ...card, padding: '20px 22px', marginBottom: 20 }}>
         <div style={{ marginBottom: 14 }}>{sectionTitle('linear-gradient(180deg,#1B3A6B,#2563EB)', 'Quick Actions')}</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+        {/* Five across on a wide screen, so the new card sits in the row, not alone under it;
+            a phone's auto-fit rule (responsive.css) stacks them as before. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
           {quick('/daily-entry', '📝', 'Daily Entry', "Record today's sales", 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', '#BAE6FD', '#1D4ED8', '#60A5FA')}
           {quick('/monthly-entry', '📅', 'Monthly Entry', 'Monthly totals & remittance', 'linear-gradient(135deg,#F0FDF4,#DCFCE7)', '#86EFAC', '#15803D', '#4ADE80')}
+          {/* Straight to the existing Card Details & Allotment section of Monthly
+              Entry (office, 2026-09-28) — the page scrolls to it once it has
+              loaded (monthly-entry/jump.ts). */}
+          {quick(CARD_DETAILS_HREF, '🪪', 'Card Details & Allotment', 'Manage monthly card details and allotment', 'linear-gradient(135deg,#ECFEFF,#CFFAFE)', '#67E8F9', '#0E7490', '#22D3EE', requestCardDetailsJump)}
           {quick('/receipt', '🧾', 'Receipt', 'Godown receipts', 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', '#FDE68A', '#B45309', '#FCD34D')}
           {quick('/statements', '📄', 'Statement', 'Generate reports', 'linear-gradient(135deg,#FDF4FF,#FAE8FF)', '#E879F9', '#7E22CE', '#C084FC')}
         </div>

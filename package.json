@@ -35,6 +35,7 @@
     "verify:save-success": "node tools/verify-save-success.mjs",
     "verify:sign-in": "node tools/verify-sign-in.mjs",
     "verify:entry-dates": "node tools/verify-entry-dates.mjs",
+    "verify:card-jump": "node tools/verify-card-jump.mjs",
     "verify:remittance-admin": "node tools/verify-remittance-admin.mjs",
     "verify:month-close": "node tools/verify-month-close.mjs",
     "verify:statement-export": "node tools/verify-statement-export.mjs",
