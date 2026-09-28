@@ -514,3 +514,20 @@
     order: 99;
   }
 }
+
+/* Current Date is a button now (office, 2026-09-28): it keeps the day and
+   scrolls back up to its entry. Same look as before, plus a pointer. */
+button.de-datenav-current {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s;
+}
+button.de-datenav-current:hover {
+  background: #075985;
+}
+/* Where ← Previous / Current / Next → land: the start of the commodity entry,
+   a little clear of the top bar. */
+.de-entry-top {
+  scroll-margin-top: 12px;
+}

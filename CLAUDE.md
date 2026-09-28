@@ -472,6 +472,24 @@ each button showing the date it goes to (`daily-entry/dateNav.ts`; office,
 
 `npm run verify:daily-date-nav`.
 
+- **The bar takes the clerk back up** (office, 2026-09-28): ← Previous and
+  Next → change the day and then — once the new day is on screen (the
+  `scrollTo` effect waits for `date` to be the one asked for, and runs after
+  the fill effect) — scroll to `#de-entry`, the shop's blue header over
+  Section A, 12 px under the top bar. **Current Date** is a button that only
+  scrolls, never changes the day. The date box at the top does not scroll.
+
+### An administrator may save a day without a remittance
+
+Office, 2026-09-28. `remitCollect()` refuses an empty deposit list for shop
+staff exactly as before ("Please enter the Remittance Amount."), but lets an
+ADMIN through: the sheet is saved with `remits: []`, `remitAmount 0`, blank
+`remitDate` — what every reader already takes as nothing banked (the DSS's
+C A/C line 0.00, no Monthly Remittance row). The server never required a
+deposit, so nothing there changed; a remittance added later on Daily Entry
+goes through the usual save and chain. The note under Remittance says which
+rule applies to the person looking at it.
+
 ### Last Entry Date | Total Entry Dates
 
 Under the shop / date pickers (office, 2026-09-28; `npm run verify:entry-dates`),
