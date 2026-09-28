@@ -472,6 +472,22 @@ each button showing the date it goes to (`daily-entry/dateNav.ts`; office,
 
 `npm run verify:daily-date-nav`.
 
+### Last Entry Date | Total Entry Dates
+
+Under the shop / date pickers (office, 2026-09-28; `npm run verify:entry-dates`),
+from `engine/entryDates.ts`:
+- **A date counts once, for a real saved day sheet**: key `<crs>_<YYYY-MM-DD>`,
+  some figure not zero (`sheetHasStock`), and NOT a Monthly Entry projection
+  — a form emptied and saved is not an entry. Calendar, working days and
+  holidays play no part.
+- **Saved, not typed**: it reads dataStore's `useSavedStore('entryStore')`,
+  the copy last confirmed in the database (`getSaved`, parsed once per saved
+  JSON). A sheet still being sent or one the server refused is not counted;
+  a landed save, another person's save and an approved clear (live sync) move
+  it at once. `save()` now emits when a save lands, so readers of the saved
+  copy hear about it.
+- Live, 2026-09-28: CRS 19 19-09-2026 | 14 days, CRS 7 26-09-2026 | 22 days.
+
 ## Phones: dashboard order and the header bell
 
 `responsive.css`, the last `@media (max-width: 560px)` block (office,
@@ -1030,6 +1046,22 @@ npm run verify:daily-date-nav  Daily Entry ← Previous | Current | Next →: fr
 - Live, 2026-09-21: only BC 1, 9–12, 14–17, 23, 26, 27, 30; only Packer 5, 8,
   19, 28, 29; both 7, 20, 24, 25; none 2–4, 6, 13, 18, 21, 22.
 
+## Dashboard → Card Details & Allotment
+
+A Quick Action (🪪, office 2026-09-28; `npm run verify:card-jump`) that
+opens Monthly Entry scrolled to the EXISTING Card Details & Allotment
+section (`CardAllot`, wrapped in `#card-details`) — there is no second Card
+Details page, and nothing in CardAllot changed. `monthly-entry/jump.ts`:
+the Dashboard leaves a one-time sessionStorage marker (the router may put
+`#card-details` in the address only after the page mounts), the address
+carries it for a reload; Monthly Entry scrolls once data is `ready` and the
+section exists, settles once more after 450 ms (the tables above grow as
+they render), focuses it, flashes it, then clears both so a change of month
+does not jump again. A shop user's shop is preset, so it goes straight
+there; an administrator has none, so the shop box is focused with "Choose a
+CRS shop for Card Details & Allotment" and choosing one opens the section.
+The Quick Actions row is five across (a phone stacks them).
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for
@@ -1366,6 +1398,8 @@ npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny 
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome
+npm run verify:entry-dates      Daily Entry Last Entry Date | Total Entry Dates: the rule, saved-not-typed, live data vs an independent count
+npm run verify:card-jump        Dashboard → Card Details & Allotment: the jump hand-off and its wiring
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
