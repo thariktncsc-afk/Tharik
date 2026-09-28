@@ -709,9 +709,8 @@ printed. `npm run verify:print-layout`.
   scroll, nothing shows that they are gone.
 - Two screens print themselves: **Monthly Entry's statement preview** and the
   **PV on Reports**. Both now call `printArea()` and mark their document
-  `.print-area`; the PV keeps its own `@page{size:A4 landscape}` and its
-  min-width reset, which is why `verify:pv-quarter` compares it to `dev`
-  **apart from** the print `<style>` block and checks those rules separately.
+  `.print-area`; the PV carries its own `@page{size:legal landscape}` — see
+  "The PV sheet: Annexure-I on Legal paper", below.
 - The check also refuses a NEW screen that calls `window.print()` without
   either printing an area or opening a document of its own — which is how
   this fault would come back.
@@ -1275,14 +1274,51 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
 - Nothing uploaded is saved anywhere. The generated quarter is tagged with its
   shop and period, and a PDF still being read when the shop changes is
   dropped, so one shop's figures can never print under another's name.
-- The automatic PV is byte-identical to before (checked against `dev`).
 - **CRS 1, Q2 2026 (dry run, 2026-09-22):** July and August read in full and
   carry July → August exactly, but Generate refuses on six commodities because
   the Initial Openings typed on 01-09-2026 ("admin (office instruction)")
   differ from the August PDF's closings: PHH FRK 1995 vs 495 + PHH BRA 0 vs
   1500, AAY FRK 350 vs 50 + AAY 0 vs 300 (each pair sums the same), TAN 0 vs
   150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
-  worked around in code.
+  worked around in code. Still so on 2026-09-28.
+
+### The PV sheet: Annexure-I on Legal paper
+
+`buildPVTable` (`pvStatement.ts`), for both the automatic and the 3-month PV
+(office, 2026-09-28). `npm run verify:pv-quarter` §5.
+
+- **The format is the office's own**: `CRS 19 PV STATEMENT.xlsx`, sheet
+  "30.09.23" (Annexure-I) — **38 columns** (B:AM), headed as rows 9–12 there,
+  the number row one number per heading (1–18; TRANSFER and TOTAL carry
+  none). The old sheet had 36 columns under title rows spanning 39 and a
+  number row running to 38, so the numbers and section rows stuck out past
+  the commodity rows — it had lost "Shortage during the year" and the PV
+  result's Excess / Shortage pair.
+- **Legal landscape, one page** — the workbook is `paperSize="5"`,
+  landscape, fit to page, and all nine PV PDFs the office sent are
+  355.6 × 215.9 mm, one page. `@page{size:legal landscape;margin:12mm 18mm}`
+  (18 mm = the workbook's 0.709 in).
+- **Laid out in millimetres, never against the window**: on screen the sheet
+  is a 355.6 mm page (its scroller scrolls on a narrow window); in print the
+  same table at the same 319.6 mm. The old one was a `min-width:1400px`
+  screen table, squeezed onto A4. Columns have fixed shares (`PV_COL_MM`):
+  kgs columns hold a 9-figure quantity at the sheet's own type (8.5px data,
+  unchanged); the columns the officer fills by hand are narrower. Every
+  commodity there is, at the widest figures, still fits one page with no cell
+  cut (checked by printing it).
+- **Where each figure prints** (as the office's PDFs place them): Opening →
+  8 "Physical"; Receipt 10; TRANSFER (net, in +); TOTAL = Opening + Receipt +
+  Transfer + Excess; Issues 11 (sales); **Shortage → 12 "Shortage during the
+  period", red**; Balance 14 = TOTAL − Issues − Shortage (the Closing);
+  **Excess → 17 "Excess" (Physical Verification), green**. The form has no
+  Excess column before TOTAL, so 17 is the only Excess on it — an assumption
+  to confirm with the office. Colour only when the printed figure is not zero
+  (15 kg is 0 bags: that 0 stays black). By Counting / By 100 % stay blank
+  for the officer.
+- Checked on live data (read only), 2026-09-28: CRS 1's July and August PDFs
+  add up for all 24 commodities and carry July → August; September adds up
+  for all 30 shops; the printed cells read back as OB + Rec + Tr + Ex = TOTAL
+  and TOTAL − Issues − Short = Balance on every row.
 
 ## Tools
 
