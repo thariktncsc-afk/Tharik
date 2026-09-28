@@ -1080,6 +1080,24 @@ there; an administrator has none, so the shop box is focused with "Choose a
 CRS shop for Card Details & Allotment" and choosing one opens the section.
 The Quick Actions row is five across (a phone stacks them).
 
+## Card Details & Allotment boxes: typing, the wheel, Enter
+
+`monthly-entry/NumInput.tsx`, used by every Card Count, Allotment and
+Advance Load box (office, 2026-09-28; `npm run verify:card-inputs`).
+- **The recording**: Sugar Card focused, pointer beside it, page scrolled —
+  and the count stepped 0 ↔ 1 by itself. Chrome changes a FOCUSED number
+  input on the mouse wheel; the same steps against the old box gave
+  0 → 1 → 0 → 1. The wheel now scrolls the page (#content) and never steps
+  the figure.
+- While a box has focus it shows exactly what was typed (`draft`) — the old
+  box showed the stored value reformatted on every key (`parseInt`), so the
+  caret jumped and a key typed before a 0 gave 10. Every change still goes
+  straight to setCount / setAllot / setAdvance (unchanged), so Total Card
+  follows at once; on leaving, the box shows the stored value.
+- Focusing selects the figure, so typing replaces the 0. Enter moves DOWN
+  the same column (`data-num-col`). ↑ / ↓ and the spinner are the browser's
+  own, within the existing min and step. Phones get a number pad and Next.
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for
@@ -1418,6 +1436,7 @@ npm run verify:print-pdf       prints the real document with headless Chrome and
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome
 npm run verify:entry-dates      Daily Entry Last Entry Date | Total Entry Dates: the rule, saved-not-typed, live data vs an independent count
 npm run verify:card-jump        Dashboard → Card Details & Allotment: the jump hand-off and its wiring
+npm run verify:card-inputs      Card Details & Allotment boxes: typed value kept, no wheel stepping, Enter down the column
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
