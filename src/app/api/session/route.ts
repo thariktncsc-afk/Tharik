@@ -15,7 +15,8 @@
 import { NextResponse, after } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseAdmin, supabaseConfigured } from '@/lib/supabaseAdmin';
-import { SESSION_COOKIE, cookieOptions, decodeSession, encodeSession } from '@/lib/session';
+import { SESSION_COOKIE, cookieOptions, decodeSession, encodeSession, markerCookieOptions } from '@/lib/session';
+import { SIGNED_IN_MARKER } from '@/lib/sessionMarker';
 import { canSignIn } from '@/lib/engine/staffAssignment';
 import { recordActivity } from '@/lib/activityLog/server';
 
@@ -175,11 +176,15 @@ export async function POST(req: Request) {
     }),
     cookieOptions(),
   );
+  // …and a marker the page can read, so it can tell a sign-in the browser
+  // refused from one it kept (sessionMarker.ts). It carries no identity.
+  res.cookies.set(SIGNED_IN_MARKER, '1', markerCookieOptions());
   return res;
 }
 
 export async function DELETE() {
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, '', cookieOptions(0));
+  res.cookies.set(SIGNED_IN_MARKER, '', markerCookieOptions(0));
   return res;
 }
