@@ -55,5 +55,29 @@ console.log('\nNo day that has not happened');
   check('Previous is never off', dateNav('2026-09-21', '2026-09-21').prev === '2026-09-20');
 }
 
+// Office, 2026-09-28. The flow itself — Next / Previous / Current Date landing
+// on the entry, and the saves below — was driven in Chrome (desktop and a
+// phone) against the dev server with a stand-in /api; these hold the rules.
+console.log('\nThe bar takes the clerk back up to the entry');
+{
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join, resolve } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const page = readFileSync(join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'src/app/(app)/daily-entry/page.tsx'), 'utf8');
+  check('← Previous and Next → change the day AND scroll to the entry', /goToDate\(nav\.prev, \{ scroll: true \}\)/.test(page) && /goToDate\(nav\.next, \{ scroll: true \}\)/.test(page));
+  check('…only once the new day is on screen (the scroll waits for `date` to be the one asked for)', /if \(!scrollTo \|\| scrollTo !== date\) return;/.test(page));
+  check('Current Date is a button that ONLY scrolls — it never changes the day',
+    /<button type="button" className="de-datenav-current"[^>]*onClick=\{scrollToEntry\}/.test(page));
+  check('the target is the start of the commodity entry (#de-entry), not the top of the window',
+    /id="de-entry" className="de-entry-top"/.test(page) && /getElementById\('de-entry'\)\?\.scrollIntoView/.test(page));
+  check('the date box at the top does not scroll (only the bar asks for it)', /onChange=\{\(e\) => void goToDate\(e\.target\.value\)\}/.test(page));
+
+  console.log('\nRemittance: an administrator may save without one; shop staff may not');
+  check('an empty deposit list stops shop staff, as before', /\} else if \(!list\.length && !isAdmin\) \{[\s\S]{0,400}?setRemitErr\(\{ amount: 'Please enter the Remittance Amount\.'/.test(page));
+  check('…and lets an administrator through, with the sheet saved as `remits: []`', /snap\.remits = list;/.test(page));
+  check('shop staff are still told a deposit is required; an administrator is told it can come later',
+    /At least one deposit is required to complete the day\./.test(page) && /As an administrator you may save this day without one/.test(page));
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nDAILY DATE NAV OK');
 process.exit(failures ? 1 : 0);
