@@ -314,7 +314,7 @@ export default function DailyEntryPage() {
    * could be lost is typing on the old day that was never saved, so that is
    * asked about first. Saved days are in the database and are never touched.
    */
-  const goToDate = async (next: string) => {
+  const goToDate = async (next: string, opts?: { scroll?: boolean }) => {
     if (!next || next === date || next > todayIso()) return;
     const typed = JSON.stringify({ rows, remits, riceFree, riceCost }) !== filled.current || remitAmt.trim() !== '';
     if (key && typed) {
@@ -330,8 +330,27 @@ export default function DailyEntryPage() {
       if (!ok) return;
     }
     setDate(next);
+    if (opts?.scroll) setScrollTo(next);
   };
   const nav = date ? dateNav(date, todayIso()) : null;
+
+  /**
+   * ← Previous / Next → leave the clerk at the foot of the page, where the
+   * buttons are; the day they chose has to be keyed at the top. So after the
+   * new day has filled the form (the key effect above runs first — it is
+   * declared first), the page scrolls to the start of the commodity entry —
+   * the shop's blue header over Section A — not the top of the window
+   * (office, 2026-09-28). Current Date scrolls there without changing the day.
+   */
+  const [scrollTo, setScrollTo] = useState<string | null>(null);
+  const scrollToEntry = () => {
+    requestAnimationFrame(() => document.getElementById('de-entry')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+  useEffect(() => {
+    if (!scrollTo || scrollTo !== date) return;
+    setScrollTo(null);
+    scrollToEntry();
+  }, [scrollTo, date]);
 
   const adjFor = (sec: 'a' | 'b', id: string) => {
     const r = insp?.[sec]?.[id];
@@ -567,7 +586,11 @@ export default function DailyEntryPage() {
         return null;
       }
       list.push({ id: newRemitId(), amount: amt, date: remitDate, account: 'nc', createdBy: user?.username, createdAt: new Date().toISOString() });
-    } else if (!list.length) {
+    } else if (!list.length && !isAdmin) {
+      // Shop staff: at least one deposit completes the day, exactly as before.
+      // An ADMINISTRATOR may save the day without one and add or correct the
+      // remittance later (office, 2026-09-28): the sheet is saved with an
+      // empty `remits`, which every reader already takes as "nothing banked".
       setRemitErr({ amount: 'Please enter the Remittance Amount.', date: remitDate ? undefined : 'Please select the Remittance Date.' });
       return null;
     }
@@ -1454,7 +1477,8 @@ export default function DailyEntryPage() {
             </div>
           )}
 
-          <div style={{ background: 'linear-gradient(135deg,#0369A1,#0EA5E9)', borderRadius: '12px 12px 0 0', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Where the date bar scrolls to: the start of the commodity entry. */}
+          <div id="de-entry" className="de-entry-top" style={{ background: 'linear-gradient(135deg,#0369A1,#0EA5E9)', borderRadius: '12px 12px 0 0', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>CRS {crsVal} — {shops[Number(crsVal) - 1]?.name ?? ''}</div>
               <div style={{ color: 'rgba(255,255,255,.65)', fontSize: 11, marginTop: 2 }}>{dateLabel}</div>
@@ -1692,7 +1716,11 @@ export default function DailyEntryPage() {
                 <div style={{ marginTop: 12 }}>
                   {!remits.length ? (
                     <div style={{ fontSize: 11, color: '#B45309', background: '#FFFBEB', border: '1px dashed #FDE047', borderRadius: 8, padding: '8px 12px' }}>
-                      ⚠ No remittance added yet — enter the amount and date, then press <strong>Add</strong>. At least one deposit is required to complete the day.
+                      {isAdmin ? (
+                        <>ⓘ No remittance added yet. As an administrator you may save this day without one and add or correct the remittance later — enter the amount and date, then press <strong>Add</strong>, when you have it.</>
+                      ) : (
+                        <>⚠ No remittance added yet — enter the amount and date, then press <strong>Add</strong>. At least one deposit is required to complete the day.</>
+                      )}
                     </div>
                   ) : (
                     <div style={{ border: '1px solid #E2E8F0', borderRadius: 9, overflow: 'hidden' }}>
@@ -1828,7 +1856,7 @@ export default function DailyEntryPage() {
                 <button className="de-close de-close-month" onClick={() => void once(markSalesClose)()} title="Mark this date as the LAST SALES DAY of the month. Totals up to this date auto-fill Monthly Entry & Gunny Receipt." style={{ background: 'linear-gradient(135deg,#B45309,#F59E0B)', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(245,158,11,.3)' }}>
                   🔒 மாத விற்பனை நிறைவு
                 </button>
-                <button className="de-close de-close-day" onClick={() => void once(() => save())()} title="Save this day sheet. Requires at least one remittance." style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
+                <button className="de-close de-close-day" onClick={() => void once(() => save())()} title={isAdmin ? 'Save this day sheet. A remittance can be added later.' : 'Save this day sheet. Requires at least one remittance.'} style={{ marginLeft: 'auto', background: 'linear-gradient(135deg,#0284C7,#0EA5E9)', color: '#fff', border: 'none', padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(14,165,233,.3)' }}>
                   💾 தினசரி விற்பனை நிறைவு
                 </button>
               </div>
@@ -1838,18 +1866,19 @@ export default function DailyEntryPage() {
                    date box at the top reads the same state, so the two can
                    never disagree. */
                 <nav className="de-datenav" aria-label="Change entry date">
-                  <button type="button" className="de-datenav-btn" onClick={() => void goToDate(nav.prev)} title={`Go to ${dmy(nav.prev)}`}>
+                  <button type="button" className="de-datenav-btn" onClick={() => void goToDate(nav.prev, { scroll: true })} title={`Go to ${dmy(nav.prev)}`}>
                     <span className="de-datenav-hint">← Previous Date</span>
                     <span className="de-datenav-date">{dmy(nav.prev)}</span>
                   </button>
-                  <div className="de-datenav-current" aria-live="polite">
+                  {/* Keeps the day; only takes the clerk back up to its entry. */}
+                  <button type="button" className="de-datenav-current" aria-live="polite" onClick={scrollToEntry} title={`Back to the entry for ${dmy(nav.current)}`}>
                     <span className="de-datenav-hint">Current Date</span>
                     <span className="de-datenav-now">{dmy(nav.current)}</span>
-                  </div>
+                  </button>
                   <button
                     type="button"
                     className="de-datenav-btn de-datenav-next"
-                    onClick={() => void goToDate(nav.next)}
+                    onClick={() => void goToDate(nav.next, { scroll: true })}
                     disabled={nav.nextDisabled}
                     title={nav.nextDisabled ? 'A day that has not happened yet cannot be entered' : `Go to ${dmy(nav.next)}`}
                   >
