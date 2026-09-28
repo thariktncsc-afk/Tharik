@@ -152,9 +152,10 @@ const nameOf = (id: string) => [...DSS_A, ...DSS_B].find((c) => c.id === id);
 
 /**
  * A chained quarter → what buildPVTable prints. TOTAL is Opening + Receipt +
- * Transfer + Excess (the TRANSFER column shows the net transfer); Issues are
- * the sales; SHORTAGE its own column; Balance the last month's Closing — so
- * TOTAL − Issues − Shortage is the Balance, which chainQuarter has checked.
+ * Transfer + Excess (the TRANSFER column shows the net transfer, EXCESS its
+ * own column); Issues are the sales; Shortage prints in "Shortage during the
+ * period"; Balance the last month's Closing — so TOTAL − Issues − Shortage is
+ * the Balance, which chainQuarter has checked.
  */
 export function quarterPvInputs(q: Extract<QuarterResult, { ok: true }>): {
   commMap: Record<string, PvCommRow>;
@@ -175,6 +176,8 @@ export function quarterPvInputs(q: Extract<QuarterResult, { ok: true }>): {
       free: !!nameOf(id)?.free,
       transfer: r.transfer,
       shortage: r.shortage,
+      // Its own column (green), never folded into Receipt; TOTAL above includes it.
+      excess: r.excess,
     };
   }
   return { commMap, gunny: q.gunny, gunnyNotes: q.notes };

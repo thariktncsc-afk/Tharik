@@ -15,11 +15,13 @@
  *    month it starts); gunny carried; notes printed under Gunny only.
  * 4. September from the stores, worked out the way Monthly Entry and Gunny
  *    Stock show it.
- * 5. The automatic PV is byte-identical to `dev`'s.
+ * 5. The sheet: the office's 38-column Annexure-I on ONE Legal landscape page,
+ *    laid out in millimetres; Shortage red and Excess green, and nothing else;
+ *    printed by Chrome and read back out of the PDF.
  */
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { register } from 'node:module';
+import { createRequire, register } from 'node:module';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -410,7 +412,7 @@ const gun = (a, b, c) => ({ ss50: a, poly: b, cbox: c });
   check('PV TOTAL = Opening + Receipt + Transfer + Excess (TOOR 400 + 20 + 20)', commMap.TOOR.total === 440 && commMap.TOOR.issues === 140);
   const html = S.buildPVTable({ commMap, gunny, gunnyNotes, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'X', billClerk: 'B' });
   check('the note prints under the Gunny rows', /Gunny[\s\S]*C\.BOX[\s\S]*WHEAT CONSIDER AS GUNNY/.test(html) && !/WHEAT CONSIDER AS GUNNY[\s\S]*C\.BOX/.test(html));
-  const POLICE_HEAD = /background:#F5F5F5">Police<\/td>/;
+  const POLICE_HEAD = /class="l sec">Police<\/td>/;
   check('the police section prints for a police shop, with its rows', POLICE_HEAD.test(html) && /BRA Rice \(Police\)/.test(html));
   check('Preview and Print are one document: the same builder, the same bytes',
     html === S.buildPVTable({ commMap, gunny, gunnyNotes, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'X', billClerk: 'B' }));
@@ -490,45 +492,85 @@ console.log('\n4. The current month from the stores');
   check('a stored outward transfer (+30) is −30 in the chain', transfer.rows.TOOR.transfer === -30, J(transfer.rows.TOOR));
 }
 
-// ── 5. The automatic PV is dev's ─────────────────────────────────────────
-console.log('\n5. The automatic PV, unchanged');
+// ── 5. The sheet, and the paper it prints on ─────────────────────────────
+// Office, 2026-09-28: the PV is filed on LEGAL landscape (its own workbook is
+// paperSize 5, landscape, fit to one page; every PV PDF it sent is 355.6 ×
+// 215.9 mm, one page). The old sheet had 36 columns under title rows that
+// spanned 39 and a number row that ran to 38 — the numbers and section rows
+// stuck out past the commodity rows — and it printed a 1400px screen table
+// onto A4, squeezed.
+console.log('\n5. The sheet: Annexure-I, one Legal landscape page');
 {
-  let devSrc = null;
-  try {
-    devSrc = execFileSync('git', ['show', 'dev:src/lib/engine/pvStatement.ts'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch { /* no dev branch here */ }
-  if (!devSrc) console.log('  skip  no `dev` branch to compare with');
-  else {
-    const dir = mkdtempSync(join(tmpdir(), 'pvq-'));
-    const f = join(dir, 'pvStatement.dev.ts');
-    writeFileSync(f, devSrc);
-    const D = await import(pathToFileURL(f).href);
-    const commMap = {
-      BRA: { name: 'B.RICE', unit: 'KG', open: 1047, receipt: 2500, total: 3547, issues: 52, closing: 3495, amount: 0, free: true },
-      SUGAR: { name: 'SUGAR', unit: 'KG', open: 647.5, receipt: 754, total: 1401.5, issues: 712, closing: 689.5, amount: 17800, free: false },
-      PALM: { name: 'P.OIL', unit: 'LTR', open: 426, receipt: 459, total: 885, issues: 473, closing: 412, amount: 11825, free: false },
-      PB_BRA: { name: 'B.R.A', unit: 'KG', open: 15, receipt: 0, total: 15, issues: 15, closing: 0, amount: 0, free: false },
-    };
-    const opts = { commMap, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'SHOP', gunny: { ss50: { opening: 1186, receipt: 189, total: 1375, issues: 1300, closing: 75 } }, billClerk: 'BC', pvOfficer: 'O', pvDate: '01-10-2026' };
-    // The PRINT rules changed on 2026-09-27: the PV prints from the screen it
-    // is read on, and a FIXED print area prints its first page and drops the
-    // rest. Everything the PV SAYS must still be dev's to the byte, so the
-    // print <style> block is lifted out of both before they are compared, and
-    // checked on its own below.
-    const noPrintCss = (h) => h.replace(/<style>@media print\{[\s\S]*?<\/style>/, '<style>PRINT</style>');
-    check('same input, byte-identical to dev\'s PV (apart from the print rules)',
-      noPrintCss(S.buildPVTable(opts)) === noPrintCss(D.buildPVTable(opts)));
-    check('…for a CRS 29 PV too', noPrintCss(S.buildPVTable({ ...opts, crsId: 29 })) === noPrintCss(D.buildPVTable({ ...opts, crsId: 29 })));
+  const A = await imp('src/lib/engine/commodities.ts');
+  const commMap = {};
+  for (const c of [...A.DSS_A, ...A.DSS_B]) {
+    // Every commodity there is, at the widest figures a shop has printed.
+    commMap[c.id] = { name: c.en, unit: c.unit, open: 13312, receipt: 11376.5, total: 23242.5, issues: 10927.22, closing: 12299.78, amount: 0, free: !!c.free, transfer: -1456, shortage: 15.5, excess: 10 };
+  }
+  commMap.WHEAT = { ...commMap.WHEAT, shortage: 0, excess: 0, total: 23232.5, closing: 12305.28 };
+  const html = S.buildPVTable({ commMap, periodLabel: '1.07.2026 TO 30.09.2026', crsId: 30, crsName: 'CRS 30', gunny: { ss50: { opening: 162, receipt: 605, total: 767, issues: 0, closing: 767 } }, gunnyNotes: ['WHEAT 46 CONSIDER AS GUNNY'], billClerk: 'BC' });
+  const css = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
+  check('38 columns, as the office\'s Annexure-I (B:AM)', S.PV_COLS === 38);
+  check('the columns add up to the printed table: Legal less 18 mm each side', Math.abs(S.PV_TABLE_MM - (355.6 - 36)) < 0.01);
+  check('printed on LEGAL landscape with the office\'s side margins', /@page\{size:legal landscape;margin:12mm 18mm\}/.test(css), css.slice(0, 120));
+  check('on screen the sheet is a Legal page in millimetres — never the window\'s width',
+    /\.pv-paper\{box-sizing:border-box;width:355\.6mm;min-height:215\.9mm/.test(css) && !/vw|min-width:1400px/.test(html));
+  check('the print area is absolute, not fixed — a fixed one prints page 1 and no more', /#pv-print-area\{position:absolute/.test(css) && !/position:fixed/.test(css));
 
-    const css = /<style>@media print\{([\s\S]*?)<\/style>/.exec(S.buildPVTable(opts))?.[1] ?? '';
-    check('the print area is absolute, not fixed — a fixed one prints page 1 and no more',
-      /#pv-print-area\{position:absolute/.test(css) && !/position:fixed/.test(css), css.slice(0, 200));
-    check('…on A4 landscape, the paper a PV is filed on', /@page\{size:A4 landscape/.test(css));
-    check('…with the wide-screen minimum width off, so no column falls off the paper',
-      /#pv-tbl\{min-width:0!important;width:100%!important/.test(css));
-    check('…and the screen scroller showing its whole width', /overflow:visible!important/.test(css));
-    check('the PV on screen is unchanged: still the scroller and its 1400px table',
-      /min-width:1400px/.test(S.buildPVTable(opts)) && /overflow-x:auto/.test(S.buildPVTable(opts)));
+  const puppeteer = createRequire(join(root, 'package.json'))('puppeteer-core');
+  const chrome = [process.env.CHROME_PATH, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find((p) => p && existsSync(p));
+  if (!chrome) console.log('  skip  no Chrome on this machine to print with');
+  else {
+    const pdfjs = await imp('node_modules/pdfjs-dist/legacy/build/pdf.mjs');
+    const printCss = readFileSync(join(root, 'src/app/print.css'), 'utf8');
+    // The Reports screen as it prints: the app around it, printArea()'s body class.
+    const doc = (bodyCls) => `<!doctype html><html><head><meta charset="utf-8"><style>${printCss}</style></head><body class="${bodyCls}"><div id="sidebar" style="height:100vh;width:240px">SIDEBAR</div><main id="main"><div id="content"><div class="card"><div style="overflow-x:auto"><div class="print-area">${html}</div></div></div></div></main></body></html>`;
+    const browser = await puppeteer.launch({ executablePath: chrome, headless: true });
+    try {
+      const page = await browser.newPage();
+      const mm = (px) => (px / 96) * 25.4;
+      for (const vw of [800, 1920]) {
+        await page.setViewport({ width: vw, height: 900 });
+        await page.setContent(doc(''));
+        const s = await page.evaluate(() => ({ p: document.querySelector('.pv-paper').getBoundingClientRect().width, t: document.getElementById('pv-tbl').getBoundingClientRect().width }));
+        check(`a ${vw}px window: the page is 355.6 mm, the table ${S.PV_TABLE_MM.toFixed(1)} mm`, Math.abs(mm(s.p) - 355.6) < 0.3 && Math.abs(mm(s.t) - S.PV_TABLE_MM) < 0.3, `${mm(s.p)} / ${mm(s.t)}`);
+      }
+      await page.emulateMediaType('print');
+      await page.setContent(doc('printing-area'));
+      const g = await page.evaluate((cols) => {
+        const tbl = document.getElementById('pv-tbl');
+        const span = (tr) => [...tr.cells].reduce((a, td) => a + (td.colSpan || 1), 0);
+        const body = [...tbl.tBodies[0].rows].every((tr) => span(tr) === cols);
+        const foot = [...tbl.tFoot.rows].every((tr) => span(tr) === cols);
+        const head = [0, 1, 2, 3, 4, 7].every((i) => span(tbl.tHead.rows[i]) === cols);
+        const cut = [...tbl.querySelectorAll('td')].filter((td) => td.textContent.trim() && td.scrollWidth > td.clientWidth + 0.5).map((td) => td.textContent.trim());
+        const col = (td) => getComputedStyle(td).color;
+        const coloured = [...tbl.querySelectorAll('td')].filter((td) => col(td) !== 'rgb(0, 0, 0)').map((td) => `${td.className}:${td.textContent}:${col(td)}`);
+        const wheat = [...tbl.tBodies[0].rows].find((tr) => /^Wheat$/.test(tr.cells[1]?.textContent ?? ''));
+        return { body, foot, head, cut, coloured, wheatShort: wheat ? col(wheat.cells[20]) : '' };
+      }, S.PV_COLS);
+      check('every commodity, section, note and footer row spans the same 38 columns as the headings', g.body && g.foot && g.head);
+      check('no heading or figure is cut or spills into the next cell', !g.cut.length, g.cut.slice(0, 6).join(' | '));
+      check('Shortage red and Excess green, the figure only', g.coloured.length > 0 && g.coloured.every((c) => /^short:15\.500:rgb\(220, 38, 38\)$|^short:1:rgb\(220, 38, 38\)$|^excess:10:rgb\(21, 128, 61\)$|^excess:1:rgb\(21, 128, 61\)$/.test(c)), g.coloured.filter((c) => !/15\.500|:10:|:1:/.test(c)).slice(0, 5).join(', '));
+      check('…a zero stays black (Wheat\'s shortage 0)', g.wheatShort === 'rgb(0, 0, 0)', g.wheatShort);
+      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+      const d = await pdfjs.getDocument({ data: new Uint8Array(pdf), verbosity: 0 }).promise;
+      const pg = await d.getPage(1);
+      const vp = pg.getViewport({ scale: 1 });
+      const it = (await pg.getTextContent()).items.filter((i) => i.str?.trim());
+      const PT = 25.4 / 72;
+      const w = vp.width * PT, h = vp.height * PT;
+      const x0 = Math.min(...it.map((i) => i.transform[4])) * PT, x1 = Math.max(...it.map((i) => i.transform[4] + i.width)) * PT;
+      const text = it.map((i) => i.str).join(' ');
+      check(`the PDF: ${d.numPages} page, ${w.toFixed(1)} × ${h.toFixed(1)} mm — Legal landscape, ONE page with every commodity on it`,
+        d.numPages === 1 && Math.abs(w - 355.6) < 0.5 && Math.abs(h - 215.9) < 0.5);
+      check(`…the sheet inside the margins on both sides (text ${x0.toFixed(1)} → ${x1.toFixed(1)} mm)`, x0 >= 18 && w - x1 >= 18);
+      check('…with nothing of the app on it, and its rightmost headings and both signatures',
+        !/SIDEBAR/.test(text) && /Excess/.test(text) && /\b18\b/.test(text) && /SIGNATURE OF BILL CLERK/.test(text) && /PHYSICAL VERIFICATION OFFICER/.test(text));
+      await d.destroy();
+    } finally {
+      await browser.close();
+    }
   }
 }
 

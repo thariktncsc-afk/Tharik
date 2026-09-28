@@ -497,7 +497,7 @@ export default function ReportsPage() {
               >
                 🖨️ Print PV Statement
               </button>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Physical verification columns are left blank for the PV officer to fill on-site</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Prints on Legal paper, landscape · By Counting and By 100 % are left blank for the PV officer to fill on-site</span>
             </div>
           ) : null}
         </div>
