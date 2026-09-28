@@ -23,6 +23,7 @@ import { saveSuccess } from '@/components/SaveSuccess';
 import { allotmentSaved, cardDetailsSaved } from '@/lib/saveSuccess';
 import { crsData } from '@/lib/dataStore';
 import { useAllotItems } from '@/lib/masters';
+import NumInput from './NumInput';
 import {
   ME_CARD_TYPES,
   ME_MONTH_NAMES,
@@ -224,13 +225,14 @@ export default function CardAllot({
                     <td style={{ padding: '7px 10px', textAlign: 'center', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid #CCFBF1' }}>{i + 1}</td>
                     <td style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #CCFBF1' }}>{ct.label}</td>
                     <td style={{ padding: '4px 8px', textAlign: 'center', borderBottom: '1px solid #CCFBF1' }}>
-                      <input
-                        type="number"
+                      <NumInput
+                        column="card-count"
                         min={0}
                         step={1}
                         placeholder="0"
+                        aria-label={`${ct.label} count`}
                         value={count}
-                        onChange={(e) => setCount(ct.id, e.target.value)}
+                        onValue={(raw) => setCount(ct.id, raw)}
                         style={{ width: 90, border: '2px solid #99F6E4', borderRadius: 7, padding: '5px 10px', fontSize: 13, fontWeight: 800, textAlign: 'center', color: '#0F766E', background: '#F0FDFA' }}
                       />
                     </td>
@@ -270,25 +272,27 @@ export default function CardAllot({
                       <div style={{ fontSize: 9.5, color: 'var(--muted)' }}>{c.ta}</div>
                     </td>
                     <td style={{ padding: '4px 8px', textAlign: 'center', borderBottom: '1px solid #CCFBF1', whiteSpace: 'nowrap' }}>
-                      <input
-                        type="number"
+                      <NumInput
+                        column="allot-qty"
                         min={0}
                         step={0.001}
                         placeholder="0.000"
+                        aria-label={`${c.en} allotment`}
                         value={val === undefined ? '' : String(val)}
-                        onChange={(e) => setAllot(c.id, e.target.value)}
+                        onValue={(raw) => setAllot(c.id, raw)}
                         style={{ width: 96, border: '2px solid #99F6E4', borderRadius: 7, padding: '5px 8px', fontSize: 12.5, fontWeight: 800, textAlign: 'right', color: '#0F766E', background: '#F0FDFA' }}
                       />
                       <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginLeft: 6 }}>{c.unit}</span>
                     </td>
                     <td style={{ padding: '4px 8px', textAlign: 'center', borderBottom: '1px solid #CCFBF1', whiteSpace: 'nowrap' }}>
-                      <input
-                        type="number"
+                      <NumInput
+                        column="advance-qty"
                         min={0}
                         step={0.001}
                         placeholder="0.000"
+                        aria-label={`${c.en} advance load`}
                         value={aval === undefined ? '' : String(aval)}
-                        onChange={(e) => setAdvance(c.id, e.target.value)}
+                        onValue={(raw) => setAdvance(c.id, raw)}
                         title="Stock drawn ahead of its month. Deducted from Received from godown on the COLL statement."
                         style={{ width: 92, border: '2px solid #FDE68A', borderRadius: 7, padding: '5px 8px', fontSize: 12.5, fontWeight: 800, textAlign: 'right', color: '#B45309', background: '#FFFBEB' }}
                       />
