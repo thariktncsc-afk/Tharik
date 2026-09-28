@@ -472,6 +472,22 @@ each button showing the date it goes to (`daily-entry/dateNav.ts`; office,
 
 `npm run verify:daily-date-nav`.
 
+### Last Entry Date | Total Entry Dates
+
+Under the shop / date pickers (office, 2026-09-28; `npm run verify:entry-dates`),
+from `engine/entryDates.ts`:
+- **A date counts once, for a real saved day sheet**: key `<crs>_<YYYY-MM-DD>`,
+  some figure not zero (`sheetHasStock`), and NOT a Monthly Entry projection
+  — a form emptied and saved is not an entry. Calendar, working days and
+  holidays play no part.
+- **Saved, not typed**: it reads dataStore's `useSavedStore('entryStore')`,
+  the copy last confirmed in the database (`getSaved`, parsed once per saved
+  JSON). A sheet still being sent or one the server refused is not counted;
+  a landed save, another person's save and an approved clear (live sync) move
+  it at once. `save()` now emits when a save lands, so readers of the saved
+  copy hear about it.
+- Live, 2026-09-28: CRS 19 19-09-2026 | 14 days, CRS 7 26-09-2026 | 22 days.
+
 ## Phones: dashboard order and the header bell
 
 `responsive.css`, the last `@media (max-width: 560px)` block (office,
@@ -1366,6 +1382,7 @@ npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny 
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome
+npm run verify:entry-dates      Daily Entry Last Entry Date | Total Entry Dates: the rule, saved-not-typed, live data vs an independent count
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
