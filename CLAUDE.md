@@ -114,6 +114,28 @@ the button back from "Connecting…" (try/finally) — it used to wait for ever 
 a request that never answered. The sign-in's activity-log row is written with
 `after()`, so the answer no longer waits for three log round trips.
 
+**A sign-in the server accepted either opens the app or says why it
+cannot** (office, 2026-09-28; `npm run verify:sign-in`, add
+`--base=http://localhost:3000` for the flow in Chrome, desktop and phone).
+An administrator (the ADMIN account, signing in by its phone number) pressed
+Sign In 19 times in 33 seconds: `verify_login` accepted every one — the
+activity log has 19 "Signed in" rows — but the browser kept no session
+cookie, so each "yes" went to /dashboard, the middleware (cookie presence)
+sent it back to /login, and the page said nothing: "Connecting…" for a
+moment, then the same form. Shop users signed in normally the same day, so
+it was that browser, not the server or the account.
+- The answer now also sets `crs_signed_in=1` (`sessionMarker.ts`): the
+  session's own attributes, not HttpOnly, carrying no identity. No marker
+  after a yes → one GET /api/session; still no session → *"…this browser
+  did not keep the sign-in… allow this site under Cookies and site data…"*.
+  A kept sign-in costs nothing extra.
+- The page's first "who is signed in?" check could answer AFTER a sign-in
+  (a cold server) and set "signed out" over it; an `epoch` now discards an
+  answer older than the latest sign-in or sign-out.
+- The login error box was pale pink (`#FCA5A5`) on the WHITE card — close to
+  invisible, so even a wrong password looked like no answer. Now dark red on
+  light red, `role="alert"`.
+
 **A shop's sign-in username is the shop's — `crs8` — never the person's
 name.** The Users screen's Add / Edit form used to send `username: name` on
 every save, so editing an account silently renamed its login: on 2026-09-22
@@ -1343,6 +1365,7 @@ npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C 
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
+npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]

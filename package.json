@@ -33,6 +33,7 @@
     "verify:payment-gate": "node tools/verify-payment-gate.mjs",
     "verify:dss-days": "node tools/verify-dss-days.mjs",
     "verify:save-success": "node tools/verify-save-success.mjs",
+    "verify:sign-in": "node tools/verify-sign-in.mjs",
     "verify:remittance-admin": "node tools/verify-remittance-admin.mjs",
     "verify:month-close": "node tools/verify-month-close.mjs",
     "verify:statement-export": "node tools/verify-statement-export.mjs",

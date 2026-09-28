@@ -69,3 +69,12 @@ export function cookieOptions(maxAge = MAX_AGE_SECONDS) {
     maxAge,
   };
 }
+
+/**
+ * The page-readable "signed in" marker (sessionMarker.ts): the session's own
+ * attributes, so a browser that refuses one refuses both, but NOT HttpOnly —
+ * it carries no identity, only that the sign-in was kept.
+ */
+export function markerCookieOptions(maxAge = MAX_AGE_SECONDS) {
+  return { ...cookieOptions(maxAge), httpOnly: false };
+}

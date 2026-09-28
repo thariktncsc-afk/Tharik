@@ -166,15 +166,21 @@ export default function LoginPage() {
                 </button>
               </div>
               {error ? (
+                // Dark red on light red: the card is WHITE, and the old pale
+                // pink (#FCA5A5, from the dark legacy card) was close to
+                // invisible on it — a failed sign-in looked like no answer.
                 <div
+                  role="alert"
                   style={{
-                    background: 'rgba(220,38,38,.12)',
-                    border: '1px solid rgba(220,38,38,.3)',
+                    background: '#FEE2E2',
+                    border: '1px solid #FECACA',
                     borderRadius: 8,
                     padding: '9px 12px',
-                    color: '#FCA5A5',
+                    color: '#B91C1C',
                     fontSize: 12,
-                    marginBottom: 6,
+                    fontWeight: 600,
+                    lineHeight: 1.45,
+                    marginBottom: 10,
                     textAlign: 'center',
                   }}
                 >
