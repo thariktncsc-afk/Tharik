@@ -1148,8 +1148,9 @@ photo can never fill Allotment.
 
 - **Reading is Claude vision, on the server** (`/api/ocr`,
   `src/lib/ocr/server.ts`): one photo per request, scaled in the browser to
-  ≤ 2000 px JPEG (Vercel's 4.5 MB body limit), forced through one tool so the
-  answer is a TRANSCRIPTION — labels as printed (Tamil or English) and the
+  ≤ 2000 px JPEG (Vercel's 4.5 MB body limit), answered as structured-output
+  JSON (`output_config.format` — NOT a forced tool: Sonnet 5.5 / Opus 5.5
+  return 400 for a forced `tool_choice`), so the answer is a TRANSCRIPTION — labels as printed (Tamil or English) and the
   figures, told never to total, correct or guess. Needs `ANTHROPIC_API_KEY`
   (server only; `ANTHROPIC_OCR_MODEL` overrides `claude-sonnet-5-5`).
   Without it the box says "not set up". Signed-in users only; nothing stored.

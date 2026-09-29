@@ -184,11 +184,14 @@ console.log('\n4. The draft keeps the clerk\'s corrections');
 console.log('\n5. The server: request and answer (no network)');
 {
   const req = O.buildOcrRequest('cards', { mediaType: 'image/jpeg', data: 'AAAA' });
-  check(`request: model ${req.model}, one forced tool (${req.tool_choice.name}), the photo then the instruction`, req.model === O.OCR_DEFAULT_MODEL && req.tools.length === 1 && req.tool_choice.type === 'tool' && req.messages[0].content[0].type === 'image' && req.messages[0].content[0].source.data === 'AAAA' && /Never add up, correct, round or guess/.test(req.system));
+  const objs = [];
+  (function walk(n) { if (n && typeof n === 'object') { if (n.type === 'object') objs.push(n); Object.values(n).forEach(walk); } })([req.output_config.format.schema, O.buildOcrRequest('allot', { mediaType: 'image/png', data: 'A' }).output_config.format.schema]);
+  check(`request: model ${req.model}, structured-output JSON schema (no forced tool — Sonnet 5.5 answers that with a 400), the photo then the instruction`, req.model === O.OCR_DEFAULT_MODEL && !('tools' in req) && !('tool_choice' in req) && req.output_config.format.type === 'json_schema' && req.messages[0].content[0].type === 'image' && req.messages[0].content[0].source.data === 'AAAA' && /Never add up, correct, round or guess/.test(req.system));
+  check(`the schema keeps the structured-output rules: ${objs.length} objects, each additionalProperties:false with every property required; no type arrays`, objs.every((o) => o.additionalProperties === false && J([...o.required].sort()) === J(Object.keys(o.properties).sort())) && !J(req.output_config.format.schema).includes('"type":['));
   check('the allotment request asks for every row and the police columns too', /EVERY shop row/.test(O.buildOcrRequest('allot', { mediaType: 'image/png', data: 'A' }).messages[0].content[1].text));
-  const answer = { content: [{ type: 'tool_use', name: 'record_card_details', input: { rows: [{ label: ' அரிசி அட்டை ', count: 728 }, { label: '', count: 3 }, { label: 'x', count: 'n/a' }], totalShown: 777 } }] };
+  const answer = { content: [{ type: 'text', text: J({ rows: [{ rowNo: null, label: ' அரிசி அட்டை ', count: 728 }, { rowNo: 2, label: '', count: 3 }, { rowNo: 3, label: 'x', count: 'n/a' }], totalShown: 777 }) }], stop_reason: 'end_turn' };
   check(`answer read into the transcription shape: ${J(O.parseOcrResponse('cards', answer))}`, J(O.parseOcrResponse('cards', answer)) === J({ rows: [{ label: 'அரிசி அட்டை', count: 728, rowNo: null }], totalShown: 777 }));
-  check('an answer without the tool call is no answer', O.parseOcrResponse('cards', { content: [{ type: 'text', text: 'hi' }] }) === null);
+  check('an answer that is not the JSON (a refusal, or cut off at max_tokens) is no answer', O.parseOcrResponse('cards', { content: [{ type: 'text', text: 'I cannot read this' }] }) === null && O.parseOcrResponse('cards', { content: [{ type: 'text', text: '{"rows":[{"label":"அரிசி' }], stop_reason: 'max_tokens' }) === null);
   const mock = (status, body) => async (url, init) => { mock.last = { url, init }; return new Response(JSON.stringify(body), { status }); };
   const noKey = await O.readPhoto('cards', { mediaType: 'image/jpeg', data: 'A' }, { key: '' }, mock(200, answer));
   check(`no key: ${noKey.status} "${noKey.error}"`, !noKey.ok && noKey.status === 503 && /not set up/.test(noKey.error));

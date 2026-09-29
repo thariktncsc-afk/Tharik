@@ -2,8 +2,8 @@
  * Reading a photo of a POS screen or the FPS Allocation Report (office,
  * 2026-09-29) — server only.
  *
- * One photo per request, sent to Anthropic's Messages API with ONE tool the
- * model must answer through, so what comes back is a transcription in a fixed
+ * One photo per request, sent to Anthropic's Messages API with a JSON schema
+ * (structured outputs), so what comes back is a transcription in a fixed
  * shape: labels as printed (Tamil or English) and the figures. It is told to
  * copy, never to total, correct or guess. Which of our fields a label is gets
  * decided afterwards in src/lib/engine/photoExtract.ts, in code.
@@ -27,67 +27,71 @@ const COMMON =
   'You transcribe photographs of Tamil Nadu public-distribution (ration shop) screens and reports for data entry. ' +
   'Copy exactly what is printed. Never add up, correct, round or guess a figure: if a figure or label cannot be read with confidence, leave that row or cell out. ' +
   'Labels may be Tamil or English — copy them as shown, Tamil in Tamil script. Numbers are digits only, without thousands separators; keep printed decimals. ' +
-  'Answer only through the tool.';
+  'Answer with the JSON only.';
 
-const TOOLS = {
+// Structured outputs (output_config.format), NOT a forced tool: Claude Sonnet
+// 5.5 / Opus 5.5 answer a forced tool_choice with a 400 (checked against the
+// API docs, 2026-09-29). Rules the schema must keep: every object has
+// additionalProperties:false and lists every property as required; a value
+// that may be missing is anyOf [type, null] — type arrays are not accepted.
+const nullable = (type: 'integer' | 'string', description: string) => ({ anyOf: [{ type }, { type: 'null' }], description });
+
+const SCHEMAS = {
   cards: {
-    name: 'record_card_details',
-    description: 'Record the card-type rows visible in the photo.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        rows: {
-          type: 'array',
-          description: 'One entry per card-type row visible, in the order shown. Do not include the total line here.',
-          items: {
-            type: 'object',
-            properties: {
-              rowNo: { type: ['integer', 'null'], description: 'The row serial number printed beside it, if any.' },
-              label: { type: 'string', description: 'The card type exactly as printed, e.g. "அரிசி அட்டை", "LOF அரிசி அட்டை", "AAY அட்டை".' },
-              count: { type: 'integer', description: 'The count printed for that card type.' },
-            },
-            required: ['label', 'count'],
+    type: 'object',
+    additionalProperties: false,
+    required: ['rows', 'totalShown'],
+    properties: {
+      rows: {
+        type: 'array',
+        description: 'One entry per card-type row visible, in the order shown. Do not include the total line here.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['rowNo', 'label', 'count'],
+          properties: {
+            rowNo: nullable('integer', 'The row serial number printed beside it, or null.'),
+            label: { type: 'string', description: 'The card type exactly as printed, e.g. "அரிசி அட்டை", "LOF அரிசி அட்டை", "AAY அட்டை".' },
+            count: { type: 'integer', description: 'The count printed for that card type.' },
           },
         },
-        totalShown: { type: ['integer', 'null'], description: 'The total number of cards the screen prints (e.g. beside "மொத்த அட்டைகள்"), or null if not visible.' },
       },
-      required: ['rows'],
+      totalShown: nullable('integer', 'The total number of cards the screen prints (beside "மொத்த அட்டைகள்"), or null if not visible.'),
     },
   },
   allot: {
-    name: 'record_allotment',
-    description: 'Record the allotment figures visible in the photo.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        layout: { type: 'string', enum: ['fps_report', 'pos_screen', 'other'], description: 'fps_report: a table with one row per shop (FPS Code, FPS Name, one column per commodity). pos_screen: one shop\'s commodity list.' },
-        month: { type: ['string', 'null'], description: 'The month the report or screen says it is for, as printed (e.g. "SEP"), or null.' },
-        year: { type: ['integer', 'null'], description: 'The year it says it is for, or null.' },
-        rows: {
-          type: 'array',
-          description: 'fps_report: one entry per shop row visible. pos_screen: a single entry with fpsCode/fpsName null unless printed.',
-          items: {
-            type: 'object',
-            properties: {
-              fpsCode: { type: ['string', 'null'], description: 'e.g. "22EA007PN", or null.' },
-              fpsName: { type: ['string', 'null'], description: 'e.g. "Tncsc Crs 8", or null.' },
-              cells: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    column: { type: 'string', description: 'The commodity heading or label exactly as printed, including any unit, e.g. "Rice (kg)", "PalmOil (Pkt)", "Police Rice (kg)", "துவரம் பருப்பு".' },
-                    value: { type: 'number', description: 'The quantity printed for it.' },
-                  },
-                  required: ['column', 'value'],
+    type: 'object',
+    additionalProperties: false,
+    required: ['layout', 'month', 'year', 'rows'],
+    properties: {
+      layout: { type: 'string', enum: ['fps_report', 'pos_screen', 'other'], description: 'fps_report: a table with one row per shop (FPS Code, FPS Name, one column per commodity). pos_screen: one shop\'s commodity list.' },
+      month: nullable('string', 'The month the report or screen says it is for, as printed (e.g. "SEP"), or null.'),
+      year: nullable('integer', 'The year it says it is for, or null.'),
+      rows: {
+        type: 'array',
+        description: 'fps_report: one entry per shop row visible. pos_screen: a single entry with fpsCode/fpsName null unless printed.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['fpsCode', 'fpsName', 'cells'],
+          properties: {
+            fpsCode: nullable('string', 'e.g. "22EA007PN", or null.'),
+            fpsName: nullable('string', 'e.g. "Tncsc Crs 8", or null.'),
+            cells: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['column', 'value'],
+                properties: {
+                  column: { type: 'string', description: 'The commodity heading or label exactly as printed, including any unit, e.g. "Rice (kg)", "PalmOil (Pkt)", "Police Rice (kg)", "துவரம் பருப்பு".' },
+                  value: { type: 'number', description: 'The quantity printed for it.' },
                 },
               },
             },
-            required: ['cells'],
           },
         },
       },
-      required: ['layout', 'rows'],
     },
   },
 } as const;
@@ -102,13 +106,11 @@ const PROMPT: Record<OcrKind, string> = {
 };
 
 export function buildOcrRequest(kind: OcrKind, image: { mediaType: string; data: string }, model = OCR_DEFAULT_MODEL) {
-  const tool = TOOLS[kind];
   return {
     model,
     max_tokens: 4096,
     system: COMMON,
-    tools: [tool],
-    tool_choice: { type: 'tool', name: tool.name },
+    output_config: { format: { type: 'json_schema', schema: SCHEMAS[kind] } },
     messages: [
       {
         role: 'user',
@@ -128,12 +130,19 @@ const num = (v: unknown) => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** The tool call's input, checked into the shape photoExtract expects. Anything else is dropped. */
+/** The JSON answer, checked into the shape photoExtract expects. Anything else is dropped. */
 export function parseOcrResponse(kind: OcrKind, body: unknown): CardTranscript | AllotTranscript | null {
   const content = (body as { content?: unknown })?.content;
   if (!Array.isArray(content)) return null;
-  const call = content.find((b) => b && b.type === 'tool_use' && b.name === TOOLS[kind].name);
-  const input = call?.input as Record<string, unknown> | undefined;
+  // The structured-output JSON arrives as the text block. A cut-off answer
+  // (stop_reason max_tokens) or a refusal does not parse, and reads as none.
+  const text = content.find((b) => b && b.type === 'text' && typeof b.text === 'string')?.text as string | undefined;
+  let input: Record<string, unknown> | undefined;
+  try {
+    input = text ? (JSON.parse(text) as Record<string, unknown>) : undefined;
+  } catch {
+    input = undefined;
+  }
   if (!input || !Array.isArray(input.rows)) return null;
   if (kind === 'cards') {
     const rows = (input.rows as Record<string, unknown>[])
