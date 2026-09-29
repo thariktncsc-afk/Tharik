@@ -41,6 +41,7 @@ import {
   type Section,
   type Upi,
 } from '@/lib/payments/client';
+import { dmyTime } from '@/lib/dateFormat';
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -125,7 +126,7 @@ export default function StatementsPage() {
   );
 
   const record = (label: string) =>
-    setHistory((h) => [{ at: new Date().toLocaleString('en-IN'), label, crsId: crsId!, period: `${MONTHS[month]} ${year}` }, ...h].slice(0, 50));
+    setHistory((h) => [{ at: dmyTime(new Date()), label, crsId: crsId!, period: `${MONTHS[month]} ${year}` }, ...h].slice(0, 50));
 
   // ── Rendering (server) ────────────────────────────────────────────────────
 

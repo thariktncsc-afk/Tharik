@@ -5,6 +5,7 @@
 import { CRS29_STOCK, DSS_A, isCrs29, type Commodity } from '@/lib/engine/commodities';
 export { SALES_ONLY } from '@/lib/engine/commodities';
 import type { MonthlyBlock } from '@/lib/engine/monthlyRollup';
+import { dmy } from '@/lib/dateFormat';
 
 export type GunnyRec = {
   itemName?: string;
@@ -79,7 +80,7 @@ export function gunnyRowFor(
   } else if (salesClose) {
     const type = ME_GUNNY_TYPE[id];
     const v = type === 'GUNNY' ? salesClose.gunny : type === 'POLY' ? salesClose.poly : salesClose.cbox;
-    rc = { val: v || 0, src: `Auto from Sales Close (${salesClose.date.split('-').reverse().join('/')})`, imported: false };
+    rc = { val: v || 0, src: `Auto from Sales Close (${dmy(salesClose.date)})`, imported: false };
   } else {
     rc = { val: monthlySalesBags(ME_GUNNY_TYPE[id], gridGunnySales), src: `Auto from Monthly Entry Sales (${ME_GUNNY_TYPE[id].toLowerCase()} counts)`, imported: false };
   }
@@ -361,7 +362,7 @@ export function remitMonthProblems(
   for (let day = 1; day <= days; day++) {
     if (depositDays.has(day)) continue;
     const r = (month[day] ?? {}) as RemitDay;
-    judge(`${String(day).padStart(2, '0')}/${String(ctx.month).padStart(2, '0')}/${ctx.year}`, r.nonCereal, r.cereal, r.remitDate);
+    judge(`${String(day).padStart(2, '0')}-${String(ctx.month).padStart(2, '0')}-${ctx.year}`, r.nonCereal, r.cereal, r.remitDate);
   }
   const ex = (month['extra'] ?? {}) as RemitExtra;
   ([1, 2, 3] as const).forEach((n) => {

@@ -472,6 +472,31 @@ version. It first proves that rebuilding the untouched month reproduces the
 stored one. Used for CRS 10 on 2026-09-22: PHH BRA 2056.02 ↔ PHH FRK 1195.982
 on 01-09-2026 (backup `backups/swap-opening-crs10-…`).
 
+## Dates on screen are DD-MM-YYYY
+
+Office, 2026-09-29 (`npm run verify:date-format`). A phone's Chrome in US
+English showed Daily Entry's date as **09/29/2026**: `<input type="date">`
+draws its text in the BROWSER's language and ignores the page (`lang`, CSS,
+nothing changes it).
+
+- **Every date box is `DateField`** (`src/components/DateField.tsx`) — never
+  a bare `<input type="date">` (the verify refuses one). It shows our own
+  text, `29-09-2026`, and keeps the browser's calendar: on a touch screen the
+  native input lies invisibly over the box, so a tap opens the phone's own
+  picker; with a mouse the date can be typed (digits, dashes come by
+  themselves; `min`/`max` hold) and 📅 calls `showPicker()`.
+- **Value in and out is ISO `YYYY-MM-DD`**, exactly what the native input
+  gave — stores, keys, the chain, holidays and every calculation unchanged.
+- `src/lib/dateFormat.ts`: `dmy`, `dmyTime`, `parseDmy` (DAY FIRST; the US
+  `09/29/2026` is not a date, never guessed into one), `maskDmy`,
+  `dmyFromLocale` (a receipt's STORED `savedAt` text is only re-shown; what
+  is stored is unchanged).
+- The screens' hand-made `DD/MM/YYYY` (remittance rows, Sales Close, clear
+  requests, confirm dialogs) are `DD-MM-YYYY`. Named-month texts ("Tuesday,
+  29 September 2026", "29 Sept 2026") stay — they cannot be misread.
+- **The printed statements and the DSS are untouched**: their dates are the
+  statutory forms' own (`fmtDate` in the builders) and the goldens hold them.
+
 ## Daily Entry — which day is on screen
 
 The foot of Daily Entry reads `← Previous Date | Current Date | Next Date →`,
@@ -1571,6 +1596,7 @@ npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C 
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
 npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database
+npm run verify:date-format      dates on screen are DD-MM-YYYY: DateField for every date box, day-first parsing, stored dates untouched
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

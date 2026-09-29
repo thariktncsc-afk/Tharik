@@ -28,6 +28,7 @@ import { quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/e
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 import { printArea, PRINT_AREA_CLASS } from '@/lib/printArea';
+import DateField from '@/components/DateField';
 
 type ShopRec = { name: string };
 type ReceiptRec = { crsId: number; date: string; items?: Record<string, { qty: number }> };
@@ -378,7 +379,7 @@ export default function ReportsPage() {
             {type === 'daily' ? (
               <div>
                 <label className="form-label">DATE</label>
-                <input type="date" value={dateVal} onChange={(e) => setDateVal(e.target.value)} style={sel} />
+                <DateField value={dateVal} onChange={(v) => setDateVal(v)} style={sel} />
               </div>
             ) : null}
             {type === 'daily' || type === 'monthly' ? (

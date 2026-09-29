@@ -23,6 +23,7 @@ import { holidayOn, isHoliday, workingDayCounts, type GovtHolidayMap } from '@/l
 import { feedLine, roleLabel, type FeedItem } from '@/lib/activityLog/core';
 import { buildChainIndex, closingAsAt } from '@/lib/engine/stockChain';
 import { CARD_DETAILS_HREF, requestCardDetailsJump } from '../monthly-entry/jump';
+import DateField from '@/components/DateField';
 
 /**
  * "Today, 10:42 AM" for today, otherwise a dated line. Times are rendered from
@@ -462,13 +463,12 @@ export default function DashboardPage() {
               <span style={{ fontSize: 16 }}>📅</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,.6)', textTransform: 'uppercase', letterSpacing: '.09em', marginBottom: 2 }}>VIEW DATE</div>
-                <input
-                  type="date"
+                <DateField
                   value={selStr}
                   max={todayStr}
-                  onChange={(e) => {
-                    if (!e.target.value) return;
-                    const [y, m, d] = e.target.value.split('-').map(Number);
+                  onChange={(v) => {
+                    if (!v) return;
+                    const [y, m, d] = v.split('-').map(Number);
                     setSelected(new Date(y, m - 1, d));
                   }}
                   style={{ border: 'none', outline: 'none', fontWeight: 700, fontSize: 12, color: '#fff', background: 'transparent', width: '100%', cursor: 'pointer', fontFamily: 'inherit', padding: 0, colorScheme: 'dark' }}

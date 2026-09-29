@@ -50,6 +50,8 @@ import {
   type SheetLike,
 } from '@/lib/engine/remittance';
 import { remitMonthProblems, type MonthCtx, type RemitDay, type RemitExtra, type RemitMonth } from './lib';
+import DateField from '@/components/DateField';
+import { dmy } from '@/lib/dateFormat';
 
 const inr = (n: number) => '₹' + n.toFixed(2);
 
@@ -122,7 +124,7 @@ export default function RemitTable({
       tone: 'danger',
       confirmLabel: 'Remove',
       message:
-        `Remove the ₹${t.amount.toFixed(2)} deposit dated ${t.date.split('-').reverse().join('/')} from ${t.salesDate.split('-').reverse().join('/')}?` +
+        `Remove the ₹${t.amount.toFixed(2)} deposit dated ${dmy(t.date)} from ${dmy(t.salesDate)}?` +
         (onlyOne ? '\n\nIt is the only deposit recorded for that sales date, which will be left with none.' : '') +
         '\n\nThis cannot be undone.',
     });
@@ -214,11 +216,10 @@ export default function RemitTable({
         <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{dow}</span>
       </td>
       <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF', textAlign: 'center' }}>
-        <input
-          type="date"
+        <DateField
           aria-label="Remittance date"
           value={edit!.date}
-          onChange={(e) => setEdit({ ...edit!, date: e.target.value })}
+          onChange={(v) => setEdit({ ...edit!, date: v })}
           style={{ border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 7px', fontSize: 11, width: 130 }}
         />
       </td>
@@ -260,7 +261,7 @@ export default function RemitTable({
 
   for (let day = 1; day <= daysInMonth; day++) {
     const dateObj = new Date(ctx.year, ctx.month - 1, day);
-    const salesLabel = `${String(day).padStart(2, '0')}/${String(ctx.month).padStart(2, '0')}/${ctx.year}`;
+    const salesLabel = `${String(day).padStart(2, '0')}-${String(ctx.month).padStart(2, '0')}-${ctx.year}`;
     const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dateObj.getDay()];
     const txns = byDay.get(day);
 
@@ -284,7 +285,7 @@ export default function RemitTable({
               <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{dow}</span>
             </td>
             <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
-              {ro(t.date ? t.date.split('-').reverse().join('/') : '—', 'center', { color: '#0369A1', fontWeight: 600 })}
+              {ro(t.date ? dmy(t.date) : '—', 'center', { color: '#0369A1', fontWeight: 600 })}
             </td>
             <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
               {ro(nc ? inr(nc) : '—', 'right', { color: '#0369A1', fontWeight: 700 })}
@@ -339,7 +340,7 @@ export default function RemitTable({
           <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{dow}</span>
         </td>
         <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF', textAlign: 'center' }}>
-          <input type="date" value={d.remitDate ?? ''} onChange={(e) => writeDay(day, 'remitDate', e.target.value)} style={{ border: '1px solid #BAE6FD', borderRadius: 6, padding: '4px 7px', fontSize: 11, color: '#0369A1', background: '#F0F9FF', width: 130 }} />
+          <DateField value={d.remitDate ?? ''} onChange={(v) => writeDay(day, 'remitDate', v)} style={{ border: '1px solid #BAE6FD', borderRadius: 6, padding: '4px 7px', fontSize: 11, color: '#0369A1', background: '#F0F9FF', width: 130 }} />
         </td>
         <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
           <input
@@ -399,7 +400,7 @@ export default function RemitTable({
           )}
         </td>
         <td style={{ padding: '4px 6px', borderBottom: bd, textAlign: 'center' }}>
-          <input type="date" value={dt} onChange={(e) => writeExtra(`e${n}date`, e.target.value)} style={{ border: `1px solid ${inputBd}`, borderRadius: 6, padding: '4px 7px', fontSize: 11, color: inputCol, background: inputBg, width: 130 }} />
+          <DateField value={dt} onChange={(v) => writeExtra(`e${n}date`, v)} style={{ border: `1px solid ${inputBd}`, borderRadius: 6, padding: '4px 7px', fontSize: 11, color: inputCol, background: inputBg, width: 130 }} />
         </td>
         <td style={{ padding: '4px 6px', borderBottom: bd }}>
           <input
