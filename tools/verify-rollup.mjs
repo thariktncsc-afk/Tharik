@@ -73,6 +73,7 @@ for (const k of [...Object.keys(entryStore), ...Object.keys(inspectionStore)]) {
   if (m) months.add(`${m[1]}_${Number(m[3])}_${m[2]}`);
 }
 const differing = [];
+const corrected = [];
 const identityBreaks = [];
 let rows = 0;
 for (const key of [...months].sort()) {
@@ -80,7 +81,28 @@ for (const key of [...months].sort()) {
   const args = [crs, m, y, entryStore, inspectionStore, manualStore[key], undefined, receiptStore];
   const before = OLD.rebuildMonthlyFromDaily(...args);
   const after = NEW.rebuildMonthlyFromDaily(...args);
-  if (canon(before) !== canon(after)) differing.push(key);
+  if (canon(before) !== canon(after)) {
+    // The one difference allowed (2026-09-29): a Daily-keyed row whose Opening
+    // was taken from a later day that already carried a receipt. The fixed
+    // roll-up's Closing agrees with the month's LAST day sheet — what Daily
+    // Entry shows — and the old one's did not. Anything else still fails.
+    const mm = String(m).padStart(2, '0');
+    const last = Object.keys(entryStore).filter((k) => k.startsWith(`${crs}_${y}-${mm}-`) && !entryStore[k]?.__projection).sort().pop();
+    const bad = [];
+    for (const sec of ['a', 'b']) {
+      for (const id of new Set([...Object.keys(before.merged[sec]), ...Object.keys(after.merged[sec])])) {
+        const b = before.merged[sec][id], a = after.merged[sec][id];
+        if (canon(b) === canon(a)) continue;
+        const lastClose = Number(entryStore[last]?.[sec]?.[id]?.close);
+        const openingFix = after.source[sec][id] === 'daily' && before.source[sec][id] === 'daily' &&
+          near(a?.close, lastClose) && !near(b?.close, lastClose) &&
+          near(a.receipt, b.receipt) && near(a.sales, b.sales) && near(a.total - a.close, b.total - b.close);
+        if (openingFix) corrected.push(`${key} ${id}: Opening ${b.open} → ${a.open}, Closing ${b.close} → ${a.close} (last sheet ${lastClose})`);
+        else bad.push(`${sec}:${id}`);
+      }
+    }
+    if (bad.length) differing.push(`${key} (${bad.join(', ')})`);
+  }
   // Arithmetic that does not depend on either implementation.
   for (const sec of ['a', 'b']) {
     for (const [id, r] of Object.entries(after.merged[sec])) {
@@ -93,7 +115,8 @@ for (const key of [...months].sort()) {
     }
   }
 }
-check(`${months.size} months publish identical figures`, differing.length === 0, differing.length ? `differ: ${differing.join(', ')}` : '');
+check(`${months.size} months publish identical figures, apart from Openings corrected to the first day sheet`, differing.length === 0, differing.length ? `differ: ${differing.join(', ')}` : '');
+if (corrected.length) console.log(`  note  ${corrected.length} row(s) corrected — each now closes where its last day sheet does:\n        ${corrected.join('\n        ')}`);
 console.log(`  note  ${rows} published rows; ${identityBreaks.length} do not satisfy open+receipt±adj=total, total−sales−cs=close (data as stored, same under both)`);
 for (const line of identityBreaks.slice(0, 10)) console.log(`        ${line}`);
 
@@ -175,6 +198,36 @@ const projected = PROJ.buildProjectedSheet({ a: { SUGAR: { open: 100, receipt: 5
   check('drop leaves recorded entries alone', PROJ.dropProjectedAdjustments(real, CRS, M, Y) === 0 && canon(real) === before);
   const spokenElsewhere = { [`${CRS}_2026-09-10`]: { a: { SUGAR: { shortage: 3 } } } };
   check('projection skips a commodity an inspection already spoke for', PROJ.applyProjectedAdjustments(spokenElsewhere, CRS, M, Y, whole) === 0 && !spokenElsewhere[`${CRS}_${LAST}`]);
+}
+
+// ── 3. The month's Opening is the FIRST day sheet's (office, 2026-09-29) ──────
+// CRS 8, September 2026, SALT_CIS as stored: 0 on every sheet to the 13th,
+// 100 received on the sheet-less 15th (register), carried into the 16th's
+// Opening, sold on the 21st. The roll-up used to take the Opening from the
+// first sheet with a non-zero figure — the 16th — and count the receipt twice:
+// Opening 100 + Receipt 100 − Sales 100 = Closing 100, where the shop held 0.
+console.log('the month opens where its first day sheet opens');
+{
+  const row = (open, receipt, sales) => ({ open, receipt, total: open + receipt, sales, close: open + receipt - sales, amount: sales * 10 });
+  const d = (n) => `2026-09-${String(n).padStart(2, '0')}`;
+  const cisDays = { 1: row(0, 0, 0), 2: row(0, 0, 0), 3: row(0, 0, 0), 13: row(0, 0, 0), 16: row(100, 0, 0), 19: row(100, 0, 0), 21: row(100, 0, 100), 22: row(0, 0, 0), 29: row(0, 0, 0) };
+  const entries = Object.fromEntries(Object.entries(cisDays).map(([n, r]) => [`8_${d(n)}`, { a: { SALT_CIS: r, SALT_RFFS: row(100, 0, 0) } }]));
+  const receipts = [{ id: 25, crsId: 8, date: d(15), type: 'regular', items: { SALT_CIS: { qty: 100 }, SALT_RFFS: { qty: 100 } } }];
+  const r = NEW.rebuildMonthlyFromDaily(8, 9, 2026, entries, {}, undefined, undefined, receipts).merged.a.SALT_CIS;
+  check('CRS 8 CIS: Opening 0 (the 1st), Receipt 100, Total 100, Sales 100, Closing 0', r.open === 0 && r.receipt === 100 && r.total === 100 && r.sales === 100 && r.close === 0, JSON.stringify(r));
+  const o = OLD.rebuildMonthlyFromDaily(8, 9, 2026, entries, {}, undefined, undefined, receipts).merged.a.SALT_CIS;
+  if (o.open !== r.open) console.log(`  note  the roll-up at ${base} publishes Opening ${o.open}, Closing ${o.close} here — the fault this fixes`);
+  // A commodity whose first sheet comes AFTER a sheet-less receipt in the same
+  // month: the chain carried it into that sheet's Opening, and the month
+  // counts it as Receipt, so the Opening is that sheet's less it.
+  const late = { [`8_${d(5)}`]: { a: { SUGAR: row(150, 0, 20) } } }; // 50 carried in + 100 received on the 3rd
+  const late3 = [{ id: 1, crsId: 8, date: d(3), items: { SUGAR: { qty: 100 } } }];
+  const l = NEW.rebuildMonthlyFromDaily(8, 9, 2026, late, {}, undefined, undefined, late3).merged.a.SUGAR;
+  check('first sheet after a sheet-less receipt: Opening 50 (150 less the 100 received), Receipt 100, Closing 130', l.open === 50 && l.receipt === 100 && l.close === 130, JSON.stringify(l));
+  const lateInsp = NEW.rebuildMonthlyFromDaily(8, 9, 2026, { [`8_${d(5)}`]: { a: { SUGAR: row(45, 0, 0) } } }, { [`8_${d(2)}`]: { a: { SUGAR: { shortage: 5 } } } }, undefined, undefined, []).merged.a.SUGAR;
+  check('…and after a sheet-less shortage: Opening 50, Shortage 5, Closing 45', lateInsp.open === 50 && lateInsp.shortage === 5 && lateInsp.close === 45, JSON.stringify(lateInsp));
+  const rffs = NEW.rebuildMonthlyFromDaily(8, 9, 2026, entries, {}, undefined, undefined, receipts).merged.a.SALT_RFFS;
+  check('a commodity with stock on the 1st keeps its Opening (RFFS 100)', rffs.open === 100 && rffs.receipt === 100 && rffs.close === 200, JSON.stringify(rffs));
 }
 
 console.log(failures === 0 ? '\nROLLUP OK' : `\n${failures} ROLLUP FAILURE(S)`);
