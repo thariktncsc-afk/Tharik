@@ -186,6 +186,15 @@ input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,5
 .de-entry-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:14px;padding:8px 12px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;font-size:12.5px;color:#0C4A6E;line-height:1.4}
 .de-entry-summary b{color:#0369A1;font-weight:700}
 .de-entry-summary .de-sep{color:#7DD3FC}
+/* Gunny Stock Management — Save (office, 2026-09-29). Its own row under the
+   notes, so it never sits over the table or the ⓘ lines; full width on a phone. */
+.gunny-save-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:12px}
+.gunny-save-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:9px 22px;border:none;border-radius:8px;background:linear-gradient(135deg,#6D28D9,#8B5CF6);color:#fff;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(109,40,217,.28);transition:filter .15s,box-shadow .15s}
+.gunny-save-btn:hover:not(:disabled){filter:brightness(1.07);box-shadow:0 4px 12px rgba(109,40,217,.36)}
+.gunny-save-btn:focus-visible{outline:3px solid #C4B5FD;outline-offset:2px}
+.gunny-save-btn:disabled{opacity:.7;cursor:progress}
+.gunny-save-status{font-size:11.5px;font-weight:600;line-height:1.4}
+@media (max-width:560px){.gunny-save-btn{width:100%}.gunny-save-status{width:100%}}
 @media (max-width:560px){.de-entry-summary{flex-direction:column;align-items:flex-start;gap:2px}.de-entry-summary .de-sep{display:none}}
 
 /* Monthly Entry — where the Dashboard's "Card Details & Allotment" lands

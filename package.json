@@ -50,6 +50,7 @@
     "verify:dss-rates": "node tools/verify-dss-rates.mjs",
     "verify:dss-totals": "node tools/verify-dss-totals.mjs",
     "verify:gunny-sales": "node tools/verify-gunny-sales.mjs",
+    "verify:gunny-save": "node tools/verify-gunny-save.mjs",
     "verify:print-layout": "node tools/verify-print-layout.mjs",
     "verify:print-pdf": "node tools/verify-print-pdf.mjs"
   },

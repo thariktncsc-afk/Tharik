@@ -19,8 +19,12 @@
  *     /api/state refuses the write regardless of what this screen allows
  *     (src/lib/stockGuard.ts, rule 5).
  */
+import { useRef, useState } from 'react';
+import { appAlert, appConfirm } from '@/components/dialog';
+import { saveSuccess } from '@/components/SaveSuccess';
 import { crsData } from '@/lib/dataStore';
-import { ME_GUNNY_ITEMS, gunnyRowFor, type GunnyRec, type MonthCtx, type SalesClose } from './lib';
+import { gunnySaved, monthLabel } from '@/lib/saveSuccess';
+import { ME_GUNNY_ITEMS, gunnyMonthRecords, gunnyRowFor, gunnySaveProblems, type GunnyRec, type MonthCtx, type SalesClose } from './lib';
 
 export default function GunnyTable({
   ctx,
@@ -84,6 +88,57 @@ export default function GunnyTable({
   // into one figure states a quantity of nothing. Each row keeps its own
   // Total — Opening + Receipt — which is what the office does use.
   const rows = ME_GUNNY_ITEMS.map((item) => ({ item, ...rowFor(item.id) }));
+
+  // ── Save (office, 2026-09-29) ─────────────────────────────────────────────
+  // Stores the month's rows exactly as the month-close does (gunnyMonthRecords,
+  // lib.ts — one function for both), then waits for the database before the
+  // tick. The permissions are the inputs' own, above, and stockGuard rule 5's
+  // on the server; the button adds none and removes none. The status names the
+  // shop and month it was for, so it never shows against another one.
+  const [status, setStatus] = useState<{ key: string; msg: string; tone: 'ok' | 'warn' } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+  const shown = status?.key === ctx.key ? status : null;
+  const save = async () => {
+    if (busy.current) return; // a second tap while the first is being sent
+    const d0 = crsData.get<Record<string, Record<string, GunnyRec>>>('meGunnyStore') ?? {};
+    const { errors, deficits } = gunnySaveProblems(d0[ctx.key] ?? {}, d0[prevKey] ?? {}, salesClose, gridGunnySales, packSales);
+    if (errors.length) {
+      setStatus({ key: ctx.key, msg: `⚠ Not saved — ${errors.join(' ')}`, tone: 'warn' });
+      return;
+    }
+    busy.current = true;
+    setSaving(true);
+    try {
+      if (deficits.length) {
+        const ok = await appConfirm({
+          title: 'Closing below zero',
+          tone: 'warning',
+          confirmLabel: 'Save anyway',
+          message: `${deficits.join('\n')}\n\nSave the Gunny Stock for ${monthLabel(ctx.month, ctx.year)} with a negative Closing?`,
+        });
+        if (!ok) {
+          setStatus({ key: ctx.key, msg: 'Not saved — correct the Issues, then press Save.', tone: 'warn' });
+          return;
+        }
+      }
+      crsData.markEdited('meGunnyStore', ctx.key);
+      crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
+        d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[prevKey] ?? {}, ctx, salesClose, gridGunnySales, packSales);
+      });
+      if (await crsData.saveConfirmed()) {
+        saveSuccess(gunnySaved(ctx.crsId, ctx.month, ctx.year));
+        setStatus({ key: ctx.key, msg: `✓ Saved for ${monthLabel(ctx.month, ctx.year)}.`, tone: 'ok' });
+      } else {
+        const why = crsData.lastError || 'The server did not confirm the save.';
+        setStatus({ key: ctx.key, msg: `⚠ Not saved — ${why}`, tone: 'warn' });
+        void appAlert({ title: 'Gunny Stock not saved', message: why });
+      }
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  };
 
   const th = { padding: '9px 10px', textAlign: 'center' as const, fontSize: 10, fontWeight: 700, color: '#6D28D9', borderBottom: '2px solid #DDD6FE' };
 
@@ -193,6 +248,16 @@ export default function GunnyTable({
           ⓘ Total = Opening + Receipt &nbsp;|&nbsp; Closing = Total − Issues (turns <b style={{ color: '#DC2626' }}>red</b> if Issues exceed Total)
           {isAdmin ? null : <> &nbsp;|&nbsp; these figures are the office&apos;s — an administrator can correct them</>}
         </span>
+      </div>
+      <div className="gunny-save-bar">
+        <button type="button" className="gunny-save-btn" onClick={save} disabled={saving} aria-busy={saving}>
+          {saving ? '⏳ Saving…' : '💾 Save Gunny Stock'}
+        </button>
+        {shown ? (
+          <span className="gunny-save-status" role="status" style={{ color: shown.tone === 'ok' ? '#15803D' : '#B45309' }}>
+            {shown.msg}
+          </span>
+        ) : null}
       </div>
     </div>
   );

@@ -698,6 +698,27 @@ ran the wrong way: typing **Issues** in the Gunny table WROTE those sales rows
 - Live, 2026-09-26: no month has C.Box/Poly sales and every gunny Issues is
   blank, so none of this moves an existing figure.
 
+### Gunny Stock Management's own Save
+
+Office, 2026-09-29. `npm run verify:gunny-save`.
+
+- **💾 Save Gunny Stock**, under the table's ⓘ notes (its own row, full
+  width on a phone), saves the selected shop and month **exactly as the
+  month-close does**: both call `gunnyMonthRecords` (monthly-entry/lib.ts).
+  Do not give either one its own copy of that write.
+- Stored: keyed figures as keyed (an Opening the office set, 50 KG SS Issues,
+  an admin's Receipt override), plus the derived copies the table always
+  kept — the carried Opening, Receipt, Total, Closing. POLY / C.BOX automatic
+  Issues are still NOT stored. Next month opens at the Closing stored here.
+- `gunnySaveProblems` runs first: a keyed Opening / Receipt / Issues that is
+  not a number ≥ 0 is refused with nothing sent; a Closing below 0 asks
+  ("Closing below zero") before saving.
+- The tick (`gunnySaved`) appears only after `saveConfirmed()`. A refusal
+  (e.g. stockGuard rule 5) shows the server's reason and no tick. A second tap
+  while one is being sent is ignored.
+- Permissions are the inputs' own and rule 5's; the button changes neither.
+  A shop user's Save passes rule 5 because it stores what the rule works out.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1136,6 +1157,29 @@ under version; a re-run with the same figures writes nothing.
   back through the server statement engine: CRS Page 1's PDF prints each card
   and TOTAL CARD DETAILS 777; Monthly Entry shows them "✓ saved".
 
+## A day sheet keyed from a paper statement
+
+`node tools/save-day-sheet.mjs --crs=N --date=YYYY-MM-DD --sales=ID:qty,…
+[--remit=<amount>] [--remit-date=…]` (dry run), then `--write`: Daily
+Entry's own save, run with the app's own functions as an administrator on
+the office's instruction. Only SALES and the deposit come from the paper;
+Opening (the chain's carry), Receipt (the register), adjustments, Total,
+Closing and Amount (master rate) are worked out exactly as `derive` does.
+Then, as the save does: projection / monthly register row dropped, month
+republished, chain rebuilt from the date. The server's stock guard and CRS
+29 rice guard are run on the result before anything is sent; only that
+shop's keys may change; a date that already has a sheet is refused (it adds
+a day, never replaces one); stores backed up and written under version; the
+activity log gets `diffStateWrite`'s rows and the started-record is
+reconciled, as after any landed save.
+- **CRS 19, 29-09-2026** (office, 2026-09-29, from the shop's paper
+  statement): BRA 176, PHH BRA 50, AAY 35, SUGAR 18.5, AAY SUGAR 1.5,
+  T.DHALL 13, P.OIL 13; one deposit ₹1,200.00 dated 29-09 (the paper's
+  "1200/2" is ₹1,200, not ₹600 — the office's reading). Sales amount
+  ₹1,197.75. Republishing the month with the fixed roll-up also corrected
+  CRS 19 September's stored PHH BRA and AAY (see "A month opens where its
+  FIRST day sheet opens"). Backup `backups/day-sheet-19_2026-09-29-…`.
+
 ## Allotment keyed from the FPS Allocation Report
 
 `node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
@@ -1493,6 +1537,7 @@ npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
+npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome
