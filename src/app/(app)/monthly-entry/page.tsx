@@ -64,7 +64,7 @@ import { CARD_DETAILS_ID, cardDetailsJumpWanted, clearCardDetailsJump } from './
 import GunnyTable from './GunnyTable';
 import { printArea, PRINT_AREA_CLASS } from '@/lib/printArea';
 import RemitTable from './RemitTable';
-import { ME_GUNNY_ITEMS, ME_MONTH_NAMES, NO_GUNNY, SALES_ONLY, gunnyRowFor, mePrevKey, monthCloseBlock, sectionSaved, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
+import { ME_MONTH_NAMES, NO_GUNNY, SALES_ONLY, gunnyMonthRecords, mePrevKey, monthCloseBlock, sectionSaved, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
 
 type ShopRec = { name: string };
 type InspDay = { a?: Record<string, { excess?: number; shortage?: number; transfer?: number }>; b?: Record<string, { excess?: number; shortage?: number; transfer?: number }> };
@@ -668,28 +668,8 @@ export default function MonthlyEntryPage() {
      * kept — and exactly what stockGuard rule 5 expects from a shop user.
      */
     crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
-      const own = d[ctx.key] ?? {};
-      const prev = d[mePrevKey(ctx.crsId, ctx.month, ctx.year)] ?? {};
-      const next = { ...own };
-      for (const item of ME_GUNNY_ITEMS) {
-        const r = gunnyRowFor(item.id, own, prev, salesCloseStore[ctx.key], gridGunnySales, gridSales);
-        const cur = next[item.id] ?? {};
-        const ownOpening = cur.opening !== undefined && cur.opening !== '';
-        next[item.id] = {
-          itemName: cur.itemName ?? item.label,
-          crsId: String(ctx.crsId),
-          month: ctx.month,
-          year: ctx.year,
-          ...cur,
-          opening: ownOpening ? cur.opening : r.openingVal !== '' ? Number(r.openingVal) : undefined,
-          openingAuto: ownOpening ? cur.openingAuto : r.openingAuto,
-          receipt: r.rc.val,
-          total: r.total,
-          closing: r.closing,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      d[ctx.key] = next;
+      // The same function Gunny Stock Management's own Save uses (lib.ts).
+      d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[mePrevKey(ctx.crsId, ctx.month, ctx.year)] ?? {}, ctx, salesCloseStore[ctx.key], gridGunnySales, gridSales);
     });
     // The tick waits for the write to land — a refused or conflicting save
     // shows nothing. Nothing above this line changed.
