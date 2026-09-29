@@ -97,6 +97,75 @@ export function gunnyRowFor(
   return { rec, opening, openingVal, openingAuto, rc, issues, issuesAuto, total, closing };
 }
 
+/**
+ * What stops a Gunny Save: a keyed Opening, Receipt or Issues that is not a
+ * number of 0 or more (`errors` — refused), and a Closing below 0 (`deficits`
+ * — the table already shows it red; the Save asks before storing it).
+ */
+export function gunnySaveProblems(
+  own: Record<string, GunnyRec>,
+  prev: Record<string, GunnyRec>,
+  salesClose: SalesClose | undefined,
+  gridGunnySales: Record<string, number>,
+  packSales: Record<string, number>,
+): { errors: string[]; deficits: string[] } {
+  const errors: string[] = [];
+  const deficits: string[] = [];
+  const bad = (v: unknown) => v !== undefined && v !== '' && !(Number.isFinite(Number(v)) && Number(v) >= 0);
+  for (const item of ME_GUNNY_ITEMS) {
+    const cur = own[item.id] ?? {};
+    if (bad(cur.opening)) errors.push(`${item.label}: Opening must be a number, 0 or more.`);
+    if (bad(cur.receiptImported)) errors.push(`${item.label}: Receipt must be a number, 0 or more.`);
+    if (bad(cur.issues)) errors.push(`${item.label}: Issues must be a number, 0 or more.`);
+    const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales);
+    if (r.closing < 0) deficits.push(`${item.label}: Issues ${r.issues} exceed Total ${r.total} (Closing ${r.closing})`);
+  }
+  return { errors, deficits };
+}
+
+/**
+ * The month's Gunny records as they are STORED — written by the month-close
+ * and by Gunny Stock Management's own Save (office, 2026-09-29), one function
+ * so the two can never store different figures. Each item keeps what was
+ * keyed (Opening where the office set one, 50 KG SS Issues, an administrator's
+ * Receipt override) and takes the derived copies the table has always kept:
+ * the Opening carried from last month where none is its own, Receipt, Total
+ * and Closing — next month opens at this Closing. POLY and C.BOX's automatic
+ * Issues are deliberately NOT stored: a stored figure reads as the office's
+ * own and would stop following the sales. Exactly what stockGuard rule 5
+ * expects from a shop user.
+ */
+export function gunnyMonthRecords(
+  own: Record<string, GunnyRec>,
+  prev: Record<string, GunnyRec>,
+  ctx: MonthCtx,
+  salesClose: SalesClose | undefined,
+  gridGunnySales: Record<string, number>,
+  packSales: Record<string, number>,
+  now = new Date().toISOString(),
+): Record<string, GunnyRec> {
+  const next = { ...own };
+  for (const item of ME_GUNNY_ITEMS) {
+    const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales);
+    const cur = next[item.id] ?? {};
+    const ownOpening = cur.opening !== undefined && cur.opening !== '';
+    next[item.id] = {
+      itemName: cur.itemName ?? item.label,
+      crsId: String(ctx.crsId),
+      month: ctx.month,
+      year: ctx.year,
+      ...cur,
+      opening: ownOpening ? cur.opening : r.openingVal !== '' ? Number(r.openingVal) : undefined,
+      openingAuto: ownOpening ? cur.openingAuto : r.openingAuto,
+      receipt: r.rc.val,
+      total: r.total,
+      closing: r.closing,
+      updatedAt: now,
+    };
+  }
+  return next;
+}
+
 export const ME_MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export const ME_GUNNY_ITEMS = [

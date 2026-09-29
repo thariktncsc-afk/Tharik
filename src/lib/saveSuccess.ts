@@ -73,6 +73,15 @@ export function allotmentSaved(crsId: number | string, month: number, year: numb
   };
 }
 
+/** Gunny Stock Management's own Save — the month's gunny rows, for that month. */
+export function gunnySaved(crsId: number | string, month: number, year: number): SaveSuccessRequest {
+  return {
+    title: 'Gunny Stock Saved Successfully',
+    detail: `Gunny Stock for ${monthLabel(month, year)} has been saved successfully.`,
+    key: `gunny:${crsId}:${month}:${year}`,
+  };
+}
+
 /** An administrator's remittance correction, written straight to the day sheet. */
 export function remittanceSaved(crsId: number | string, salesDate: string, ref = ''): SaveSuccessRequest {
   return {

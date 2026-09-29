@@ -698,6 +698,27 @@ ran the wrong way: typing **Issues** in the Gunny table WROTE those sales rows
 - Live, 2026-09-26: no month has C.Box/Poly sales and every gunny Issues is
   blank, so none of this moves an existing figure.
 
+### Gunny Stock Management's own Save
+
+Office, 2026-09-29. `npm run verify:gunny-save`.
+
+- **💾 Save Gunny Stock**, under the table's ⓘ notes (its own row, full
+  width on a phone), saves the selected shop and month **exactly as the
+  month-close does**: both call `gunnyMonthRecords` (monthly-entry/lib.ts).
+  Do not give either one its own copy of that write.
+- Stored: keyed figures as keyed (an Opening the office set, 50 KG SS Issues,
+  an admin's Receipt override), plus the derived copies the table always
+  kept — the carried Opening, Receipt, Total, Closing. POLY / C.BOX automatic
+  Issues are still NOT stored. Next month opens at the Closing stored here.
+- `gunnySaveProblems` runs first: a keyed Opening / Receipt / Issues that is
+  not a number ≥ 0 is refused with nothing sent; a Closing below 0 asks
+  ("Closing below zero") before saving.
+- The tick (`gunnySaved`) appears only after `saveConfirmed()`. A refusal
+  (e.g. stockGuard rule 5) shows the server's reason and no tick. A second tap
+  while one is being sent is ignored.
+- Permissions are the inputs' own and rule 5's; the button changes neither.
+  A shop user's Save passes rule 5 because it stores what the rule works out.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1516,6 +1537,7 @@ npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
+npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome
