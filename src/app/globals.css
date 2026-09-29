@@ -207,30 +207,6 @@ input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,5
 .remit-save-btn:disabled{opacity:.7;cursor:progress}
 .remit-save-status{font-size:11.5px;font-weight:600;line-height:1.4}
 @media (max-width:560px){.remit-save-btn{width:100%}.remit-save-status{width:100%}}
-/* Monthly Entry — Card Details / Allotment photo boxes (office, 2026-09-29):
-   side by side in the space under the card table; stacked on a phone. */
-.me-photo-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.me-photo-box{border:1.5px dashed #5EEAD4;border-radius:9px;background:#F0FDFA;padding:10px 12px;display:flex;flex-direction:column;gap:7px;min-width:0}
-.me-photo-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.me-photo-title{font-size:12.5px;font-weight:800;color:#0F766E}
-.me-photo-hint{font-size:10.5px;color:var(--muted);line-height:1.35}
-.me-photo-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
-.me-photo-item{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #CCFBF1;border-radius:7px;padding:5px 6px}
-.me-photo-item.is-error{border-color:#FCA5A5;background:#FEF2F2}
-.me-photo-thumb{width:40px;height:40px;object-fit:cover;border-radius:5px;flex:none;background:#E2E8F0}
-.me-photo-meta{flex:1;min-width:0}
-.me-photo-name{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.me-photo-state{font-size:10.5px;color:#0F766E;display:flex;flex-wrap:wrap;gap:2px 8px;align-items:center}
-.me-photo-item.is-error .me-photo-state{color:#B91C1C}
-.me-photo-x{flex:none;border:1px solid #FCA5A5;background:#FEE2E2;color:#B91C1C;border-radius:6px;width:26px;height:26px;font-size:11px;font-weight:800;cursor:pointer}
-.me-photo-link{border:none;background:none;padding:0;color:#0F766E;font-size:10.5px;font-weight:700;text-decoration:underline;cursor:pointer}
-.me-photo-add{position:relative;display:flex;align-items:center;justify-content:center;min-height:38px;border-radius:8px;background:#fff;border:1.5px solid #99F6E4;color:#0F766E;font-size:12px;font-weight:800;cursor:pointer;text-align:center;padding:6px 10px}
-.me-photo-add:hover{background:#CCFBF1}
-.me-photo-add:focus-within{outline:3px solid #99F6E4;outline-offset:2px}
-.me-photo-add input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.me-photo-sum{font-size:10.5px;line-height:1.45;color:#134E4A;display:flex;flex-direction:column;gap:3px;border-top:1px solid #CCFBF1;padding-top:6px}
-.me-photo-warn{color:#B45309;font-weight:600}
-@media (max-width:560px){.me-photo-row{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:560px){.de-entry-summary{flex-direction:column;align-items:flex-start;gap:2px}.de-entry-summary .de-sep{display:none}}
 
 /* Monthly Entry — where the Dashboard's "Card Details & Allotment" lands
