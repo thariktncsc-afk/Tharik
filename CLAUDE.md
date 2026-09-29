@@ -347,6 +347,25 @@ total/close, so without them it would disagree with Monthly Entry.
   stores already carry them and the statements fall back to those; a copy
   would be summed twice.
 
+**A month opens where its FIRST day sheet opens** (office, 2026-09-29;
+`dailyRollupForMonth`). The roll-up used to take a commodity's Opening from
+the first sheet on which it had a NON-ZERO figure, so a commodity that opened
+the month at 0 took its Opening from a later day that already carried a
+receipt the month also counts as Receipt — counted twice. CRS 8 CIS: 0 on
+01-09, 100 received on the sheet-less 15th, sold on the 21st — published as
+Opening 100 + Receipt 100 − Sales 100 = Closing 100, where the shop held 0.
+Now the Opening is the first sheet's, zeros included, less anything received
+or adjusted on the month's sheet-less days before it (the chain carried those
+into it). Found on live data the same day: CRS 8 (BRA, PHH BRA, AAY, CIS),
+14 (NPHH FRK), 19 (PHH BRA, AAY), 20 (the four police lines), 30 (RRA, CIS,
+RFFS) — every one now closes where its last day sheet does and the old
+figure did not. `verify:rollup` allows exactly that difference from `dev`
+and nothing else, and carries the CRS 8 case. CRS 8's stored CIS row was
+rewritten with `node tools/republish-month-rows.mjs --crs=8 --month=9
+--year=2026 --ids=SALT_CIS [--write]` (a Daily-keyed row only, and only if
+the republished Closing equals the last day sheet's; backed up); the other
+rows follow on the next render or Monthly Entry save.
+
 **The goldens cannot see any of this.** `verify:statements` renders from the
 stored `monthlyStore` and never runs the roll-up — but production does
 (`server.ts` rebuilds the month before rendering), so a roll-up change
