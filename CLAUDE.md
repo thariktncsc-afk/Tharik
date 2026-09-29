@@ -1117,6 +1117,30 @@ under version; a re-run with the same figures writes nothing.
   back through the server statement engine: CRS Page 1's PDF prints each card
   and TOTAL CARD DETAILS 777; Monthly Entry shows them "✓ saved".
 
+## Allotment keyed from the FPS Allocation Report
+
+`node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
+run), then `--write`: what **Save Allotment** does, for several shops at
+once — each named shop's `meAllotStore[key]` REPLACED by exactly the figures
+given (0 included), plus its saved mark in `meAllotConfirmed`. The file is
+`{ "<crs>": { "fps": "<FPS code>", "<commodityId>": qty, … } }`; the tool
+refuses an FPS code that is not the shop's in `__crsMaster`, a commodity
+Allotment does not list, any change to a key not named, and a key already
+holding different figures unless `--replace`. Backs both rows up (with the
+input) to `backups/`, writes under version; a re-run writes nothing.
+- **Report column → field** (settled 2026-09-29 from the office's own CRS 7
+  entry of the same report, and confirmed): Rice → `BRA`, AAY Rice → `AAY`,
+  Sugar → `SUGAR`, Wheat → `WHEAT`, Toor Dal → `TOOR`, Palm Oil → `PALM`,
+  OAP Rice → `OAP`, AAY Sugar → `AAY_SUGAR`, **PHH Rice → `PHH_BRA`**. The
+  five **Police** columns have no Allotment field (Allotment lists Section A
+  only; Page 1 prints no police allotment) and are left out — the office's
+  decision, not an omission.
+- **September 2026** (office, 2026-09-29, the East zone TSO report dated
+  01-09-2026): CRS 5, 7, 8, 9, 10, 11, 12, 30 written; CRS 7's own rounded
+  entry replaced by the report's exact figures; CRS 6, 19 and every other
+  shop untouched. Every shop's Page 1 PDF read back line for line against
+  the report. Backup `backups/allotment-9-2026-…`.
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for
