@@ -1098,6 +1098,25 @@ Advance Load box (office, 2026-09-28; `npm run verify:card-inputs`).
   the same column (`data-num-col`). ↑ / ↓ and the spinner are the browser's
   own, within the existing min and step. Phones get a number pad and Next.
 
+## Card Details keyed from a shop's POS screen
+
+`node tools/set-card-details.mjs --crs=N --month=M --year=Y --rice= --lof_rice=
+--sugar= --lof_sugar= --aay= --lof_aay= --oap= --police= --n_card=` (dry run),
+then `--write`: exactly what **Save Card Details** does — `meCardStore[key]`
+plus the month's saved mark in `meCardConfirmed` — for figures the office
+reads off a shop's POS ("அட்டை விவரங்கள்"). All nine cards must be given (a
+card the POS does not list is 0, said out loud), so TOTAL CARD is the sum and
+nothing ever writes a total. Refuses a month that already has counts unless
+`--replace`; touches no other key; backs both rows up to `backups/`; writes
+under version; a re-run with the same figures writes nothing.
+- POS → field: அரிசி அட்டை → `rice`, LOF அரிசி அட்டை → `lof_rice`,
+  சர்க்கரை அட்டை → `sugar`, AAY அட்டை → `aay`, காவலர் அட்டை → `police`,
+  பண்டகமில்லா அட்டை (no-commodity card) → `n_card`.
+- **CRS 30, September 2026** (office, 2026-09-29): 728 / 4 / 13 / 0 / 27 / 0 /
+  0 / 4 / 1 → TOTAL 777 (backup `backups/card-details-crs30-9-2026-…`). Read
+  back through the server statement engine: CRS Page 1's PDF prints each card
+  and TOTAL CARD DETAILS 777; Monthly Entry shows them "✓ saved".
+
 ## Monthly Sales Close needs both sections SAVED
 
 A month closes only once **Card Details** and **Allotment** have been saved for
