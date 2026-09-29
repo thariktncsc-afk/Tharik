@@ -1136,6 +1136,29 @@ under version; a re-run with the same figures writes nothing.
   back through the server statement engine: CRS Page 1's PDF prints each card
   and TOTAL CARD DETAILS 777; Monthly Entry shows them "✓ saved".
 
+## A day sheet keyed from a paper statement
+
+`node tools/save-day-sheet.mjs --crs=N --date=YYYY-MM-DD --sales=ID:qty,…
+[--remit=<amount>] [--remit-date=…]` (dry run), then `--write`: Daily
+Entry's own save, run with the app's own functions as an administrator on
+the office's instruction. Only SALES and the deposit come from the paper;
+Opening (the chain's carry), Receipt (the register), adjustments, Total,
+Closing and Amount (master rate) are worked out exactly as `derive` does.
+Then, as the save does: projection / monthly register row dropped, month
+republished, chain rebuilt from the date. The server's stock guard and CRS
+29 rice guard are run on the result before anything is sent; only that
+shop's keys may change; a date that already has a sheet is refused (it adds
+a day, never replaces one); stores backed up and written under version; the
+activity log gets `diffStateWrite`'s rows and the started-record is
+reconciled, as after any landed save.
+- **CRS 19, 29-09-2026** (office, 2026-09-29, from the shop's paper
+  statement): BRA 176, PHH BRA 50, AAY 35, SUGAR 18.5, AAY SUGAR 1.5,
+  T.DHALL 13, P.OIL 13; one deposit ₹1,200.00 dated 29-09 (the paper's
+  "1200/2" is ₹1,200, not ₹600 — the office's reading). Sales amount
+  ₹1,197.75. Republishing the month with the fixed roll-up also corrected
+  CRS 19 September's stored PHH BRA and AAY (see "A month opens where its
+  FIRST day sheet opens"). Backup `backups/day-sheet-19_2026-09-29-…`.
+
 ## Allotment keyed from the FPS Allocation Report
 
 `node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
