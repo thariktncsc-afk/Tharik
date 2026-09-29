@@ -1205,6 +1205,28 @@ reconciled, as after any landed save.
   CRS 19 September's stored PHH BRA and AAY (see "A month opens where its
   FIRST day sheet opens"). Backup `backups/day-sheet-19_2026-09-29-…`.
 
+**A whole month from a POS stock summary, on its last day** (same tool,
+office 2026-09-29). A shop keyed by DAY (its Initial Opening is a day sheet)
+cannot take the month on Monthly Entry, so the month goes onto ONE day
+sheet: `--receipt=ID:qty,… --receipt-no=…` (one Receipt Register receipt
+dated the sheet's date — the register stays the only source of receipts),
+`--shortage=ID:qty,…` (that date's inspection; Section A only),
+`--gunny-receipt=ss50:n,poly:n` (the Gunny table's administrator Receipt
+correction, stored through `gunnyMonthRecords`), `--correct-open=DATE:ID:v`
+(an administrator's Opening correction on an earlier sheet; the chain is
+rebuilt from it) and `--expect=ID:closing,…` (nothing is written unless
+every Closing equals the paper's).
+- **CRS 5, September 2026** (POS "பொருட்கள் இருப்பு நிலவரச் சுருக்கம்"
+  01-09 → 29-09): one sheet on 29-09-2026 — Receipt `POS/5/09/2026`
+  (14 commodities), Sales, shortage SUGAR 9 and PALM 4 — all 18 closings
+  equal the POS (BRA 2173, SUGAR 680.624, PALM 220…). Gunny 50 KG SS
+  89 + 236 = 325 and POLY 0 + 23 = 23 from the POS sack column (C.BOX kept
+  at the system's 61 from Palm Oil sales; the POS shows NA). Police BRA's
+  Opening on 01-09 corrected 12 → 0 (the POS's; office decision). DSS pages:
+  01-09 and 29-09 only. Monthly Remittance untouched (the 29th's ₹848 stays
+  there, so the 29-09 DSS C A/C line reads 0.00). Backup
+  `backups/day-sheet-5_2026-09-29-…`.
+
 ## Allotment keyed from the FPS Allocation Report
 
 `node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
