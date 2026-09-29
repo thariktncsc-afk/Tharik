@@ -347,6 +347,25 @@ total/close, so without them it would disagree with Monthly Entry.
   stores already carry them and the statements fall back to those; a copy
   would be summed twice.
 
+**A month opens where its FIRST day sheet opens** (office, 2026-09-29;
+`dailyRollupForMonth`). The roll-up used to take a commodity's Opening from
+the first sheet on which it had a NON-ZERO figure, so a commodity that opened
+the month at 0 took its Opening from a later day that already carried a
+receipt the month also counts as Receipt — counted twice. CRS 8 CIS: 0 on
+01-09, 100 received on the sheet-less 15th, sold on the 21st — published as
+Opening 100 + Receipt 100 − Sales 100 = Closing 100, where the shop held 0.
+Now the Opening is the first sheet's, zeros included, less anything received
+or adjusted on the month's sheet-less days before it (the chain carried those
+into it). Found on live data the same day: CRS 8 (BRA, PHH BRA, AAY, CIS),
+14 (NPHH FRK), 19 (PHH BRA, AAY), 20 (the four police lines), 30 (RRA, CIS,
+RFFS) — every one now closes where its last day sheet does and the old
+figure did not. `verify:rollup` allows exactly that difference from `dev`
+and nothing else, and carries the CRS 8 case. CRS 8's stored CIS row was
+rewritten with `node tools/republish-month-rows.mjs --crs=8 --month=9
+--year=2026 --ids=SALT_CIS [--write]` (a Daily-keyed row only, and only if
+the republished Closing equals the last day sheet's; backed up); the other
+rows follow on the next render or Monthly Entry save.
+
 **The goldens cannot see any of this.** `verify:statements` renders from the
 stored `monthlyStore` and never runs the roll-up — but production does
 (`server.ts` rebuilds the month before rendering), so a roll-up change
@@ -1097,6 +1116,49 @@ Advance Load box (office, 2026-09-28; `npm run verify:card-inputs`).
 - Focusing selects the figure, so typing replaces the 0. Enter moves DOWN
   the same column (`data-num-col`). ↑ / ↓ and the spinner are the browser's
   own, within the existing min and step. Phones get a number pad and Next.
+
+## Card Details keyed from a shop's POS screen
+
+`node tools/set-card-details.mjs --crs=N --month=M --year=Y --rice= --lof_rice=
+--sugar= --lof_sugar= --aay= --lof_aay= --oap= --police= --n_card=` (dry run),
+then `--write`: exactly what **Save Card Details** does — `meCardStore[key]`
+plus the month's saved mark in `meCardConfirmed` — for figures the office
+reads off a shop's POS ("அட்டை விவரங்கள்"). All nine cards must be given (a
+card the POS does not list is 0, said out loud), so TOTAL CARD is the sum and
+nothing ever writes a total. Refuses a month that already has counts unless
+`--replace`; touches no other key; backs both rows up to `backups/`; writes
+under version; a re-run with the same figures writes nothing.
+- POS → field: அரிசி அட்டை → `rice`, LOF அரிசி அட்டை → `lof_rice`,
+  சர்க்கரை அட்டை → `sugar`, AAY அட்டை → `aay`, காவலர் அட்டை → `police`,
+  பண்டகமில்லா அட்டை (no-commodity card) → `n_card`.
+- **CRS 30, September 2026** (office, 2026-09-29): 728 / 4 / 13 / 0 / 27 / 0 /
+  0 / 4 / 1 → TOTAL 777 (backup `backups/card-details-crs30-9-2026-…`). Read
+  back through the server statement engine: CRS Page 1's PDF prints each card
+  and TOTAL CARD DETAILS 777; Monthly Entry shows them "✓ saved".
+
+## Allotment keyed from the FPS Allocation Report
+
+`node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
+run), then `--write`: what **Save Allotment** does, for several shops at
+once — each named shop's `meAllotStore[key]` REPLACED by exactly the figures
+given (0 included), plus its saved mark in `meAllotConfirmed`. The file is
+`{ "<crs>": { "fps": "<FPS code>", "<commodityId>": qty, … } }`; the tool
+refuses an FPS code that is not the shop's in `__crsMaster`, a commodity
+Allotment does not list, any change to a key not named, and a key already
+holding different figures unless `--replace`. Backs both rows up (with the
+input) to `backups/`, writes under version; a re-run writes nothing.
+- **Report column → field** (settled 2026-09-29 from the office's own CRS 7
+  entry of the same report, and confirmed): Rice → `BRA`, AAY Rice → `AAY`,
+  Sugar → `SUGAR`, Wheat → `WHEAT`, Toor Dal → `TOOR`, Palm Oil → `PALM`,
+  OAP Rice → `OAP`, AAY Sugar → `AAY_SUGAR`, **PHH Rice → `PHH_BRA`**. The
+  five **Police** columns have no Allotment field (Allotment lists Section A
+  only; Page 1 prints no police allotment) and are left out — the office's
+  decision, not an omission.
+- **September 2026** (office, 2026-09-29, the East zone TSO report dated
+  01-09-2026): CRS 5, 7, 8, 9, 10, 11, 12, 30 written; CRS 7's own rounded
+  entry replaced by the report's exact figures; CRS 6, 19 and every other
+  shop untouched. Every shop's Page 1 PDF read back line for line against
+  the report. Backup `backups/allotment-9-2026-…`.
 
 ## Monthly Sales Close needs both sections SAVED
 

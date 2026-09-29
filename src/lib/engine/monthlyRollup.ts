@@ -86,6 +86,14 @@ export function dailyRollupForMonth(
   }
   type Acc = {
     open: number | null;
+    /**
+     * What reached the stock on the month's sheet-less days BEFORE its first
+     * sheet: godown receipts and inspection adjustments. The chain carries
+     * them into that sheet's Opening (stockChain.ts) AND they are counted in
+     * this month's receipt / adjustment totals, so the month's Opening is the
+     * first sheet's Opening less these — else they are counted twice.
+     */
+    pre: number;
     receipt: number;
     sales: number;
     close: number;
@@ -127,9 +135,21 @@ export function dailyRollupForMonth(
         const g = rcp?.[id] || 0;
         const t =
           out[sec][id] ??
-          (out[sec][id] = { open: null, receipt: 0, sales: 0, close: 0, amount: 0, excess: 0, shortage: 0, transfer: 0, days: 0, godown: false });
+          (out[sec][id] = { open: null, pre: 0, receipt: 0, sales: 0, close: 0, amount: 0, excess: 0, shortage: 0, transfer: 0, days: 0, godown: false });
         t.receipt += g || (blk[id] ? Number(r.receipt) || 0 : 0);
         if (g) t.godown = true;
+        // THE MONTH'S OPENING is the first day sheet's Opening — whatever its
+        // figures, zeros included (office, 2026-09-29). It used to be the
+        // first sheet on which the commodity had a non-zero figure, so a
+        // commodity that opened the month at 0 took its Opening from a LATER
+        // day, one that already carried a receipt the month also counts as
+        // Receipt: CRS 8 CIS, 0 on 01-09, 100 received on the sheet-less
+        // 15-09, published as Opening 100 + Receipt 100 − Sales 100 = 100
+        // where the shop held 0.
+        if (t.open === null) {
+          if (blk[id]) t.open = (Number(r.open) || 0) - t.pre;
+          else t.pre += g + (Number(a.excess) || 0) - (Number(a.shortage) || 0) - (Number(a.transfer) || 0);
+        }
         if (blk[id]) {
           // A day sheet writes a row for EVERY commodity, so an all-zero row
           // must not count as "this commodity was keyed in Daily Entry".
@@ -142,7 +162,6 @@ export function dailyRollupForMonth(
           t.sales += Number(r.sales) || 0;
           t.amount += Number(r.amount) || 0;
           if (hasVal) {
-            if (t.open === null) t.open = Number(r.open) || 0; // first real sheet's opening
             t.close = Number(r.close) || 0; // last real sheet's closing
             t.days++;
           }
