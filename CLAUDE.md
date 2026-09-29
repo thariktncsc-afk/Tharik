@@ -1138,6 +1138,51 @@ Advance Load box (office, 2026-09-28; `npm run verify:card-inputs`).
   the same column (`data-num-col`). ↑ / ↓ and the spinner are the browser's
   own, within the existing min and step. Phones get a number pad and Next.
 
+## Card Details and Allotment from photos
+
+Monthly Entry, under the card table (office, 2026-09-29;
+`npm run verify:photo-extract`). Two boxes — **📷 Upload Card Details
+Photo** and **📷 Upload Allotment Photo** — each taking one photo or
+several (`PhotoBox.tsx`). Separate instances with separate kinds, so a card
+photo can never fill Allotment.
+
+- **Reading is Claude vision, on the server** (`/api/ocr`,
+  `src/lib/ocr/server.ts`): one photo per request, scaled in the browser to
+  ≤ 2000 px JPEG (Vercel's 4.5 MB body limit), forced through one tool so the
+  answer is a TRANSCRIPTION — labels as printed (Tamil or English) and the
+  figures, told never to total, correct or guess. Needs `ANTHROPIC_API_KEY`
+  (server only; `ANTHROPIC_OCR_MODEL` overrides `claude-sonnet-5-5`).
+  Without it the box says "not set up". Signed-in users only; nothing stored.
+- Tesseract was tried first on the office's own photos: fair on the POS
+  card screens, but 1 of 9 rows of the photographed FPS report — hence the
+  model. The office chose it (2026-09-29).
+- **Which field a label is, is decided in code** (`engine/photoExtract.ts`),
+  not by the model: `cardIdFor` (அரிசி / LOF / சர்க்கரை / AAY / காவலர் /
+  பண்டகமில்லா = "N" CARD / OAP, and our English captions) and `allotIdFor`
+  (the report's headings — Rice → BRA, PHH Rice → PHH BRA, as
+  set-allotment settled — and our English/Tamil names). **Police columns
+  are left out**, as in set-allotment. A label it does not know is listed
+  "not recognised", never guessed.
+- **Several photos combine by field**: the POS pages overlap (rows 3–4 on
+  both CRS 30 photos) and count once; two photos that disagree leave that
+  field to the clerk. The POS total (மொத்த அட்டைகள், not மொத்த பயனாளிகள்)
+  is a check: when the figures read add up to it, the card types not on the
+  POS are 0; when not, the box says a page may be missing.
+- **The report's row is the shop's own**, by `__crsMaster[].code` (then by
+  "Crs N" in the name); a report for another month, or without the shop,
+  fills nothing and says why.
+- **A DRAFT in the existing fields, never written before Save.** Typing a
+  field writes the store and the 5 s autosave sends it, so photo figures are
+  NOT put there: they overlay the fields (dashed indigo, like the carried
+  card counts' draft) until **Save Card Details / Save Allotment**, which
+  writes them (`writeDraft`) and then saves exactly as before — marker, then
+  `saveConfirmed()`, then the tick. Typing into a field takes it out of the
+  draft; a later photo never overrides a typed or saved figure. The badge
+  says "Photo figures not saved yet" while a draft is on screen.
+- Card Details / Allotment fields, their calculations, carry-forward,
+  month-close and the statements are untouched; the saved figures reach
+  Page 1 as any saved figure does (checked through Preview and a real PDF).
+
 ## Card Details keyed from a shop's POS screen
 
 `node tools/set-card-details.mjs --crs=N --month=M --year=Y --rice= --lof_rice=
@@ -1577,6 +1622,7 @@ npm run verify:sign-in         an accepted sign-in opens the app or says why (co
 npm run verify:entry-dates      Daily Entry Last Entry Date | Total Entry Dates: the rule, saved-not-typed, live data vs an independent count
 npm run verify:card-jump        Dashboard → Card Details & Allotment: the jump hand-off and its wiring
 npm run verify:card-inputs      Card Details & Allotment boxes: typed value kept, no wheel stepping, Enter down the column
+npm run verify:photo-extract    Card Details / Allotment photos: Tamil+English mapping, pages combined once, report row by FPS code, draft until Save, Page 1
 node tools/render-section.mjs <sectionId> <outDir>   render one section for every shop, to diff a builder change
 node tools/dump-golden-stores.mjs   refresh public/golden-stores.json first
 node tools/import-monthly-xlsx.mjs <folder> [--skip=29] [--write]
@@ -1619,7 +1665,9 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 
 ## Deploy checklist
 
-- Set all four env vars in Vercel (`.env.local` is local only)
+- Set the env vars in Vercel (`.env.local` is local only) — the four Supabase /
+  session ones, and `ANTHROPIC_API_KEY` for Monthly Entry's photo upload (without it
+  the upload boxes say "not set up"; nothing else depends on it)
 - Vercel → Functions region **Mumbai (`bom1`)** — users are in Tamil Nadu, and
   the default `iad1` round-trips every request through Virginia. Now pinned in
   `vercel.json` (`"regions": ["bom1"]`) — it was never set in the dashboard: on

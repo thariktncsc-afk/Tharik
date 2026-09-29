@@ -17,13 +17,23 @@
  * ever writes another month: last month's card details and allotment are read
  * for the draft and left alone.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { appConfirm } from '@/components/dialog';
 import { saveSuccess } from '@/components/SaveSuccess';
 import { allotmentSaved, cardDetailsSaved } from '@/lib/saveSuccess';
-import { crsData } from '@/lib/dataStore';
+import { crsData, useStore } from '@/lib/dataStore';
 import { useAllotItems } from '@/lib/masters';
 import NumInput from './NumInput';
+import PhotoBox from './PhotoBox';
+import {
+  combineAllot,
+  combineCards,
+  mapAllotPhoto,
+  mapCardPhoto,
+  photoDraft,
+  type AllotTranscript,
+  type CardTranscript,
+} from '@/lib/engine/photoExtract';
 import {
   ME_CARD_TYPES,
   ME_MONTH_NAMES,
@@ -38,6 +48,11 @@ import {
 } from './lib';
 
 type Status = { msg: string; tone: 'ok' | 'warn' | 'info' } | null;
+
+/** A figure read from a photo and not yet saved: dashed indigo, so it cannot pass for a saved one. */
+const PHOTO_BORDER = '2px dashed #6366F1';
+const PHOTO_INK = '#4338CA';
+const PHOTO_BG = '#EEF2FF';
 
 export default function CardAllot({
   ctx,
@@ -81,10 +96,47 @@ export default function CardAllot({
   const moName = ME_MONTH_NAMES[ctx.month] ?? '';
   const prevName = ME_MONTH_NAMES[ctx.month === 1 ? 12 : ctx.month - 1] ?? 'last month';
 
-  const cardTotal = Object.values(shown).reduce((t, d) => t + (parseInt(String(d.count)) || 0), 0);
-  const allotCount = items.filter((c) => (Number(monthAllot[c.id]) || 0) > 0).length;
+  // ── Figures read from photos (office, 2026-09-29) ─────────────────────────
+  // What the two PhotoBoxes read is mapped here (engine/photoExtract.ts) and
+  // shown IN THE EXISTING FIELDS as a draft — like last month's carried card
+  // counts, it is never written by rendering. Typing into a field takes that
+  // field out of the draft (the correction stands, whatever a later photo
+  // says); Save Card Details / Save Allotment writes the draft and saves it.
+  // Nothing from a photo reaches the database before one of those presses.
+  const master = useStore<{ id: number; code?: string }[]>('__crsMaster') ?? [];
+  const shopCode = master.find((m) => Number(m.id) === ctx.crsId)?.code ?? null;
+  const [reads, setReads] = useState<{ key: string; cards: CardTranscript[]; allot: AllotTranscript[] }>({ key: ctx.key, cards: [], allot: [] });
+  const [edited, setEdited] = useState<{ key: string; cards: Set<string>; allot: Set<string> }>({ key: ctx.key, cards: new Set(), allot: new Set() });
+  const cur = reads.key === ctx.key ? reads : { key: ctx.key, cards: [], allot: [] };
+  const done = edited.key === ctx.key ? edited : { key: ctx.key, cards: new Set<string>(), allot: new Set<string>() };
+  const onCardsRead = useCallback((t: unknown[]) => setReads((r) => ({ ...(r.key === ctx.key ? r : { key: ctx.key, allot: [] }), key: ctx.key, cards: t as CardTranscript[] })), [ctx.key]);
+  const onAllotRead = useCallback((t: unknown[]) => setReads((r) => ({ ...(r.key === ctx.key ? r : { key: ctx.key, cards: [] }), key: ctx.key, allot: t as AllotTranscript[] })), [ctx.key]);
+  const cardPhotos = useMemo(() => combineCards(cur.cards.map(mapCardPhoto)), [cur.cards]);
+  const allotPhotos = useMemo(
+    () => combineAllot(cur.allot.map((t) => mapAllotPhoto(t, { crsId: ctx.crsId, code: shopCode }, { month: ctx.month, year: ctx.year }, items))),
+    [cur.allot, ctx.crsId, ctx.month, ctx.year, shopCode, items],
+  );
+  const draftCards = photoDraft(cardPhotos.values, cardPhotos.zeroFilled, done.cards) as Record<string, number>;
+  const draftAllot = photoDraft(allotPhotos.values, [], done.allot) as Record<string, number>;
+  const hasDraftCards = Object.keys(draftCards).length > 0;
+  const hasDraftAllot = Object.keys(draftAllot).length > 0;
+  /** A field is settled once typed into or saved: the photo no longer speaks for it. */
+  const settle = (which: 'cards' | 'allot', ids: string[]) =>
+    setEdited((e) => {
+      const base = e.key === ctx.key ? e : { key: ctx.key, cards: new Set<string>(), allot: new Set<string>() };
+      return { ...base, [which]: new Set([...base[which], ...ids]) };
+    });
 
-  const defaultStatus: Status = carried
+  const shownCount = (id: string) => (draftCards[id] !== undefined ? { count: draftCards[id] } : (shown[id] ?? {}));
+  // The same sum as always — every card record shown — with a photo figure in place of the one it covers.
+  const cardTotal = Object.keys({ ...shown, ...draftCards }).reduce((t, id) => t + (parseInt(String(shownCount(id).count)) || 0), 0);
+  const allotShown = (id: string) => (draftAllot[id] !== undefined ? draftAllot[id] : monthAllot[id]);
+  const allotCount = items.filter((c) => (Number(allotShown(c.id)) || 0) > 0).length;
+
+  const draftSave = hasDraftCards && hasDraftAllot ? 'Save Card Details and Save Allotment' : hasDraftCards ? 'Save Card Details' : 'Save Allotment';
+  const defaultStatus: Status = hasDraftCards || hasDraftAllot
+    ? { msg: `Figures read from the photo are in the fields — check each one, correct any, then press ${draftSave}. Nothing is saved until then.`, tone: 'warn' }
+    : carried
     ? { msg: `Showing ${prevName}’s counts — not saved for ${moName} yet. Press No Change to keep them, or edit and Save.`, tone: 'warn' }
     : cardsSaved
       ? { msg: `✓ Card details saved for ${moName} ${ctx.year}.`, tone: 'ok' }
@@ -102,6 +154,7 @@ export default function CardAllot({
   };
 
   const setCount = (id: string, val: string) => {
+    settle('cards', [id]);
     commitCarry();
     markSaved('meCardConfirmed', false);
     crsData.update<Record<string, Record<string, CardRec>>>('meCardStore', (d) => {
@@ -113,12 +166,24 @@ export default function CardAllot({
   };
 
   const setAllot = (id: string, val: string) => {
+    settle('allot', [id]);
     markSaved('meAllotConfirmed', false);
     crsData.update<Record<string, Record<string, number>>>('meAllotStore', (d) => {
       const m = { ...(d[ctx.key] ?? {}) };
       const v = parseFloat(val);
       if (val === '' || isNaN(v) || v < 0) delete m[id];
       else m[id] = v;
+      d[ctx.key] = m;
+    });
+  };
+
+  /** The photo draft into this month's record — only when Save is pressed. */
+  const writeDraft = <T,>(store: 'meCardStore' | 'meAllotStore', draft: Record<string, number>, as: (v: number) => T) => {
+    if (!Object.keys(draft).length) return;
+    crsData.markEdited(store, ctx.key);
+    crsData.update<Record<string, Record<string, T>>>(store, (d) => {
+      const m = { ...(d[ctx.key] ?? {}) };
+      for (const [id, v] of Object.entries(draft)) m[id] = as(v);
       d[ctx.key] = m;
     });
   };
@@ -158,6 +223,7 @@ export default function CardAllot({
       for (const [id, rec] of Object.entries(freshPrev)) m[id] = { count: parseInt(String(rec.count)) || 0 };
       d[ctx.key] = m;
     });
+    settle('cards', Object.keys(draftCards));
     markSaved('meCardConfirmed', true);
     if (await crsData.saveConfirmed()) saveSuccess(cardDetailsSaved(ctx.crsId, ctx.month, ctx.year));
     setStatus({ msg: `✓ Copied ${prevName}’s card details into ${moName} ${ctx.year} and saved them.`, tone: 'ok' });
@@ -170,6 +236,8 @@ export default function CardAllot({
    */
   const saveCards = async () => {
     commitCarry();
+    writeDraft('meCardStore', draftCards, (v) => ({ count: v }));
+    settle('cards', Object.keys(draftCards));
     const cur = crsData.get<Record<string, Record<string, CardRec>>>('meCardStore')?.[ctx.key];
     if (!monthlyHasCounts(cur)) {
       setStatus({ msg: '⚠ Enter at least one card count before saving the Card Details.', tone: 'warn' });
@@ -182,6 +250,8 @@ export default function CardAllot({
   };
 
   const saveAllot = async () => {
+    writeDraft('meAllotStore', draftAllot, (v) => v);
+    settle('allot', Object.keys(draftAllot));
     const cur = crsData.get<Record<string, Record<string, number>>>('meAllotStore')?.[ctx.key];
     if (!allotHasValues(cur, items)) {
       setStatus({ msg: '⚠ Enter at least one allotment quantity before saving the Allotment.', tone: 'warn' });
@@ -192,6 +262,49 @@ export default function CardAllot({
     setStatus({ msg: `✓ Allotment saved for ${moName} ${ctx.year} — ${n} ${n === 1 ? 'commodity' : 'commodities'}.`, tone: 'ok' });
     if (await crsData.saveConfirmed()) saveSuccess(allotmentSaved(ctx.crsId, ctx.month, ctx.year));
   };
+
+  const cardsBadge = cardsSaved && !hasDraftCards;
+  const allotBadge = allotSaved && !hasDraftAllot;
+  const cardLabel = (id: string) => ME_CARD_TYPES.find((c) => c.id === id)?.label ?? id;
+  const allotLabel = (id: string) => items.find((c) => c.id === id)?.en ?? id;
+  const kept = (vals: Record<string, number | undefined>, draft: Record<string, number>) => Object.keys(vals).filter((id) => draft[id] === undefined && vals[id] !== undefined);
+
+  const cardsSummary = cur.cards.length ? (
+    <div className="me-photo-sum">
+      {Object.keys(cardPhotos.values).length ? (
+        <div>✓ Read: {Object.entries(cardPhotos.values).map(([id, v]) => `${cardLabel(id)} ${v}`).join(' · ')}</div>
+      ) : (
+        <div className="me-photo-warn">⚠ No card figures could be read from these photos.</div>
+      )}
+      {cardPhotos.totalShown !== null && !cardPhotos.totalMismatch && !cardPhotos.conflicts.length ? (
+        <div>✓ Adds up to the POS total, {cardPhotos.totalShown}{cardPhotos.zeroFilled.length ? ` — so the card types not on the POS are 0: ${cardPhotos.zeroFilled.map(cardLabel).join(', ')}` : ''}.</div>
+      ) : null}
+      {cardPhotos.totalMismatch ? (
+        <div className="me-photo-warn">⚠ The figures read add up to {cardPhotos.sum}, but the POS total says {cardPhotos.totalShown ?? 'something else'} — a page may be missing. Check every card type before saving.</div>
+      ) : null}
+      {cardPhotos.conflicts.length ? <div className="me-photo-warn">⚠ The photos disagree about {cardPhotos.conflicts.map(cardLabel).join(', ')} — type the right figure.</div> : null}
+      {cardPhotos.unknown.length ? <div className="me-photo-warn">⚠ Not recognised, so not entered: {cardPhotos.unknown.map((u) => `${u.label} ${u.count}`).join(' · ')}</div> : null}
+      {kept(cardPhotos.values, draftCards).length ? <div>Kept the figure already typed or saved for: {kept(cardPhotos.values, draftCards).map(cardLabel).join(', ')}.</div> : null}
+    </div>
+  ) : null;
+
+  const allotSummary = cur.allot.length ? (
+    <div className="me-photo-sum">
+      {allotPhotos.sources.length ? <div>From: {allotPhotos.sources.join('; ')}</div> : null}
+      {Object.keys(allotPhotos.values).length ? (
+        <div>✓ Read: {Object.entries(allotPhotos.values).map(([id, v]) => `${allotLabel(id)} ${v}`).join(' · ')}</div>
+      ) : !allotPhotos.problems.length ? (
+        <div className="me-photo-warn">⚠ No allotment figures could be read from these photos.</div>
+      ) : null}
+      {allotPhotos.problems.map((p, i) => (
+        <div key={i} className="me-photo-warn">⚠ {p}</div>
+      ))}
+      {allotPhotos.skipped.length ? <div>Police columns left out (Allotment has no police field): {allotPhotos.skipped.join(', ')}.</div> : null}
+      {allotPhotos.conflicts.length ? <div className="me-photo-warn">⚠ The photos disagree about {allotPhotos.conflicts.map(allotLabel).join(', ')} — type the right figure.</div> : null}
+      {allotPhotos.unknown.length ? <div className="me-photo-warn">⚠ Not recognised, so not entered: {allotPhotos.unknown.map((u) => `${u.label} ${u.value}`).join(' · ')}</div> : null}
+      {kept(allotPhotos.values, draftAllot).length ? <div>Kept the figure already typed or saved for: {kept(allotPhotos.values, draftAllot).map(allotLabel).join(', ')}.</div> : null}
+    </div>
+  ) : null;
 
   const th = { padding: '9px 10px', textAlign: 'center' as const, fontSize: 10, fontWeight: 700, color: '#0F766E', borderBottom: '2px solid #99F6E4' };
   const toneColor = { ok: '#15803D', warn: '#B45309', info: '#0F766E' };
@@ -206,7 +319,8 @@ export default function CardAllot({
         <div style={{ color: 'rgba(255,255,255,.6)', fontSize: 10 }}>card count carries forward · allotment is entered each month</div>
       </div>
       <div style={{ border: '1px solid #CCFBF1', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
-        {/* Card counts */}
+        {/* Card counts, and under them the two photo boxes */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
         <div style={{ border: '1px solid #CCFBF1', borderRadius: 9, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 260 }}>
             <thead>
@@ -218,7 +332,8 @@ export default function CardAllot({
             </thead>
             <tbody>
               {ME_CARD_TYPES.map((ct, i) => {
-                const d = shown[ct.id] ?? {};
+                const d = shownCount(ct.id);
+                const fromPhoto = draftCards[ct.id] !== undefined;
                 const count = d.count !== undefined && d.count !== '' ? String(parseInt(String(d.count))) : '';
                 return (
                   <tr key={ct.id} style={{ background: i % 2 === 0 ? '#fff' : '#F0FDFA' }}>
@@ -233,7 +348,8 @@ export default function CardAllot({
                         aria-label={`${ct.label} count`}
                         value={count}
                         onValue={(raw) => setCount(ct.id, raw)}
-                        style={{ width: 90, border: '2px solid #99F6E4', borderRadius: 7, padding: '5px 10px', fontSize: 13, fontWeight: 800, textAlign: 'center', color: '#0F766E', background: '#F0FDFA' }}
+                        title={fromPhoto ? 'Read from the photo — check it, correct it if needed, then Save Card Details' : undefined}
+                        style={{ width: 90, border: fromPhoto ? PHOTO_BORDER : '2px solid #99F6E4', borderRadius: 7, padding: '5px 10px', fontSize: 13, fontWeight: 800, textAlign: 'center', color: fromPhoto ? PHOTO_INK : '#0F766E', background: fromPhoto ? PHOTO_BG : '#F0FDFA' }}
                       />
                     </td>
                   </tr>
@@ -247,6 +363,11 @@ export default function CardAllot({
               </tr>
             </tfoot>
           </table>
+        </div>
+        <div className="me-photo-row">
+          <PhotoBox kind="cards" title="Upload Card Details Photo" hint="POS அட்டை விவரங்கள் screen — one photo or several pages." resetKey={ctx.key} onRead={onCardsRead} summary={cardsSummary} />
+          <PhotoBox kind="allot" title="Upload Allotment Photo" hint="FPS Allocation Report or the POS allotment screen — one photo or several." resetKey={ctx.key} onRead={onAllotRead} summary={allotSummary} />
+        </div>
         </div>
 
         {/* Allotment + advance load */}
@@ -262,7 +383,8 @@ export default function CardAllot({
             </thead>
             <tbody>
               {items.map((c, i) => {
-                const val = monthAllot[c.id];
+                const val = allotShown(c.id);
+                const fromPhoto = draftAllot[c.id] !== undefined;
                 const aval = monthAdv[c.id];
                 return (
                   <tr key={c.id} style={{ background: (i + 1) % 2 === 0 ? '#F0FDFA' : '#fff' }}>
@@ -280,7 +402,8 @@ export default function CardAllot({
                         aria-label={`${c.en} allotment`}
                         value={val === undefined ? '' : String(val)}
                         onValue={(raw) => setAllot(c.id, raw)}
-                        style={{ width: 96, border: '2px solid #99F6E4', borderRadius: 7, padding: '5px 8px', fontSize: 12.5, fontWeight: 800, textAlign: 'right', color: '#0F766E', background: '#F0FDFA' }}
+                        title={fromPhoto ? 'Read from the photo — check it, correct it if needed, then Save Allotment' : undefined}
+                        style={{ width: 96, border: fromPhoto ? PHOTO_BORDER : '2px solid #99F6E4', borderRadius: 7, padding: '5px 8px', fontSize: 12.5, fontWeight: 800, textAlign: 'right', color: fromPhoto ? PHOTO_INK : '#0F766E', background: fromPhoto ? PHOTO_BG : '#F0FDFA' }}
                       />
                       <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginLeft: 6 }}>{c.unit}</span>
                     </td>
@@ -316,11 +439,11 @@ export default function CardAllot({
           reads. Said plainly, because a carried-forward figure on screen
           looks exactly like a saved one. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: cardsSaved ? '#15803D' : '#B45309', background: cardsSaved ? '#DCFCE7' : '#FFFBEB', border: `1px solid ${cardsSaved ? '#86EFAC' : '#FDE68A'}`, borderRadius: 7, padding: '4px 10px' }}>
-          {cardsSaved ? '✅' : '❌'} Card Details — {cardsSaved ? 'Saved' : 'Not Saved'} for {moName} {ctx.year}
+        <span style={{ fontSize: 11, fontWeight: 700, color: cardsBadge ? '#15803D' : '#B45309', background: cardsBadge ? '#DCFCE7' : '#FFFBEB', border: `1px solid ${cardsBadge ? '#86EFAC' : '#FDE68A'}`, borderRadius: 7, padding: '4px 10px' }}>
+          {cardsBadge ? '✅' : '❌'} Card Details — {cardsBadge ? 'Saved' : hasDraftCards ? 'Photo figures not saved yet' : 'Not Saved'} for {moName} {ctx.year}
         </span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: allotSaved ? '#15803D' : '#B45309', background: allotSaved ? '#DCFCE7' : '#FFFBEB', border: `1px solid ${allotSaved ? '#86EFAC' : '#FDE68A'}`, borderRadius: 7, padding: '4px 10px' }}>
-          {allotSaved ? '✅' : '❌'} Allotment — {allotSaved ? 'Saved' : 'Not Saved'} for {moName} {ctx.year}
+        <span style={{ fontSize: 11, fontWeight: 700, color: allotBadge ? '#15803D' : '#B45309', background: allotBadge ? '#DCFCE7' : '#FFFBEB', border: `1px solid ${allotBadge ? '#86EFAC' : '#FDE68A'}`, borderRadius: 7, padding: '4px 10px' }}>
+          {allotBadge ? '✅' : '❌'} Allotment — {allotBadge ? 'Saved' : hasDraftAllot ? 'Photo figures not saved yet' : 'Not Saved'} for {moName} {ctx.year}
         </span>
       </div>
 

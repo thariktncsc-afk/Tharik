@@ -52,6 +52,7 @@
     "verify:gunny-sales": "node tools/verify-gunny-sales.mjs",
     "verify:gunny-save": "node tools/verify-gunny-save.mjs",
     "verify:remittance-save": "node tools/verify-remittance-save.mjs",
+    "verify:photo-extract": "node tools/verify-photo-extract.mjs",
     "verify:print-layout": "node tools/verify-print-layout.mjs",
     "verify:print-pdf": "node tools/verify-print-pdf.mjs"
   },
