@@ -325,3 +325,48 @@ export function monthCloseBlock(cardsSaved: boolean, allotSaved: boolean): Month
     missing: ['allotment'],
   };
 }
+
+/**
+ * What stops Monthly Remittance's Save (office, 2026-09-29): the hand-keyed
+ * rows only — the days with no deposit on a day sheet, and the three extra
+ * rows. A day sheet's own deposits were checked when they were keyed and are
+ * not re-judged here. Daily Entry's rule, row by row: an amount must be a
+ * number of 0 or more, an amount above zero needs its Remittance Date, and a
+ * Remittance Date needs an amount ("leave the date empty if no deposit was
+ * made that day"). A row with neither is simply an empty day.
+ */
+export function remitMonthProblems(
+  month: RemitMonth,
+  depositDays: Set<number>,
+  ctx: Pick<MonthCtx, 'month' | 'year'>,
+): string[] {
+  const out: string[] = [];
+  const val = (v: unknown): number | null | 'bad' => {
+    if (v === undefined || v === null || String(v).trim() === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : 'bad';
+  };
+  const judge = (label: string, nc: unknown, ce: unknown, date: unknown) => {
+    const a = val(nc);
+    const b = val(ce);
+    if (a === 'bad') out.push(`${label}: the Non-Cereal amount must be a number, 0 or more.`);
+    if (b === 'bad') out.push(`${label}: the Cereal amount must be a number, 0 or more.`);
+    if (a === 'bad' || b === 'bad') return;
+    const amount = (a ?? 0) + (b ?? 0);
+    const hasDate = typeof date === 'string' && date.trim() !== '';
+    if (amount > 0 && !hasDate) out.push(`${label}: Please select the Remittance Date.`);
+    if (!(amount > 0) && hasDate) out.push(`${label}: Please enter the Remittance Amount (or clear the date).`);
+  };
+  const days = new Date(ctx.year, ctx.month, 0).getDate();
+  for (let day = 1; day <= days; day++) {
+    if (depositDays.has(day)) continue;
+    const r = (month[day] ?? {}) as RemitDay;
+    judge(`${String(day).padStart(2, '0')}/${String(ctx.month).padStart(2, '0')}/${ctx.year}`, r.nonCereal, r.cereal, r.remitDate);
+  }
+  const ex = (month['extra'] ?? {}) as RemitExtra;
+  ([1, 2, 3] as const).forEach((n) => {
+    const label = n === 1 ? 'Poly & C.Box Amount' : String(ex[`e${n}label`] ?? '').trim() || `Extra row ${n}`;
+    judge(label, ex[`e${n}nc`], ex[`e${n}ce`], ex[`e${n}date`]);
+  });
+  return out;
+}

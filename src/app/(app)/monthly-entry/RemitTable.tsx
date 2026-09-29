@@ -28,12 +28,12 @@
  * with Daily Entry, the DSS or the statements. It saves immediately; nothing
  * waits for the month-close. Shop users see the table exactly as before.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { crsData } from '@/lib/dataStore';
 import { useAuth } from '@/lib/authClient';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { saveSuccess } from '@/components/SaveSuccess';
-import { remittanceSaved } from '@/lib/saveSuccess';
+import { monthLabel, remittanceMonthSaved, remittanceSaved } from '@/lib/saveSuccess';
 import {
   REMIT_REASONS,
   REMIT_TYPE_LABEL,
@@ -49,7 +49,7 @@ import {
   type RemitType,
   type SheetLike,
 } from '@/lib/engine/remittance';
-import type { MonthCtx, RemitDay, RemitExtra, RemitMonth } from './lib';
+import { remitMonthProblems, type MonthCtx, type RemitDay, type RemitExtra, type RemitMonth } from './lib';
 
 const inr = (n: number) => '₹' + n.toFixed(2);
 
@@ -332,7 +332,7 @@ export default function RemitTable({
     totCE += num(cereal);
     const rowTotal = num(nonCereal) + num(cereal);
     dayRows.push(
-      <tr key={day} style={{ background: stripe() }}>
+      <tr key={`${ctx.key}-${day}`} style={{ background: stripe() }}>
         <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--muted)', fontSize: 11, borderBottom: '1px solid #EFF6FF' }}>{serial}</td>
         <td style={{ padding: '6px 12px', fontSize: 12, borderBottom: '1px solid #EFF6FF', whiteSpace: 'nowrap' }}>
           <span style={{ fontWeight: 600 }}>{salesLabel}</span>
@@ -348,7 +348,7 @@ export default function RemitTable({
             step={0.01}
             placeholder="0.00"
             defaultValue={nonCereal !== '' ? Number(nonCereal).toFixed(2) : ''}
-            onBlur={(e) => writeDay(day, 'nonCereal', e.target.value)}
+            onChange={(e) => writeDay(day, 'nonCereal', e.target.value)}
             style={{ width: '100%', border: '1px solid #BAE6FD', borderRadius: 6, padding: '5px 8px', fontSize: 12, textAlign: 'right', fontWeight: 700, color: '#0369A1', background: '#F0F9FF' }}
           />
         </td>
@@ -356,7 +356,7 @@ export default function RemitTable({
           <input
             type="text"
             defaultValue={cereal === '' ? '' : String(cereal)}
-            onBlur={(e) => writeDay(day, 'cereal', e.target.value)}
+            onChange={(e) => writeDay(day, 'cereal', e.target.value)}
             style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 8px', fontSize: 12, color: 'var(--muted)', background: '#FAFCFF' }}
           />
         </td>
@@ -383,7 +383,7 @@ export default function RemitTable({
     const inputBg = amber ? '#FFFBEB' : '#F0F9FF';
     const inputCol = amber ? '#92400E' : '#0369A1';
     return (
-      <tr key={`e${n}`} style={{ background: amber ? '#FEF9C3' : n === 2 ? '#F8FAFF' : '#fff', borderTop: amber ? '2px solid #FDE047' : undefined }}>
+      <tr key={`${ctx.key}-e${n}`} style={{ background: amber ? '#FEF9C3' : n === 2 ? '#F8FAFF' : '#fff', borderTop: amber ? '2px solid #FDE047' : undefined }}>
         <td style={{ padding: '6px 10px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: amber ? '#92400E' : 'var(--muted)', borderBottom: bd }}>{serial + n}</td>
         <td style={{ padding: '6px 12px', borderBottom: bd, fontSize: 11, fontWeight: 700, color: amber ? '#92400E' : undefined, whiteSpace: amber ? 'nowrap' : undefined }}>
           {amber ? (
@@ -393,7 +393,7 @@ export default function RemitTable({
               type="text"
               placeholder={n === 2 ? 'Label (e.g. Inspection Charges)' : 'Label (optional)'}
               defaultValue={(extra[`e${n}label`] as string) ?? ''}
-              onBlur={(e) => writeExtra(`e${n}label`, e.target.value)}
+              onChange={(e) => writeExtra(`e${n}label`, e.target.value)}
               style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 5, padding: '3px 7px', fontSize: 11, color: 'var(--text)' }}
             />
           )}
@@ -408,12 +408,12 @@ export default function RemitTable({
             step={0.01}
             placeholder="0.00"
             defaultValue={nc !== undefined && nc !== '' ? Number(nc).toFixed(2) : ''}
-            onBlur={(e) => writeExtra(`e${n}nc`, e.target.value)}
+            onChange={(e) => writeExtra(`e${n}nc`, e.target.value)}
             style={{ width: '100%', border: `1px solid ${inputBd}`, borderRadius: 6, padding: '5px 8px', fontSize: 12, textAlign: 'right', fontWeight: 700, color: inputCol, background: inputBg }}
           />
         </td>
         <td style={{ padding: '4px 6px', borderBottom: bd }}>
-          <input type="text" defaultValue={ce === undefined ? '' : String(ce)} onBlur={(e) => writeExtra(`e${n}ce`, e.target.value)} style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 8px', fontSize: 12, color: 'var(--muted)', background: amber ? '#FFFBEB' : '#FAFCFF' }} />
+          <input type="text" defaultValue={ce === undefined ? '' : String(ce)} onChange={(e) => writeExtra(`e${n}ce`, e.target.value)} style={{ width: '100%', border: '1px solid #E2E8F0', borderRadius: 6, padding: '5px 8px', fontSize: 12, color: 'var(--muted)', background: amber ? '#FFFBEB' : '#FAFCFF' }} />
         </td>
         <td style={{ padding: '6px 8px', textAlign: 'right', borderBottom: bd, background: amber ? '#FEF3C7' : '#EFF6FF' }}>
           <span style={{ fontWeight: 800, color: inputCol, fontSize: 12 }}>{nc !== undefined || ce !== undefined ? inr(tot) : '—'}</span>
@@ -423,6 +423,47 @@ export default function RemitTable({
     );
   };
   const extraRows = [extraRow(1), extraRow(2), extraRow(3)];
+
+  // ── Save Remittance (office, 2026-09-29) ─────────────────────────────────
+  // The hand-keyed rows reach the store as they are typed (and the autosave
+  // beat sends them); this is the explicit save the clerk can see land. It
+  // checks the month's hand-keyed rows by Daily Entry's rule, sends, waits for
+  // the database, and only then shows the tick. Each row is keyed by its day
+  // (or e1–e3), so pressing it again rewrites the same record — it can never
+  // add one. A day sheet's own deposits are not touched: they are corrected
+  // with ✎ / ✕ / ➕, which save on their own. Who may type what is unchanged.
+  const [status, setStatus] = useState<{ key: string; msg: string; tone: 'ok' | 'warn' } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+  const shownStatus = status?.key === ctx.key ? status : null;
+  const saveMonth = async () => {
+    if (busy.current) return; // a second tap while the first is being sent
+    // Anything still being typed has already reached the store (onChange), but
+    // let the box's own blur run first so nothing of it is left behind.
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    const cur = (crsData.get<Record<string, RemitMonth>>('meRemitStore') ?? {})[ctx.key] ?? {};
+    const problems = remitMonthProblems(cur, new Set(byDay.keys()), ctx);
+    if (problems.length) {
+      setStatus({ key: ctx.key, msg: `⚠ Not saved — ${problems.join(' ')}`, tone: 'warn' });
+      return;
+    }
+    busy.current = true;
+    setSaving(true);
+    try {
+      crsData.markEdited('meRemitStore', ctx.key);
+      if (await crsData.saveConfirmed()) {
+        saveSuccess(remittanceMonthSaved(ctx.crsId, ctx.month, ctx.year));
+        setStatus({ key: ctx.key, msg: `✓ Saved for ${monthLabel(ctx.month, ctx.year)}.`, tone: 'ok' });
+      } else {
+        const why = crsData.lastError || 'The server did not confirm the save.';
+        setStatus({ key: ctx.key, msg: `⚠ Not saved — ${why}`, tone: 'warn' });
+        void appAlert({ title: 'Remittance not saved', message: why });
+      }
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  };
 
   const th = { padding: '8px 10px', textAlign: 'center' as const, fontSize: 10, fontWeight: 700, color: '#1D4ED8', borderBottom: '2px solid #BFDBFE', whiteSpace: 'nowrap' as const };
 
@@ -466,6 +507,16 @@ export default function RemitTable({
       <div style={{ marginTop: 8, fontSize: 10, color: 'var(--muted)', display: 'flex', gap: 16 }}>
         <span>ⓘ Same Remittance Date allowed for multiple days (batch deposit)</span>
         <span>ⓘ Leave Remittance Date empty if no deposit was made that day</span>
+      </div>
+      <div className="remit-save-bar">
+        <button type="button" className="remit-save-btn" onClick={saveMonth} disabled={saving} aria-busy={saving}>
+          {saving ? '⏳ Saving…' : '💾 Save Remittance'}
+        </button>
+        {shownStatus ? (
+          <span className="remit-save-status" role="status" style={{ color: shownStatus.tone === 'ok' ? '#15803D' : '#B45309' }}>
+            {shownStatus.msg}
+          </span>
+        ) : null}
       </div>
     </div>
   );
