@@ -1275,6 +1275,38 @@ drifting.
 
 `npm run verify:remittance-admin`.
 
+### Monthly Remittance's own Save
+
+Office, 2026-09-29. `npm run verify:remittance-save`.
+
+- **💾 Save Remittance**, under the table's ⓘ notes (full width on a phone,
+  the section's blue), saves the month's **hand-keyed** rows — the days with
+  no deposit on a day sheet, and the three extra rows. They are one record
+  per day (`meRemitStore[key][day]`) and per extra row, so pressing Save
+  again rewrites the same record; it can never add one. A day sheet's own
+  deposits are not touched: they stay derived, and an administrator's
+  ✎ / ✕ / ➕ still save them on their own (per date, as before).
+- `remitMonthProblems` (monthly-entry/lib.ts) runs first, with Daily Entry's
+  rule per row: amounts are numbers ≥ 0, an amount above zero needs its
+  Remittance Date, a date needs an amount. Refused → nothing sent, the rows
+  named in the status. The tick (`remittanceMonthSaved`) appears only after
+  `saveConfirmed()`; a refusal shows the server's reason and no tick.
+- The hand-keyed boxes now write **as typed** (were on blur), so the row and
+  the TOTAL follow at once. Their rows are keyed by shop and month: the boxes
+  are uncontrolled, and a row reused across months kept the previous month's
+  typed figure on screen.
+- **Where the figure goes** (unchanged flow): the statements read
+  `meRemitStore` for any day with no Daily Entry deposit (`remitByDay`,
+  `buildRemittance`). The DSS and Daily Entry read the day sheets, so a
+  hand-keyed row — a day with no sheet — has no DSS page or Daily Entry
+  deposit to reach (a receipt-only DSS page still prints C A/C 0.00).
+- **Permissions unchanged**: who may type a hand-keyed row, and rule 1b for
+  day-sheet deposits, are exactly as before.
+- **The TOTAL row under the pointer.** `globals.css`'s hover shading reached
+  footer cells, painting the TOTAL's cells `#F8FAFC` under its white text —
+  the row went blank whenever the pointer was on it. Hover now shades
+  `tbody` rows only.
+
 ## Clear requests — what a day and a month take
 
 `clearExecute.ts`. A **day** clear removes that shop and date only: the sheet
@@ -1538,6 +1570,7 @@ npm run verify:dss-rates       DSS prices sales at the saved Commodity Master ra
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
+npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

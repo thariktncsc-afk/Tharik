@@ -87,7 +87,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 :where(th:not(.stmt-sheet *, .tpl-sheet *)){background:#F8FAFC;padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
 :where(td:not(.stmt-sheet *, .tpl-sheet *)){padding:11px 14px;border-bottom:1px solid #F1F5F9;font-size:13px}
 :where(tr:last-child td:not(.stmt-sheet *, .tpl-sheet *)){border-bottom:none}
-:where(tr:hover td:not(.stmt-sheet *, .tpl-sheet *)){background:#F8FAFC}
+/* Hover shades BODY rows only (office, 2026-09-29): a footer TOTAL row paints
+   its colour on the row and white text on the cells, so shading its cells
+   turned Monthly Remittance's TOTAL white-on-white under the pointer. */
+:where(tbody tr:hover td:not(.stmt-sheet *, .tpl-sheet *)){background:#F8FAFC}
 
 .form-group{margin-bottom:14px}
 label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
@@ -195,6 +198,15 @@ input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,5
 .gunny-save-btn:disabled{opacity:.7;cursor:progress}
 .gunny-save-status{font-size:11.5px;font-weight:600;line-height:1.4}
 @media (max-width:560px){.gunny-save-btn{width:100%}.gunny-save-status{width:100%}}
+/* Monthly Remittance — Save (office, 2026-09-29). The section's own blue; its
+   own row under the notes, full width on a phone, like the Gunny Save. */
+.remit-save-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:12px}
+.remit-save-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:9px 22px;border:none;border-radius:8px;background:linear-gradient(135deg,#1E40AF,#2563EB);color:#fff;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(30,64,175,.28);transition:filter .15s,box-shadow .15s}
+.remit-save-btn:hover:not(:disabled){filter:brightness(1.07);box-shadow:0 4px 12px rgba(30,64,175,.36)}
+.remit-save-btn:focus-visible{outline:3px solid #93C5FD;outline-offset:2px}
+.remit-save-btn:disabled{opacity:.7;cursor:progress}
+.remit-save-status{font-size:11.5px;font-weight:600;line-height:1.4}
+@media (max-width:560px){.remit-save-btn{width:100%}.remit-save-status{width:100%}}
 @media (max-width:560px){.de-entry-summary{flex-direction:column;align-items:flex-start;gap:2px}.de-entry-summary .de-sep{display:none}}
 
 /* Monthly Entry — where the Dashboard's "Card Details & Allotment" lands
