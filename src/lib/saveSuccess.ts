@@ -82,6 +82,15 @@ export function gunnySaved(crsId: number | string, month: number, year: number):
   };
 }
 
+/** Monthly Remittance's own Save — the month's hand-keyed remittance rows. */
+export function remittanceMonthSaved(crsId: number | string, month: number, year: number): SaveSuccessRequest {
+  return {
+    title: 'Remittance Saved Successfully',
+    detail: `Remittance for ${monthLabel(month, year)} has been saved successfully.`,
+    key: `remit-month:${crsId}:${month}:${year}`,
+  };
+}
+
 /** An administrator's remittance correction, written straight to the day sheet. */
 export function remittanceSaved(crsId: number | string, salesDate: string, ref = ''): SaveSuccessRequest {
   return {
