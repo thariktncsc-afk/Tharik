@@ -63,7 +63,7 @@ import { buildChainIndex, isOpenFixed, openingFor, type ChainIndex } from '@/lib
 import { firstStockDates, initialDate, isInitialized, readStockInit, STOCK_INIT_KEY, type StockInit } from '@/lib/engine/stockInit';
 import { txnsOf } from '@/lib/engine/remittance';
 import { gunnyRowFor, type GunnyRec, type SalesClose } from '@/app/(app)/monthly-entry/lib';
-import { packTypesFor } from '@/lib/engine/gunnyPack';
+import { packTypesFor, salesBags } from '@/lib/engine/gunnyPack';
 
 /** Kilos carry three decimals; anything under half a gram is float noise. */
 export const TOLERANCE = 0.005;
@@ -461,7 +461,7 @@ function inspectGunnyWrite(
       const block = isObj(monthly[sec]) ? (monthly[sec] as Record<string, unknown>) : {};
       for (const [id, row] of Object.entries(block)) {
         if (!isObj(row)) continue;
-        bags[id] = num(row.g_sales);
+        bags[id] = salesBags(row, id); // the count Monthly Sales shows
         sales[id] = num(row.sales);
       }
     }

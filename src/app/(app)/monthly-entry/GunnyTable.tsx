@@ -246,17 +246,16 @@ export default function GunnyTable({
                 </td>
                 <td style={{ padding: '4px 5px', borderBottom: '1px solid #EDE9FE' }}>
                   <input
-                    // Derived for shop staff — the office's imported figure,
-                    // the Sales Close totals, or the month's own bag counts.
-                    // An administrator typing here sets the imported figure,
-                    // which is the override the engine already reads.
-                    type={isAdmin ? 'number' : 'text'}
-                    readOnly={!isAdmin}
-                    tabIndex={isAdmin ? undefined : -1}
-                    onChange={isAdmin ? (e) => write(item.id, { receiptImported: e.target.value === '' ? undefined : Number(e.target.value) }) : undefined}
+                    // Monthly Sales is the only source (office, 2026-09-30):
+                    // the sum of the bag counts the grid above shows, by pack.
+                    // Never typed — by anyone — so it cannot disagree with it.
+                    type="text"
+                    readOnly
+                    tabIndex={-1}
+                    data-gunny-receipt={item.id}
                     value={rc.val ? String(rc.val) : ''}
-                    title={isAdmin ? `${rc.src} — type to override` : rc.src}
-                    style={{ width: '100%', border: `1px solid ${rc.imported ? '#BAE6FD' : '#BBF7D0'}`, borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', color: rc.imported ? '#0369A1' : '#15803D', fontWeight: 700, background: rc.imported ? '#F0F9FF' : '#F0FDF4' }}
+                    title={rc.src}
+                    style={{ width: '100%', border: '1px solid #BBF7D0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', color: '#15803D', fontWeight: 700, background: '#F0FDF4' }}
                   />
                 </td>
                 <td style={{ padding: '4px 5px', borderBottom: '1px solid #EDE9FE' }}>
@@ -294,7 +293,7 @@ export default function GunnyTable({
       </div>
       <div style={{ marginTop: 8, fontSize: 10, color: 'var(--muted)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <span>ⓘ Opening auto-fills from last month&apos;s Closing and locks once carried forward</span>
-        <span>ⓘ Receipt is automatic — the packs this month&apos;s saved sales emptied: sacks ÷50, poly ÷50 (salt ÷25), boxes ÷10 (palm oil) / ÷50 (tea); Wheat, RRA, NPHH FRK RRA as the Receipt page&apos;s Gunny / Poly switch says</span>
+        <span>ⓘ Receipt is Monthly Sales&apos; own bag counts, added up: sacks ÷50, poly ÷50 (salt ÷25), boxes ÷10 (palm oil) / ÷50 (tea); Wheat, RRA, NPHH FRK RRA as the Receipt page&apos;s Gunny / Poly switch says. It is never typed</span>
         <span>ⓘ Issues are typed; left blank, POLY and C.BOX show this month&apos;s Empty Polythene Bag / Empty Card+Box sales — Save carries them into Monthly Sales and the month&apos;s last-day Daily Entry</span>
         <span>
           ⓘ Total = Opening + Receipt &nbsp;|&nbsp; Closing = Total − Issues (turns <b style={{ color: '#DC2626' }}>red</b> if Issues exceed Total)

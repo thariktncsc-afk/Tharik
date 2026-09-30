@@ -6,7 +6,7 @@ import { CRS29_STOCK, DSS_A, isCrs29, type Commodity } from '@/lib/engine/commod
 export { SALES_ONLY } from '@/lib/engine/commodities';
 import type { MonthlyBlock } from '@/lib/engine/monthlyRollup';
 import { dmy } from '@/lib/dateFormat';
-import { PACK_BASE, packCounts, type PackType } from '@/lib/engine/gunnyPack';
+import { PACK_BASE, monthSalesBags, packCounts, type PackType } from '@/lib/engine/gunnyPack';
 
 export type GunnyRec = {
   itemName?: string;
@@ -54,12 +54,12 @@ export type GunnyRow = {
  *            stored copy of the carry (openingAuto) follows last month's
  *            Closing, so a change there reaches this month (office,
  *            2026-09-30: CB → next month's OB, always).
- *   Receipt  an administrator's typed figure (receiptImported), else the
- *            packs the month's SAVED SALES emptied — engine/gunnyPack.ts:
- *            each commodity's sales ÷ its pack size, into the pack its type
- *            (and, for Wheat / RRA / NPHH FRK RRA, the month's Receipt-page
- *            switch) says. Not Sales Close, not a stored bag count (office,
- *            2026-09-30).
+ *   Receipt  the sum of the bag counts MONTHLY SALES shows, by pack —
+ *            engine/gunnyPack.ts: each commodity's sales ÷ its pack size,
+ *            into the pack its type (and, for Wheat / RRA / NPHH FRK RRA, the
+ *            month's Receipt-page switch) says. Monthly Sales is the only
+ *            source (office, 2026-09-30): not Sales Close, and not a Receipt
+ *            typed here — `receiptImported` is no longer read, by anyone.
  *   Issues   typed — by the shop or an administrator (office, 2026-09-30).
  *            Left blank, POLY and C.BOX show the month's Empty Polythene
  *            Bag / Empty Card+Box sales; 50 KG SS shows nothing.
@@ -71,7 +71,7 @@ export function gunnyRowFor(
   prevMonth: Record<string, GunnyRec>,
   salesClose: SalesClose | undefined,
   gridGunnySales: Record<string, number>,
-  /** The month's sales per commodity id — the Receipt is counted from these. */
+  /** The month's sales per commodity id — Issues for POLY / C.BOX, and the Receipt where no bag count is given. */
   packSales?: Record<string, number>,
   /** The month's pack types (packTypesFor — the Receipt page's switch); the base types when not given. */
   packTypes?: Record<string, PackType>,
@@ -85,15 +85,14 @@ export function gunnyRowFor(
   const openingAuto = !hasOwnOpening && prevClosing !== undefined ? true : !!rec.openingAuto && hasOwnOpening;
   const opening = hasOwnOpening ? Number(rec.opening) || 0 : prevClosing !== undefined ? Number(prevClosing) || 0 : 0;
   const openingVal = hasOwnOpening ? String(rec.opening) : prevClosing !== undefined ? String(prevClosing) : '';
-  let rc: GunnyRow['rc'];
-  if (rec.receiptImported !== undefined && rec.receiptImported !== null && String(rec.receiptImported) !== '') {
-    rc = { val: Number(rec.receiptImported) || 0, src: 'Imported from the office workbook', imported: true };
-  } else if (packSales) {
-    const type = ME_GUNNY_TYPE[id];
-    rc = { val: packCounts(packSales, packTypes ?? PACK_BASE)[type], src: `Auto from this month's saved sales (${PACK_SRC[type]})`, imported: false };
-  } else {
-    rc = { val: monthlySalesBags(ME_GUNNY_TYPE[id], gridGunnySales), src: `Auto from Monthly Entry Sales (${ME_GUNNY_TYPE[id].toLowerCase()} counts)`, imported: false };
-  }
+  // The Receipt is Monthly Sales' own bag counts, summed by pack: the grid's
+  // figures where the caller has them (gridGunnySales), else sales ÷ pack size.
+  const type = ME_GUNNY_TYPE[id];
+  const rc: GunnyRow['rc'] = {
+    val: packCounts(packSales ?? {}, packTypes ?? PACK_BASE, gridGunnySales)[type],
+    src: `From Monthly Sales — the ${PACK_SRC[type]} it shows for this month`,
+    imported: false,
+  };
   // Issues: a keyed figure (an administrator's correction) wins; otherwise
   // POLY and C.BOX take the month's own sales of those bags, which is the one
   // place they are counted. The deduction therefore happens once, here, from
@@ -128,7 +127,6 @@ export function gunnySaveProblems(
   for (const item of ME_GUNNY_ITEMS) {
     const cur = own[item.id] ?? {};
     if (bad(cur.opening)) errors.push(`${item.label}: Opening must be a number, 0 or more.`);
-    if (bad(cur.receiptImported)) errors.push(`${item.label}: Receipt must be a number, 0 or more.`);
     if (bad(cur.issues)) errors.push(`${item.label}: Issues must be a number, 0 or more.`);
     const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales, packTypes);
     if (r.closing < 0) deficits.push(`${item.label}: Issues ${r.issues} exceed Total ${r.total} (Closing ${r.closing})`);
@@ -419,7 +417,7 @@ export function refreshGunnyMonths(
     const own = next[key];
     const sales = salesOf(key);
     if (step === 0 ? !own && !Object.values(sales).some(Boolean) : !own) break;
-    const rec = gunnyMonthRecords(own ?? {}, next[mePrevKey(crsId, m, y)] ?? {}, { crsId, month: m, year: y, key }, undefined, {}, sales, undefined, typesFor(m, y));
+    const rec = gunnyMonthRecords(own ?? {}, next[mePrevKey(crsId, m, y)] ?? {}, { crsId, month: m, year: y, key }, undefined, monthSalesBags(monthlyStore[key]), sales, undefined, typesFor(m, y));
     if (figures(rec) !== figures(own)) {
       next[key] = rec;
       changed = true;

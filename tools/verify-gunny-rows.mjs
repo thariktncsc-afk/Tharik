@@ -90,15 +90,15 @@ function resolved(opts) {
 }
 
 /** A month whose Gunny Stock table holds exactly these figures. */
-function render(gunny) {
-  const e = engineFor({ gunny });
+function render(gunny, counts = { BRA: 289, SUGAR: 22, PALM: 78 }) {
+  const e = engineFor({ gunny, monthly: bagSales(counts) });
   return e.buildSection('gunny', e.getData(CRS, 6, 2026));
 }
 
 /**
  * A published month whose SALES empty exactly these packs. Since 2026-09-30
- * the Receipt is counted from the sales (sales ÷ pack size, rounded down —
- * engine/gunnyPack.ts), never from a stored bag count, so each commodity gets
+ * the Receipt is the sum of Monthly Sales' bag counts (sales ÷ pack size,
+ * rounded down — engine/gunnyPack.ts) and nothing else, so each commodity gets
  * n × its pack size (palm oil 10 a box, salt 25 a poly, the rest 50).
  */
 const PACK_SIZE = { PALM: 10, PB_PALM: 10, SALT_CIS: 25, SALT_RFFS: 25 };
@@ -118,12 +118,13 @@ const figures = (row) => [row[2], row[4], row[6], row[8], row[10]];
 const withGrains = (row) => [row[1], row[3], row[5], row[7], row[9]];
 
 // As the Gunny Stock table stores them (monthly-entry/lib.ts GunnyRec): the
-// KEYED figures only — Opening, Issues and the office's imported Receipt.
+// KEYED figures only — Opening and Issues. The Receipt is never keyed: it is
+// Monthly Sales' bag counts (render's month: 289 sacks, 22 poly, 78 boxes).
 // `receipt`, `total` and `closing` are derived copies and are deliberately not
 // set here, because nothing may read them (see "Where each figure comes from").
-const ss = { opening: 31, receiptImported: 289, issues: 0 };
-const poly = { opening: 0, receiptImported: 22, issues: 22 };
-const cbox = { opening: 0, receiptImported: 78, issues: 78 };
+const ss = { opening: 31, issues: 0 };
+const poly = { opening: 0, issues: 22 };
+const cbox = { opening: 0, issues: 78 };
 
 console.log('\nThree varieties, and no spare line');
 {
@@ -149,17 +150,17 @@ console.log('\nEvery figure in its own row, its own stage, in EMPTY GUNNY');
 
 console.log('\nOne variety, two varieties, three');
 {
-  const none = { opening: 0, receiptImported: 0, issues: 0 };
-  const one = table(render({ ss50: ss, poly: none, cbox: none }));
+  const none = { opening: 0, issues: 0 };
+  const one = table(render({ ss50: ss, poly: none, cbox: none }, { BRA: 289 }));
   check('only 50KG SS has figures → still three rows', one.length === 3);
   check('…50KG SS carries them', JSON.stringify(figures(one[0])) === JSON.stringify(['31', '289', '320', '', '320']));
   check('…and the other two show empty cells, not invented figures', figures(one[1]).join('') === '0' && figures(one[2]).join('') === '0', JSON.stringify([figures(one[1]), figures(one[2])]));
 
-  const two = table(render({ ss50: ss, poly, cbox: none }));
+  const two = table(render({ ss50: ss, poly, cbox: none }, { BRA: 289, SUGAR: 22 }));
   check('two varieties with figures → still three rows, no blank row', two.length === 3 && !two.some((r) => r.every((c) => c === '')));
   check('…each variety keeps its own figures', figures(two[0])[1] === '289' && figures(two[1])[1] === '22' && figures(two[2])[1] === '');
 
-  const empty = table(render({ ss50: none, poly: none, cbox: none }));
+  const empty = table(render({ ss50: none, poly: none, cbox: none }, {}));
   check('nothing recorded at all → three named rows, no spare line', empty.length === 3 && empty.map((r) => r[0]).join('|') === '50KG SS|POLY|C. BOX');
   check('…and no figure invented anywhere but the zero closings', empty.every((r) => figures(r).slice(0, 4).every((c) => c === '')));
 }
@@ -195,14 +196,16 @@ console.log('\nWhere each figure comes from');
   check('a keyed Opening of 0 is respected, not treated as missing',
     resolved({ gunny: { ss50: { opening: 0 } }, prev: { ss50: { closing: 180 } }, monthly: month }).ss50.ob === 0);
 
-  // Receipt: an administrator's typed figure → the packs the month's sales emptied
-  // (office, 2026-09-30: never Sales Close, never a stored bag count).
-  check('the office’s imported Receipt wins over everything',
-    resolved({ gunny: { ss50: { receiptImported: 42 } }, monthly: month, salesClose: { date: '2026-06-20', gunny: 99, poly: 9, cbox: 9 } }).ss50.rec === 42);
+  // Receipt: Monthly Sales' bag counts, summed by pack — its ONLY source
+  // (office, 2026-09-30: never Sales Close, never a Receipt typed into the table).
+  check('a Receipt typed into the Gunny table (receiptImported 42) is no longer read: Monthly Sales’ 100',
+    resolved({ gunny: { ss50: { receiptImported: 42 } }, monthly: month, salesClose: { date: '2026-06-20', gunny: 99, poly: 9, cbox: 9 } }).ss50.rec === 100);
   check('…else the month’s own sales — a Sales Close no longer sets it (99 is ignored)',
     resolved({ gunny: {}, monthly: month, salesClose: { date: '2026-06-20', gunny: 99, poly: 9, cbox: 9 } }).ss50.rec === 100);
-  check('…and a stored bag count on the sales row is not read (g_sales 7 on 5000 kg BRA → 100)',
-    resolved({ gunny: {}, monthly: { a: { BRA: { sales: 5000, g_sales: 7 } }, b: {} } }).ss50.rec === 100);
+  check('…a bag count the office keyed on Monthly Sales is what that grid shows, so Gunny takes it (BRA 5000 kg shown as 7 → 7)',
+    resolved({ gunny: {}, monthly: { a: { BRA: { sales: 5000, g_sales: 7 } }, b: {} } }).ss50.rec === 7);
+  check('…a stored count of 0, or one equal to the division, is the division (100)',
+    resolved({ gunny: {}, monthly: { a: { BRA: { sales: 5000, g_sales: 0 } }, b: {} } }).ss50.rec === 100 && resolved({ gunny: {}, monthly: { a: { BRA: { sales: 5000, g_sales: 100 } }, b: {} } }).ss50.rec === 100);
   check('the month’s own sales bags', resolved({ gunny: {}, monthly: month }).ss50.rec === 100);
   // The Receipt page's Gunny / Poly switch, saved on the receipt: WHEAT 1000 kg = 20 packs.
   const wheat = { a: { WHEAT: { sales: 1000 } }, b: {} };
