@@ -54,6 +54,7 @@
     "verify:remittance-save": "node tools/verify-remittance-save.mjs",
     "verify:date-format": "node tools/verify-date-format.mjs",
     "verify:opening-correction": "node tools/verify-opening-correction.mjs",
+    "verify:remit-total": "node tools/verify-remit-total.mjs",
     "verify:print-layout": "node tools/verify-print-layout.mjs",
     "verify:print-pdf": "node tools/verify-print-pdf.mjs"
   },

@@ -1311,6 +1311,29 @@ never appears for a month that cannot close (`monthCloseBlock`,
 
 `npm run verify:month-close`.
 
+## CRS Page 2's Remittance Amount is the deposits
+
+Office, 2026-09-30 (`npm run verify:remit-total`). `buildCrsPage2` added up
+the Monthly Remittance table's hand-keyed rows only and, when they came to
+nothing, printed the sheet's own TOTAL as "Remittance Amount". A shop keyed
+by day keeps its deposits on the day sheets, so CRS 8, September 2026,
+printed 55061.30 (= Sales 54803.00 + C.Box 100.80 + P.Gunny 157.50) while its
+Remittance sheet totals 55095.
+- `stmtRemitTotal(d)` (`src/legacy/44-remit-total.js`) is the Remittance
+  sheet's own TOTAL, worked out the way `buildRemittance` works it: per sales
+  date the hand-keyed row, else the day sheet's deposits (`remitByDay`,
+  every deposit on the date), plus the three extra rows. Page 2 prints
+  exactly that; no remittance prints blank, never TOTAL. EXCESS keeps its
+  formula (Remittance − TOTAL). `buildRemittance` is untouched.
+- Live, September 2026: all 16 shops with deposits now print the Remittance
+  sheet's TOTAL on Page 2 (each had printed less — TOTAL or the hand-keyed
+  part only). Rendered from the golden dump, Page 2 is byte-identical for
+  every shop (none there keeps deposits on day sheets).
+- **The same fallback is still in two other builders, not asked for:** the
+  one at `12-statement-builders.js` ~1127 (INSPEC. CHARGES / EXCESS / NET
+  TOTAL) and the `st-wrap` one ~1326 — hand-keyed rows only, TOTAL when
+  empty. `stmtRemitTotal` is the fix for both if the office wants it.
+
 ## Remittance — who may change what
 
 One sales date, many deposits, all on the day sheet's `remits` array
@@ -1646,6 +1669,7 @@ npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, 
 npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database
 npm run verify:date-format      dates on screen are DD-MM-YYYY: DateField for every date box, day-first parsing, stored dates untouched
 npm run verify:opening-correction  Daily Entry asks an administrator before saving an Opening that differs from the carry
+npm run verify:remit-total       CRS Page 2 Remittance Amount = the Remittance sheet TOTAL (actual deposits, never TOTAL)
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

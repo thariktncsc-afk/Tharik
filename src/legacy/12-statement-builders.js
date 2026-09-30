@@ -720,16 +720,13 @@ function buildCrsPage2(d){
 
   // ── Footer totals ─────────────────────────────────────────────────────────
   var grandTotal = salesAmountMain + policeAmt + cboxAmt + gunnyAmt;
-  // Remittance total for the month (from meRemitStore), if entered
-  var totalRemit = 0;
-  try{
-    var rk = d.crsId + '_' + d.month + '_' + d.year;
-    var rs = (typeof meRemitStore!=='undefined') ? meRemitStore[rk] : null;
-    if(rs){ Object.keys(rs).forEach(function(k){ if(k==='extra') return;
-      var day=rs[k]||{}; totalRemit += (parseFloat(day.nonCereal)||0)+(parseFloat(day.cereal)||0); }); }
-  }catch(e){}
+  // Remittance: the month's deposits as the Remittance sheet totals them
+  // (stmtRemitTotal, 44-remit-total.js) — never a stand-in for them. It used
+  // to read the hand-keyed rows only and print TOTAL when those were empty
+  // (office, 2026-09-30). EXCESS keeps its own formula.
+  var totalRemit = stmtRemitTotal(d);
   var excess = totalRemit>0 ? (totalRemit - grandTotal) : 0;
-  var remitAmount = totalRemit>0 ? totalRemit : grandTotal;
+  var remitAmount = totalRemit;
 
   var css = [
     '.p2-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
