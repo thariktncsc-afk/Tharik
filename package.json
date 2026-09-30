@@ -56,6 +56,8 @@
     "verify:opening-correction": "node tools/verify-opening-correction.mjs",
     "verify:remit-total": "node tools/verify-remit-total.mjs",
     "verify:reconcile": "node tools/verify-reconcile.mjs",
+    "verify:gunny-sync": "node tools/verify-gunny-sync.mjs",
+    "verify:gunny-receipt": "node tools/verify-gunny-receipt.mjs",
     "verify:print-layout": "node tools/verify-print-layout.mjs",
     "verify:print-pdf": "node tools/verify-print-pdf.mjs"
   },

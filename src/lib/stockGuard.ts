@@ -63,6 +63,7 @@ import { buildChainIndex, isOpenFixed, openingFor, type ChainIndex } from '@/lib
 import { firstStockDates, initialDate, isInitialized, readStockInit, STOCK_INIT_KEY, type StockInit } from '@/lib/engine/stockInit';
 import { txnsOf } from '@/lib/engine/remittance';
 import { gunnyRowFor, type GunnyRec, type SalesClose } from '@/app/(app)/monthly-entry/lib';
+import { packTypesFor } from '@/lib/engine/gunnyPack';
 
 /** Kilos carry three decimals; anything under half a gram is float noise. */
 export const TOLERANCE = 0.005;
@@ -419,9 +420,11 @@ export function inspectStockWrite(
  *
  * A shop user's write must therefore agree with what the rule works out
  * (`gunnyRowFor`, the same function the screen draws from) — which is exactly
- * what the screen sends, since it stores those derived copies. 50 KG SS
- * Issues stay hand-keyed: that variety has no commodity row to take a sale
- * from. An administrator is not checked here at all.
+ * what the screen sends, since it stores those derived copies. Issues are the
+ * shop's to type, every item (office, 2026-09-30) — a number, 0 or more. The
+ * Receipt is counted from the month's sales with the Receipt page's saved
+ * Gunny / Poly switch (engine/gunnyPack.ts). An administrator is not checked
+ * here at all.
  */
 function inspectGunnyWrite(
   stored: Record<string, unknown>,
@@ -463,12 +466,16 @@ function inspectGunnyWrite(
       }
     }
     const salesClose = salesCloseAll?.[key] as SalesClose | undefined;
+    const types = packTypesFor(((incoming.receiptStore ?? stored.receiptStore) as ReceiptRow[] | undefined) ?? [], crsId, month, year);
+    // A carried Opening is judged against last month's Closing as this same
+    // write leaves it — a sales save re-carries the month after it too.
+    const prevNow = isObj(after[prevKey]) ? (after[prevKey] as Record<string, GunnyRec>) : prevStored;
 
     for (const [itemId, row] of Object.entries(rec)) {
       if (!isObj(row)) continue;
       const wasRow = isObj(ownStored[itemId]) ? (ownStored[itemId] as Record<string, unknown>) : {};
       if (JSON.stringify(wasRow) === JSON.stringify(row)) continue;
-      const want = gunnyRowFor(itemId, ownStored, prevStored, salesClose, bags, sales);
+      const want = gunnyRowFor(itemId, ownStored, prevNow, salesClose, bags, sales, types);
       const say = (field: string, got: number, expected: number) =>
         out.push({
           store: 'meGunnyStore',
@@ -482,19 +489,20 @@ function inspectGunnyWrite(
 
       // Opening: what carries in, or the figure already stored. Blank is fine
       // — the screen sends nothing until the row is touched.
-      if (row.opening !== undefined && row.opening !== '' && !near(num(row.opening), want.opening)) say('Opening', num(row.opening), want.opening);
+      const carried = row.openingAuto === true && isObj(prevNow[itemId]) && (prevNow[itemId] as GunnyRec).closing !== undefined ? num((prevNow[itemId] as GunnyRec).closing) : null;
+      if (row.opening !== undefined && row.opening !== '' && !near(num(row.opening), want.opening) && !(carried !== null && near(num(row.opening), carried))) say('Opening', num(row.opening), want.opening);
       if (row.receipt !== undefined && !near(num(row.receipt), want.rc.val)) say('Receipt', num(row.receipt), want.rc.val);
       if (row.receiptImported !== undefined && String(row.receiptImported) !== String(wasRow.receiptImported ?? '')) {
         say('Receipt (imported)', num(row.receiptImported), num(wasRow.receiptImported));
       }
-      // POLY and C.BOX Issues follow the month's sales; 50 KG SS is keyed.
-      if (want.issuesAuto && row.issues !== undefined && row.issues !== '' && !near(num(row.issues), Number(want.issues) || 0)) {
-        say('Issues', num(row.issues), Number(want.issues) || 0);
+      // Issues are typed by the shop (office, 2026-09-30) — a number, 0 or more.
+      if (row.issues !== undefined && row.issues !== '' && !(Number.isFinite(Number(row.issues)) && Number(row.issues) >= 0)) {
+        out.push({ store: 'meGunnyStore', key, crsId, section: 'a', commodity: `Gunny ${itemId.toUpperCase()}`, kind: 'gunny-locked', detail: `Issues must be a number, 0 or more — ${String(row.issues)} was sent.` });
       }
       // Total and Closing are arithmetic on the figures above, so they are
       // judged against what those figures give — including a hand-keyed
       // 50 KG SS Issues, which is this write's own.
-      const issuesNow = want.issuesAuto ? Number(want.issues) || 0 : row.issues !== undefined && row.issues !== '' ? num(row.issues) : Number(want.issues) || 0;
+      const issuesNow = row.issues !== undefined && row.issues !== '' ? num(row.issues) : Number(want.issues) || 0;
       const openNow = row.opening !== undefined && row.opening !== '' ? num(row.opening) : want.opening;
       if (row.total !== undefined && !near(num(row.total), openNow + want.rc.val)) say('Total', num(row.total), openNow + want.rc.val);
       if (row.closing !== undefined && !near(num(row.closing), openNow + want.rc.val - issuesNow)) {

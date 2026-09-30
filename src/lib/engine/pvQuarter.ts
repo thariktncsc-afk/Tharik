@@ -26,6 +26,7 @@
 import { DSS_A, DSS_B, entryListsFor, type Commodity } from '@/lib/engine/commodities';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec } from '@/lib/engine/monthlyRollup';
 import { gunnyRowFor, type GunnyRec, type SalesClose } from '@/app/(app)/monthly-entry/lib';
+import { packTypesFor } from '@/lib/engine/gunnyPack';
 import type { Flow, GunnyFlow, GunnyKey, PdfMonth } from '@/lib/engine/pvPdfParse';
 import type { PvCommRow } from '@/lib/engine/pvStatement';
 
@@ -142,7 +143,7 @@ export function systemQuarterMonth(
   }
   const gunny = {} as Record<GunnyKey, GunnyFlow>;
   for (const k of ['ss50', 'poly', 'cbox'] as const) {
-    const g = gunnyRowFor(k, stores.meGunnyStore[key] ?? {}, stores.meGunnyStore[prevKey] ?? {}, stores.salesCloseStore[key], gridGunnySales, packSales);
+    const g = gunnyRowFor(k, stores.meGunnyStore[key] ?? {}, stores.meGunnyStore[prevKey] ?? {}, stores.salesCloseStore[key], gridGunnySales, packSales, packTypesFor(stores.receiptStore as never, crsId, month, year));
     gunny[k] = { opening: g.opening, receipt: g.rc.val, total: g.total, issues: Number(g.issues) || 0, closing: g.closing };
   }
   return { label: monthLabel(month, year), source: 'system', rows, gunny, police, notes: [] };

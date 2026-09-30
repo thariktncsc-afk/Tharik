@@ -17,11 +17,15 @@
    displays it:
 
      Opening  this month's own figure if it has one, else last month's
-              Closing carried forward, else 0
-     Receipt  the office's imported figure if there is one, else the month's
-              Sales Close totals for that pack type, else the bag counts on
-              the month's own sales rows
-     Issues   as keyed, else 0
+              Closing carried forward, else 0 — a stored copy of the carry
+              (openingAuto) follows last month's Closing (office, 2026-09-30)
+     Receipt  an administrator's typed figure if there is one, else the packs
+              the month's SALES emptied — each commodity's sales ÷ its pack
+              size (bagsOf), into the pack its type says; Wheat / RRA / NPHH
+              FRK RRA as the month's latest receipt's Gunny / Poly switch
+              says (engine/gunnyPack.ts, office 2026-09-30). Not Sales Close,
+              not a stored bag count.
+     Issues   as typed, else POLY / C.BOX's month's sales of those bags
      Total    Opening + Receipt
      Closing  Total − Issues
 
@@ -40,12 +44,35 @@
 */
 
 // The commodities whose sales bags make up each pack type's receipt —
-// monthly-entry/lib.ts SC_PACK_TYPES, which is what the screen sums.
+// engine/gunnyPack.ts PACK_BASE, which is what the screen sums.
 var GUNNY_PACK_COMMS = {
   GUNNY: ['BRA','NPHH_FRK','PHH_FRK','AAY_FRK','AAY','OAP','APS','TOOR','PHH_BRA','WHEAT','RRA','NPHH_RRA','PB_BRA','PB_WHEAT','PB_TOOR'],
   POLY:  ['SUGAR','AAY_SUGAR','SALT_CIS','SALT_RFFS','PB_SUGAR'],
   CBOX:  ['PALM','OOTY','TAN','PB_PALM']
 };
+// The Receipt page's Gunny / Poly switch applies to these (PACK_SWITCHABLE).
+var GUNNY_PACK_SWITCHABLE = ['WHEAT','RRA','NPHH_RRA','PB_BRA'];
+
+/** The month's pack type of every commodity — packTypesFor in engine/gunnyPack.ts. */
+function gunnyPackTypes(crsId, month, year){
+  var out = {};
+  Object.keys(GUNNY_PACK_COMMS).forEach(function(t){ GUNNY_PACK_COMMS[t].forEach(function(id){ out[id] = t; }); });
+  var prefix = year + '-' + String(month).padStart(2, '0') + '-';
+  var rows = ((typeof receiptStore !== 'undefined' && receiptStore) ? receiptStore : [])
+    .filter(function(r){ return r && Number(r.crsId) === Number(crsId) && typeof r.date === 'string' && r.date.indexOf(prefix) === 0; })
+    .slice().sort(function(a, b){ return a.date === b.date ? (Number(a.id) || 0) - (Number(b.id) || 0) : (a.date < b.date ? -1 : 1); });
+  GUNNY_PACK_SWITCHABLE.forEach(function(id){
+    var latest;
+    rows.forEach(function(r){
+      var it = r.items ? r.items[id] : undefined;
+      if (it === undefined) return;
+      var p = it && typeof it === 'object' ? it.pack : null;
+      latest = (p === 'POLY' || p === 'GUNNY') ? p : 'GUNNY';
+    });
+    if (latest !== undefined) out[id] = latest;
+  });
+  return out;
+}
 var GUNNY_ITEM_TYPE = { ss50: 'GUNNY', poly: 'POLY', cbox: 'CBOX' };
 
 function gunnyHasValue(v){
@@ -67,25 +94,23 @@ function gunnyLiveItem(d, itemId){
   var rec  = (store[d.key] || {})[itemId] || {};
   var prev = (store[gunnyPrevKey(d.crsId, d.month, d.year)] || {})[itemId] || {};
 
-  // Opening: keyed or carried — never recomputed, it is a balance.
-  var opening = gunnyHasValue(rec.opening) ? (parseFloat(rec.opening) || 0)
+  // Opening: keyed or carried — never recomputed, it is a balance. A stored
+  // copy of the carry follows last month's Closing.
+  var carriedCopy = !!rec.openingAuto && gunnyHasValue(prev.closing);
+  var opening = (gunnyHasValue(rec.opening) && !carriedCopy) ? (parseFloat(rec.opening) || 0)
               : gunnyHasValue(prev.closing) ? (parseFloat(prev.closing) || 0)
               : 0;
 
-  // Receipt: the office's imported figure, else Sales Close, else the month's
-  // own sales bags. The stored `receipt` is a derived copy and is ignored.
+  // Receipt: an administrator's typed figure, else the packs the month's sales
+  // emptied. The stored `receipt` is a derived copy and is ignored.
   var receipt;
   if(gunnyHasValue(rec.receiptImported)){
     receipt = parseFloat(rec.receiptImported) || 0;
-  } else if(d.salesClose && (d.salesClose.gunny !== undefined || d.salesClose.poly !== undefined || d.salesClose.cbox !== undefined)){
-    var sc = d.salesClose;
-    receipt = (type === 'GUNNY' ? sc.gunny : type === 'POLY' ? sc.poly : sc.cbox) || 0;
   } else {
     receipt = 0;
-    (GUNNY_PACK_COMMS[type] || []).forEach(function(id){
-      // [S1] the same bag count the grid shows: the office's own figure where
-      // it keyed one, else the kgs divided by the pack size.
-      receipt += d.hasVal(id, 'g_sales') ? Math.round(d.getVal(id, 'g_sales')) : bagsOf(d.getVal(id, 'sales'), id);
+    var types = gunnyPackTypes(d.crsId, d.month, d.year);
+    Object.keys(types).forEach(function(id){
+      if (types[id] === type) receipt += bagsOf(d.getVal(id, 'sales'), id);
     });
   }
 

@@ -25,6 +25,7 @@ import { crsData, useSavedStore, useStore } from '@/lib/dataStore';
 import { ddmmyyyy, entrySummary } from '@/lib/engine/entryDates';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { isCrs29, SALES_ONLY, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { refreshGunnyFor } from '@/lib/gunnyRefresh';
 import { useCommodityLists, useShops } from '@/lib/masters';
 import { holidayOn, type GovtHolidayMap } from '@/lib/engine/holidays';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup';
@@ -842,6 +843,9 @@ export default function DailyEntryPage() {
       lists,
     );
     for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
+    // Gunny Stock follows the saved sales at once: the month's Receipt, Total
+    // and Closing, and the next month's carried Opening (lib/gunnyRefresh.ts).
+    refreshGunnyFor(Number(crsVal), [date, ...chained.dates]);
     const later = chained.dates.filter((ds) => ds > date);
 
     // The form now shows exactly what was saved — the baseline live sync
