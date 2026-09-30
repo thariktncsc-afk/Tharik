@@ -1543,6 +1543,14 @@ never replaces.
   0.330 → 2000.330, NPHH FRK 2953 → 5953, PHH FRK 587 → 2587, …) and no
   longer equal the POS summary. Not a COLL shop. Backup
   `backups/receipts-crs14-…`.
+- **CRS 10, advance for October 2026** (office, 2026-09-30, POS challans
+  dated 25-09-2026, TN46E1127): S180602898 NPHH FRK 2500, P.OIL 300, AAY
+  SUGAR 30, SUGAR 500, WHEAT 100; S180602899 AAY FRK 950, PHH FRK 2000;
+  S180602924 T.DHALL 400 — dated 25-09 as the challans say. AAY SUGAR 30 was
+  in two overlapping screenshots of S180602898 and is entered once. The
+  30-09 sheet re-carried them, so September's Closings rose by exactly those
+  quantities (NPHH FRK 1438 → 3938, PHH FRK 0.982 → 2000.982, …) and no
+  longer equal the POS summary. Backup `backups/receipts-crs10-…`.
 
 **Correcting a saved receipt line** — `node tools/correct-receipt.mjs --crs=N
 --receipt-no=NO --move=FROM:TO,…` (dry run), then `--write`: moves a line's
