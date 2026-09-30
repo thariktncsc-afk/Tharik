@@ -235,6 +235,8 @@ export async function loadStatementEngine(currentUser: unknown): Promise<Stateme
     CRS_MASTER: raw.get('__crsMaster') ?? [],
     TN_GOVT_HOLIDAYS: raw.get('__holidays'),
     APP_CONFIG: raw.get('__config') ?? {},
+    // Daily Sale and the reconciliation price sales at the saved rates.
+    commodityMaster: raw.get('__commodityMaster') ?? [],
     CRS_ACCOUNTS: raw.get('__accounts') ?? {},
     currentUser,
     // Same behaviour as the legacy stmtGetData: refresh the month from the

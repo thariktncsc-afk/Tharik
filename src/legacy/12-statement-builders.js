@@ -462,8 +462,6 @@ function buildCrsDailySale(d){
   COLS.forEach(function(c){ colTotals[c.id] = 0; });
   var grandTotalSales = 0;
   var grandTotalRemit = 0;
-  var totalExcess     = 0;
-  var totalShort      = 0;
 
   // Helper: format date as d.m.yy
   function fmtRemitDate(iso){
@@ -484,11 +482,10 @@ function buildCrsDailySale(d){
     var rmDay     = (d.remitByDay && d.remitByDay[day]) ? d.remitByDay[day] : null;
     var remitDate = fmtRemitDate(rmDay ? rmDay.remitDate : '');
     var remitAmt  = rmDay ? (rmDay.amount || 0) : 0;
-    // Excess: from the Inspection module for this date
-    var dayExcess = (d.inspByDay && d.inspByDay[day]) ? d.inspByDay[day].excess : 0;
-    var dayShort  = (d.inspByDay && d.inspByDay[day]) ? d.inspByDay[day].shortage : 0;
-    totalExcess  += dayExcess;
-    totalShort   += dayShort;
+    // The EXCESS column is money (under REMITTANCE). The day's inspection
+    // excess / shortage is KILOS of stock — SUGAR 9 + PALM 4 printed as "-13"
+    // on CRS 5's 29-09-2026 row — so it is not printed here (office,
+    // 2026-09-30). The month's money Excess prints in the TOTAL row.
 
     // Commodity sales values
     var cellVals = {};
@@ -503,8 +500,16 @@ function buildCrsDailySale(d){
           if(s > 0){ cellVals[c.id] = s; colTotals[c.id] += s; }
         }
       });
-      DSS_A.forEach(function(c){ dayTotal += entry.a&&entry.a[c.id] ? (parseFloat(entry.a[c.id].amount)||0):0; });
-      DSS_B.forEach(function(c){ dayTotal += entry.b&&entry.b[c.id] ? (parseFloat(entry.b[c.id].amount)||0):0; });
+      // The day's SALES amount: every chargeable Section A commodity's sales ×
+      // its saved Commodity Master rate (stmtPriced, 44-remit-total.js) —
+      // worked out, never the sheet's stored amount. Police (Section B) and
+      // C.Box / Poly are the footer's own lines, so they are not in this
+      // column: it used to add Police here AND in the footer (office,
+      // 2026-09-30: CRS 5 September 62379.50 = 62282 + Police 97.50).
+      DSS_A.forEach(function(c){
+        if (STMT_PACK_IDS[c.id] || !(entry.a && entry.a[c.id])) return;
+        dayTotal += stmtPriced(c.id, entry.a[c.id].sales);
+      });
     }
 
     grandTotalSales += dayTotal;
@@ -518,7 +523,7 @@ function buildCrsDailySale(d){
       }).join('') +
       '<td>' + (dayTotal > 0 ? dayTotal.toFixed(2) : '0.00') + '</td>' +
       '<td>' + remitDate + '</td>' +
-      '<td>' + (dayExcess ? (+dayExcess.toFixed(3)) : (dayShort ? '-'+(+dayShort.toFixed(3)) : '')) + '</td>' +
+      '<td></td>' +
       '<td>' + (remitAmt > 0 ? remitAmt.toFixed(2) : '') + '</td>' +
     '</tr>';
   }
@@ -543,6 +548,18 @@ function buildCrsDailySale(d){
     grandTotalRemit += xAmt;
   }
 
+  // Footer: each amount once, from the same rules as CRS Page 2's TOTAL and
+  // the reconciliation (44-remit-total.js) — Police = Section B sales × saved
+  // rate; C.Box / P.Gunny = the grid's Empty Card+Box / Polythene Bag sales,
+  // else the Monthly Remittance "Poly Gunny & C.Box" row. (It used to add
+  // Police a second time, and all three extra remittance rows.)
+  var policeTotal = stmtPoliceAmount(d);
+  var cboxExtra   = stmtPackAmount(d).pack;
+  var grandFinal  = grandTotalSales + policeTotal + cboxExtra;
+  // The month's Excess: amount paid in bank − the TOTAL below. Negative is a
+  // shortfall and prints as it is.
+  var monthExcess = Math.round((grandTotalRemit - grandFinal) * 100) / 100;
+
   // TOTAL row
   rows += '<tr class="total-row">' +
     '<td class="date-col">TOTAL</td>' +
@@ -552,18 +569,9 @@ function buildCrsDailySale(d){
     }).join('') +
     '<td>' + grandTotalSales.toFixed(2) + '</td>' +
     '<td></td>' +
-    '<td>' + (totalExcess ? (+totalExcess.toFixed(3)) : '0') + '</td>' +
+    '<td>' + monthExcess.toFixed(2) + '</td>' +
     '<td>' + grandTotalRemit.toFixed(2) + '</td>' +
   '</tr>';
-
-  // Police + c.box totals for footer
-  var policeTotal = 0;
-  var monthData = (typeof monthlyStore!=='undefined') ? (monthlyStore[moKey]||null) : null;
-  if(monthData && monthData.b){
-    DSS_B.forEach(function(c){ policeTotal += parseFloat((monthData.b[c.id]||{}).amount||0)||0; });
-  }
-  var cboxExtra = parseFloat(extraStore.e1nc||0)+parseFloat(extraStore.e2nc||0)+parseFloat(extraStore.e3nc||0);
-  var grandFinal = grandTotalSales + policeTotal + cboxExtra;
 
   return '<style>' + css + '</style>' +
   '<div class="dcs-wrap">' +
