@@ -1476,6 +1476,18 @@ types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
   505, OOTY 340; police BRA 36.5, SUGAR 2, WHEAT 2, T.DHALL 4, P.OIL 1; Gunny
   50 KG SS 1751, POLY 0, C.BOX 0. Started-record 01-09-2026. Backup
   `backups/day-sheet-10_2026-09-01-…`.
+- **CRS 10, September 2026 movement** (office, 2026-09-30, POS summary 01-09
+  → 30-09): one sheet dated 30-09 with the month's Sales; RRA 600 (on no
+  receipt) added as `POS/10/09/2026` dated 30-09; the register's
+  R/2026/046 police lines corrected 18 / 18 / 36 → 16 / 16 / 32 (Sugar,
+  Wheat, T.DHALL P — `correct-receipt.mjs --set`, office's answer: the POS);
+  PHH FRK's −20 as a SHORTAGE of 20 on 30-09; the POS's OAP FRK ("BR OAP",
+  2 / 2) added into OAP (sales 5) and P FRK BR (143 / 112.5) into Police BRA
+  (sales 142.5, closing 37 = the POS's 6.5 + 30.5). All 20 closings equal the
+  POS (BRA 0, RRA 50, NPHH FRK 1438, PHH BRA 959.02, PHH FRK 0.982, AAY FRK
+  267, SUGAR 214.91, WHEAT 1486.03, T.DHALL 71, P.OIL 71, …). No remittance.
+  DSS pages: 01-09, the receipt-only 25-09, 30-09. Backup
+  `backups/day-sheet-10_2026-09-30-…`.
 - **CRS 27, September 2026 movement** (office, 2026-09-30, POS summary 01-09
   → 30-09): one sheet dated 30-09 — Receipt `POS/27/09/2026` (14
   commodities), the month's Sales, and NPHH FRK's −19 in the POS's

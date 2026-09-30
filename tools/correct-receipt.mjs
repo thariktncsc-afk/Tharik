@@ -5,9 +5,12 @@
  *   node tools/correct-receipt.mjs --crs=14 --receipt-no=S184606559 --move=PHH_BRA:PHH_FRK,AAY:AAY_FRK            dry run
  *   node tools/correct-receipt.mjs --crs=14 --receipt-no=S184606559 --move=PHH_BRA:PHH_FRK,AAY:AAY_FRK --write    apply
  *
+ *   node tools/correct-receipt.mjs --crs=10 --receipt-no=R/2026/046 --set=PB_SUGAR:16,PB_WHEAT:16      a line's quantity
+ *
  * Each FROM:TO takes the line's quantity off FROM and puts the same quantity
- * on TO — nothing is added or lost, the receipt's date, number, type and every
- * other line stay as they are. Then, exactly as the Receipt page's
+ * on TO — nothing is added or lost. Each --set ID:qty changes the quantity of
+ * a line the receipt already carries (above 0; never adds or removes a line).
+ * The receipt's date, number, type and every other line stay as they are. Then, exactly as the Receipt page's
  * republishMonth: the day sheet takes the figure where it has one
  * (resyncReceiptMonth), the month republishes, the chain is rebuilt from the
  * receipt's date (rechainAndRepublish) and the Gunny Stock copies follow.
@@ -72,8 +75,9 @@ async function main() {
   const crsId = Number(arg('crs'));
   const receiptNo = arg('receipt-no');
   const moves = (arg('move') ?? '').split(',').filter(Boolean).map((p) => p.split(':'));
-  if (!Number.isInteger(crsId) || !receiptNo || !moves.length || moves.some((m) => m.length !== 2 || !m[0] || !m[1])) {
-    console.error('Usage: node tools/correct-receipt.mjs --crs=N --receipt-no=NO --move=FROM:TO[,FROM:TO…] [--write]');
+  const sets = (arg('set') ?? '').split(',').filter(Boolean).map((p) => { const [id, q] = p.split(':'); return [id, Number(q)]; });
+  if (!Number.isInteger(crsId) || !receiptNo || !(moves.length || sets.length) || moves.some((m) => m.length !== 2 || !m[0] || !m[1])) {
+    console.error('Usage: node tools/correct-receipt.mjs --crs=N --receipt-no=NO [--move=FROM:TO,…] [--set=ID:qty,…] [--write]');
     return 2;
   }
 
@@ -97,6 +101,11 @@ async function main() {
     if (froms.has(from) || tos.has(to)) problems.push(`${from}:${to} repeats a commodity`);
     froms.add(from); tos.add(to);
   }
+  for (const [id, q] of sets) {
+    if (!row.items?.[id]) problems.push(`${receiptNo} carries no ${id} line to change`);
+    if (!(Number.isFinite(q) && q > 0)) problems.push(`${id}: quantity must be above 0`);
+    if (moves.some(([f, t]) => f === id || t === id)) problems.push(`${id} is both moved and set`);
+  }
   if (problems.length) { console.error('Refused:\n  ' + problems.join('\n  ')); return 1; }
 
   // The receipt, lines moved; a switchable line keeps / takes the Receipt page's Gunny / Poly shape.
@@ -106,6 +115,7 @@ async function main() {
     const qty = Number(row.items[from].qty);
     items[to] = PACK_SWITCHABLE.has(to) ? { qty, pack: row.items[from].pack === 'POLY' ? 'POLY' : 'GUNNY' } : { qty };
   }
+  for (const [id, q] of sets) items[id] = { ...items[id], qty: q };
   const fixed = { ...row, items };
   const next = Object.fromEntries(WRITABLE.map((k) => [k, clone(stored[k] ?? (k === 'receiptStore' ? [] : {}))]));
   const before = clone(next.receiptStore);
@@ -120,7 +130,7 @@ async function main() {
     const g = refreshGunnyMonths(next.meGunnyStore, crsId, mm, yy, next.monthlyStore, (mo, yr) => packTypesFor(next.receiptStore, crsId, mo, yr));
     if (g) next.meGunnyStore = g;
   }
-  console.log(`  ${receiptNo} · ${row.date} · ${String(row.type ?? 'regular').toUpperCase()} · ${moves.map(([f, t]) => `${f} ${row.items[f].qty} → ${t}`).join(', ')}`);
+  console.log(`  ${receiptNo} · ${row.date} · ${String(row.type ?? 'regular').toUpperCase()} · ${[...moves.map(([f, t]) => `${f} ${row.items[f].qty} → ${t}`), ...sets.map(([id, q]) => `${id} ${row.items[id].qty} → ${q}`)].join(', ')}`);
 
   const changed = WRITABLE.filter((k) => canon(next[k]) !== canon(stored[k] ?? (k === 'receiptStore' ? [] : {})));
   for (const k of changed) {
@@ -139,14 +149,14 @@ async function main() {
   const incoming = Object.fromEntries(changed.map((k) => [k, next[k]]));
   const broken = inspectStockWrite(stored, incoming, true);
   if (broken.length) { console.error(`Refused by the stock guard: ${describeStock(broken)}`); return 1; }
-  const key = `${crsId}_${m}_${y}`, pa = stored.monthlyStore?.[key]?.a ?? {}, na = next.monthlyStore?.[key]?.a ?? {};
-  for (const id of new Set(moves.flat())) console.log(`  ${key} ${id.padEnd(10)} Receipt ${pa[id]?.receipt ?? 0} → ${na[id]?.receipt ?? 0} · Closing ${pa[id]?.close ?? 0} → ${na[id]?.close ?? 0}`);
+  const key = `${crsId}_${m}_${y}`, pa = { ...stored.monthlyStore?.[key]?.a, ...stored.monthlyStore?.[key]?.b }, na = { ...next.monthlyStore?.[key]?.a, ...next.monthlyStore?.[key]?.b };
+  for (const id of new Set([...moves.flat(), ...sets.map(([id]) => id)])) console.log(`  ${key} ${id.padEnd(10)} Receipt ${pa[id]?.receipt ?? 0} → ${na[id]?.receipt ?? 0} · Closing ${pa[id]?.close ?? 0} → ${na[id]?.close ?? 0}`);
   console.log('  stock guard ✓');
   if (!write) { console.log('DRY RUN — pass --write to apply.'); return 0; }
 
   mkdirSync(join(root, 'backups'), { recursive: true });
   const bk = join(root, 'backups', `correct-receipt-crs${crsId}-${receiptNo.replace(/[^\w-]/g, '_')}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  writeFileSync(bk, JSON.stringify({ crsId, receiptNo, moves, versions, before: Object.fromEntries(changed.map((k) => [k, stored[k]])) }, null, 1));
+  writeFileSync(bk, JSON.stringify({ crsId, receiptNo, moves, sets, versions, before: Object.fromEntries(changed.map((k) => [k, stored[k]])) }, null, 1));
   console.log(`Backed up ${changed.join(', ')} to ${bk}`);
   const landed = {};
   for (const k of ['receiptStore', ...changed.filter((x) => x !== 'receiptStore')].filter((x) => changed.includes(x))) {
