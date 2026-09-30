@@ -59,6 +59,7 @@
     "verify:gunny-sync": "node tools/verify-gunny-sync.mjs",
     "verify:gunny-receipt": "node tools/verify-gunny-receipt.mjs",
     "verify:daily-bags": "node tools/verify-daily-bags.mjs",
+    "verify:bag-counts": "node tools/verify-bag-counts.mjs",
     "verify:print-layout": "node tools/verify-print-layout.mjs",
     "verify:print-pdf": "node tools/verify-print-pdf.mjs"
   },

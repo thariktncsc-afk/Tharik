@@ -492,6 +492,25 @@ console.log('\n4. The current month from the stores');
   check('nothing cached: a change to the stores is in the next read', again.rows.BRA.receipt === 600 && again.rows.BRA.closing === 3450, J(again.rows.BRA));
   const transfer = Q.systemQuarterMonth(9, 9, 2026, { ...stores, meManualStore: { [key]: { a: { TOOR: { open: 400, receipt: 0, transfer: 30, total: 370, sales: 0, close: 370 } }, b: {} } } }, false);
   check('a stored outward transfer (+30) is −30 in the chain', transfer.rows.TOOR.transfer === -30, J(transfer.rows.TOOR));
+
+  // Empty Polythene Bag / Empty Card+Box are SALES ONLY on the grid; their stock is Gunny's POLY / C.BOX
+  // (CRS 1, 2026-09-30: "August closes at 15, but September opens at 0" while Gunny's POLY opened at 15).
+  const k1 = '1_9_2026';
+  const bags = {
+    entryStore: {}, inspectionStore: {}, receiptStore: [], salesCloseStore: {},
+    meManualStore: { [k1]: { a: { SUGAR: { open: 800, receipt: 0, total: 800, sales: 800, close: 0 }, EMPTY_BAG: { open: 0, receipt: 0, total: 0, sales: 0, close: 0 }, EMPTY_BOX: { open: 0, receipt: 0, total: 0, sales: 22, close: -22 } }, b: {} } },
+    meGunnyStore: { [k1]: { poly: { opening: 15, openingAuto: false }, cbox: { opening: 0, openingAuto: false } } },
+  };
+  const s1 = Q.systemQuarterMonth(1, 9, 2026, bags, false);
+  check(`Empty Polythene Bag is Gunny POLY: 15 + 16 (Sugar 800 kg ÷ 50) − 0 = 31 — ${J(s1.rows.EMPTY_BAG)}`, s1.rows.EMPTY_BAG.open === 15 && s1.rows.EMPTY_BAG.receipt === 16 && s1.rows.EMPTY_BAG.sales === 0 && s1.rows.EMPTY_BAG.closing === 31 && s1.gunny.poly.closing === 31);
+  check(`Empty Card+Box is Gunny C.BOX: its Issues are the 22 sold — ${J(s1.rows.EMPTY_BOX)}`, s1.rows.EMPTY_BOX.open === 0 && s1.rows.EMPTY_BOX.sales === 22 && s1.rows.EMPTY_BOX.closing === s1.gunny.cbox.closing);
+  const aug = { label: 'August 2026', source: 'pdf', notes: [], gunny: null, police: null,
+    rows: { SUGAR: { open: 0, receipt: 800, excess: 0, shortage: 0, transfer: 0, total: 800, sales: 0, closing: 800 }, EMPTY_BAG: { open: 15, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 15, sales: 0, closing: 15 }, EMPTY_BOX: { open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0 } } };
+  const qOk = Q.chainQuarter(1, [aug, s1]);
+  check('August P.GUNNY 15 → September POLY 15: no false mismatch', !(qOk.problems ?? []).some((p) => /Empty Polythene Bag|Empty Card\+Box/.test(p)), J(qOk.problems ?? []));
+  const broken = JSON.parse(JSON.stringify(bags)); broken.meGunnyStore[k1].poly.opening = 0;
+  const qBad = Q.chainQuarter(1, [aug, Q.systemQuarterMonth(1, 9, 2026, broken, false)]);
+  check('a genuine break (September POLY opens at 0) is still refused', !qBad.ok && qBad.problems.some((p) => /Empty Polythene Bag: August 2026 closes at 15, but September 2026 opens at 0/.test(p)), J(qBad.problems ?? []));
 }
 
 // ── 5. The sheet, and the paper it prints on ─────────────────────────────
