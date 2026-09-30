@@ -5307,7 +5307,12 @@ function gunnyLiveItem(d, itemId){
   // stored count where it keyed one that differs, else sales ÷ pack size
   // (salesBags, engine/gunnyPack.ts). A Receipt typed into the Gunny table
   // (receiptImported) and the stored `receipt` copy are not read.
+  // An administrator's typed Receipt (receiptTyped, office 2026-09-30) wins.
   var receipt = 0;
+  if (gunnyHasValue(rec.receiptTyped) && isFinite(parseFloat(rec.receiptTyped))) {
+    receipt = parseFloat(rec.receiptTyped);
+    return { ob: opening, rec: receipt, tot: opening + receipt, iss: gunnyIssues(d, rec, type), cb: opening + receipt - gunnyIssues(d, rec, type), src: 'gunny' };
+  }
   var types = gunnyPackTypes(d.crsId, d.month, d.year);
   Object.keys(types).forEach(function(id){
     if (types[id] !== type) return;
@@ -5321,12 +5326,17 @@ function gunnyLiveItem(d, itemId){
   // the shop keys them and the one place they are counted (office,
   // 2026-09-26 — same rule as gunnyRowFor on the Gunny Stock screen). 50 KG SS
   // has no commodity row of its own and stays keyed.
+  var issues = gunnyIssues(d, rec, type);
+  return { ob: opening, rec: receipt, tot: opening + receipt, iss: issues, cb: opening + receipt - issues, src: 'gunny' };
+}
+
+/** Issues: as typed, else POLY / C.BOX's month's EMPTY_BAG / EMPTY_BOX sales, else 0. */
+function gunnyIssues(d, rec, type){
   var GUNNY_SALES_COMM = {POLY: 'EMPTY_BAG', CBOX: 'EMPTY_BOX'};
   var salesComm = GUNNY_SALES_COMM[type];
-  var issues = gunnyHasValue(rec.issues) ? (parseFloat(rec.issues) || 0)
-             : salesComm ? (parseFloat(d.getVal(salesComm, 'sales')) || 0)
-             : 0;
-  return { ob: opening, rec: receipt, tot: opening + receipt, iss: issues, cb: opening + receipt - issues, src: 'gunny' };
+  return gunnyHasValue(rec.issues) ? (parseFloat(rec.issues) || 0)
+       : salesComm ? (parseFloat(d.getVal(salesComm, 'sales')) || 0)
+       : 0;
 }
 
 var _gunnyOrigStmtGetData = stmtGetData;

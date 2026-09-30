@@ -21,7 +21,15 @@ export type GunnyRec = {
   openingAuto?: boolean;
   receiptAuto?: boolean;
   receiptSrc?: string;
+  /** Legacy: a Receipt typed before 2026-09-30 (the POS / workbook figure). No longer read. */
   receiptImported?: number;
+  /**
+   * A Receipt an ADMINISTRATOR typed into the Gunny table (office, 2026-09-30):
+   * it wins over Monthly Sales' figure for that month until it is cleared.
+   * Only a figure typed from that date counts — the legacy receiptImported
+   * (CRS 5's 236 / 23) stays unread.
+   */
+  receiptTyped?: number | '';
   createdAt?: string;
   updatedAt?: string;
 };
@@ -38,6 +46,8 @@ export type GunnyRow = {
   openingVal: string;
   openingAuto: boolean;
   rc: { val: number; src: string; imported: boolean };
+  /** What Monthly Sales says, whatever was typed — shown beside a typed Receipt. */
+  rcAuto: number;
   issues: number | '';
   /** True when Issues is the month's own C.Box / Poly sales rather than a keyed figure. */
   issuesAuto: boolean;
@@ -54,7 +64,8 @@ export type GunnyRow = {
  *            stored copy of the carry (openingAuto) follows last month's
  *            Closing, so a change there reaches this month (office,
  *            2026-09-30: CB → next month's OB, always).
- *   Receipt  the sum of the bag counts MONTHLY SALES shows, by pack —
+ *   Receipt  a Receipt an administrator typed (receiptTyped, 2026-09-30),
+ *            else the sum of the bag counts MONTHLY SALES shows, by pack —
  *            engine/gunnyPack.ts: each commodity's sales ÷ its pack size,
  *            into the pack its type (and, for Wheat / RRA / NPHH FRK RRA, the
  *            month's Receipt-page switch) says. Monthly Sales is the only
@@ -86,13 +97,15 @@ export function gunnyRowFor(
   const opening = hasOwnOpening ? Number(rec.opening) || 0 : prevClosing !== undefined ? Number(prevClosing) || 0 : 0;
   const openingVal = hasOwnOpening ? String(rec.opening) : prevClosing !== undefined ? String(prevClosing) : '';
   // The Receipt is Monthly Sales' own bag counts, summed by pack: the grid's
-  // figures where the caller has them (gridGunnySales), else sales ÷ pack size.
+  // figures where the caller has them (gridGunnySales), else sales ÷ pack size
+  // — unless an administrator typed one (receiptTyped), which wins until it is
+  // cleared (office, 2026-09-30).
   const type = ME_GUNNY_TYPE[id];
-  const rc: GunnyRow['rc'] = {
-    val: packCounts(packSales ?? {}, packTypes ?? PACK_BASE, gridGunnySales)[type],
-    src: `From Monthly Sales — the ${PACK_SRC[type]} it shows for this month`,
-    imported: false,
-  };
+  const rcAuto = packCounts(packSales ?? {}, packTypes ?? PACK_BASE, gridGunnySales)[type];
+  const typed = rec.receiptTyped !== undefined && rec.receiptTyped !== null && String(rec.receiptTyped) !== '' && Number.isFinite(Number(rec.receiptTyped));
+  const rc: GunnyRow['rc'] = typed
+    ? { val: Number(rec.receiptTyped), src: `Typed by an administrator — Monthly Sales says ${rcAuto}. Clear the box to go back to it.`, imported: true }
+    : { val: rcAuto, src: `From Monthly Sales — the ${PACK_SRC[type]} it shows for this month`, imported: false };
   // Issues: a keyed figure (an administrator's correction) wins; otherwise
   // POLY and C.BOX take the month's own sales of those bags, which is the one
   // place they are counted. The deduction therefore happens once, here, from
@@ -105,7 +118,7 @@ export function gunnyRowFor(
   const issues: number | '' = keyed !== null ? keyed : derived !== null ? derived : '';
   const total = opening + rc.val;
   const closing = total - (Number(issues) || 0);
-  return { rec, opening, openingVal, openingAuto, rc, issues, issuesAuto, total, closing };
+  return { rec, opening, openingVal, openingAuto, rc, rcAuto, issues, issuesAuto, total, closing };
 }
 
 /**
@@ -127,6 +140,7 @@ export function gunnySaveProblems(
   for (const item of ME_GUNNY_ITEMS) {
     const cur = own[item.id] ?? {};
     if (bad(cur.opening)) errors.push(`${item.label}: Opening must be a number, 0 or more.`);
+    if (bad(cur.receiptTyped)) errors.push(`${item.label}: Receipt must be a number, 0 or more.`);
     if (bad(cur.issues)) errors.push(`${item.label}: Issues must be a number, 0 or more.`);
     const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales, packTypes);
     if (r.closing < 0) deficits.push(`${item.label}: Issues ${r.issues} exceed Total ${r.total} (Closing ${r.closing})`);

@@ -145,6 +145,24 @@ console.log('\n5. Where the Receipt comes from; Issues');
   check(`typed Issues 30 stand, whatever the sales (Poly sold 72): Issues ${typed.issues}, Total ${typed.total}, Closing ${typed.closing}`, typed.issues === 30 && !typed.issuesAuto && typed.total === 20 && typed.closing === -10);
 }
 
+console.log('\n5b. An administrator\'s typed Receipt (receiptTyped, 2026-09-30)');
+{
+  const grid = { BRA: 116 };
+  const t = gunnyRowFor('ss50', { ss50: { opening: 89, receiptTyped: 237, receiptImported: 236 } }, {}, undefined, grid, { BRA: 5814 }, PACK_BASE);
+  check(`a typed 237 wins over Monthly Sales' ${t.rcAuto}: Receipt ${t.rc.val}, Total ${t.total} (the legacy 236 is ignored)`, t.rc.val === 237 && t.rc.imported && t.rcAuto === 116 && t.total === 326);
+  const cleared = gunnyRowFor('ss50', { ss50: { opening: 89, receiptTyped: '', receiptImported: 236 } }, {}, undefined, grid, { BRA: 5814 }, PACK_BASE);
+  check(`cleared ('') → back to Monthly Sales: ${cleared.rc.val}`, cleared.rc.val === 116 && !cleared.rc.imported);
+  const { gunnySaveProblems } = await imp('src/app/(app)/monthly-entry/lib.ts');
+  check('a negative typed Receipt is refused by Save', gunnySaveProblems({ ss50: { receiptTyped: -1 } }, {}, undefined, grid, { BRA: 5814 }).errors.some((e) => /Receipt must be a number/.test(e)));
+  const stored = { meGunnyStore: { '20_9_2026': { ss50: { opening: 874 } } }, monthlyStore: { '20_9_2026': { a: { BRA: { sales: 21250 } }, b: {} } }, receiptStore: [] };
+  const typedWrite = { meGunnyStore: { '20_9_2026': { ss50: { opening: 874, receiptTyped: 500, receipt: 500, total: 1374, closing: 1374 } } } };
+  check('a shop user may not type a Receipt (rule 5 refuses)', inspectStockWrite(stored, typedWrite, false).some((v) => /Receipt/.test(v.detail)));
+  check('an administrator may', inspectStockWrite(stored, typedWrite, true).length === 0);
+  const later = { ...stored, meGunnyStore: typedWrite.meGunnyStore };
+  const shopKeeps = { meGunnyStore: { '20_9_2026': { ss50: { opening: 874, receiptTyped: 500, receipt: 500, total: 1374, issues: 10, closing: 1364 } } } };
+  check('…and a shop user\'s later Save keeps it (Issues typed, Receipt untouched) — lands', inspectStockWrite(later, shopKeeps, false).length === 0, describeStock(inspectStockWrite(later, shopKeeps, false)));
+}
+
 console.log('\n6. After a Daily save');
 {
   const types = () => PACK_BASE;
@@ -204,10 +222,12 @@ console.log('\n9. Wiring');
   const me = readFileSync(join(root, 'src/app/(app)/monthly-entry/page.tsx'), 'utf8');
   check('Monthly Entry: the month-close refreshes Gunny; the table gets the switch types', /refreshGunnyFor\(ctx\.crsId/.test(me) && /packTypes=\{packTypes\}/.test(me));
   const gt = readFileSync(join(root, 'src/app/(app)/monthly-entry/GunnyTable.tsx'), 'utf8');
-  check('Gunny table: Issues typable by everyone; Opening admin-only; Receipt never typed (no receiptImported write)',
-    !/readOnly=\{issuesAuto && !isAdmin\}/.test(gt) && (gt.match(/readOnly=\{!isAdmin\}/g) ?? []).length === 1 && !/receiptImported:/.test(gt) && /data-gunny-receipt/.test(gt));
+  check('Gunny table: Issues typable by everyone; Opening and Receipt admin-only (receiptTyped, never receiptImported)',
+    !/readOnly=\{issuesAuto && !isAdmin\}/.test(gt) && (gt.match(/readOnly=\{!isAdmin\}/g) ?? []).length === 2 && !/receiptImported:/.test(gt) && /receiptTyped:/.test(gt) && /data-gunny-receipt/.test(gt));
+  check('Gunny table: typing changes a draft, never the store — only Save writes', !/crsData\.update[^;]*\n?[^;]*write\b/.test(gt) && /setDrafts\(/.test(gt.slice(gt.indexOf('const write'), gt.indexOf('const rows'))) && !/crsData\.update/.test(gt.slice(gt.indexOf('const write'), gt.indexOf('const rows'))));
   const lib = readFileSync(join(root, 'src/app/(app)/monthly-entry/lib.ts'), 'utf8');
-  check('the rule reads no typed Receipt anywhere (screen rule, statements)', !/rec\.receiptImported/.test(lib) && !/rec\.receiptImported/.test(readFileSync(join(root, 'src/legacy/42-gunny-live.js'), 'utf8')));
+  check('the legacy typed Receipt (receiptImported) is read nowhere; the new one (receiptTyped) by the screen and the statements',
+    !/rec\.receiptImported/.test(lib) && !/rec\.receiptImported/.test(readFileSync(join(root, 'src/legacy/42-gunny-live.js'), 'utf8')) && /rec\.receiptTyped/.test(lib) && /rec\.receiptTyped/.test(readFileSync(join(root, 'src/legacy/42-gunny-live.js'), 'utf8')));
   check('the server and the PV read Monthly Sales\' bag counts (salesBags)', /salesBags\(row, id\)/.test(readFileSync(join(root, 'src/lib/stockGuard.ts'), 'utf8')) && /salesBags\(r, id\)/.test(readFileSync(join(root, 'src/lib/engine/pvQuarter.ts'), 'utf8')));
   const cx = readFileSync(join(root, 'src/lib/clearExecute.ts'), 'utf8');
   check('an approved clear refreshes the Gunny months it moved', /refreshGunnyMonths\(gunny/.test(cx));

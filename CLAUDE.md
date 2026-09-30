@@ -771,6 +771,32 @@ Office, 2026-09-29. `npm run verify:gunny-save`.
   while one is being sent is ignored.
 - Permissions are the inputs' own and rule 5's; the button changes neither.
   A shop user's Save passes rule 5 because it stores what the rule works out.
+- **Save-only, with an unsaved marker** (office, 2026-09-30). Typing used to
+  write the store, whose 5-second autosave sent each keystroke — so pressing
+  Save often had nothing left to send, and the office read that as "Save
+  does not work" (CRS 29, 11:11 and 11:36: two saves that changed only the
+  timestamp). Now typing changes a DRAFT held by the table, per shop-month
+  (`drafts[ctx.key]`), and nothing reaches the database until Save. Total
+  and Closing follow the draft on the same render; the button turns amber
+  ("unsaved changes", `data-dirty`), a value typed back to the stored one
+  drops out of the draft, and leaving the page with a draft asks first
+  (`beforeunload`). Save lays the draft over the month AS THE DATABASE HOLDS
+  IT NOW (so someone else's newer figure is kept), validates, stores, and
+  clears only the edits that were sent once `saveConfirmed()` lands; edits
+  typed while it was on its way stay unsaved.
+- **An administrator may type the Receipt** (office's choice, 2026-09-30):
+  stored as `receiptTyped`, it wins over Monthly Sales' figure for that
+  month, shown orange with "Monthly Sales says N"; clearing the box drops
+  the field and goes back to Monthly Sales. Shop staff: read-only, and rule
+  5 refuses a `receiptTyped` a shop user changes. The legacy
+  `receiptImported` (CRS 5's 236 / 23) stays unread — only a Receipt typed
+  from this date counts. Screen, rule 5, PV and statements (42-gunny-live.js)
+  read it the same way.
+- Browser run on a copy of live data (stubbed API; each write judged by the
+  real guard): every row × Opening / Receipt / Issues on its own, all nine
+  in one Save, clearing a typed Receipt, CRS and month changes, a shop user's
+  Issues, CRS 20 and 29 — each saved, ticked after the database, and read
+  back after a reload.
 
 ### Gunny Save carries POLY / C.BOX into Monthly Sales and the last day
 
@@ -829,7 +855,9 @@ and — in `42-gunny-live.js` — the statements:
 - **Sales Close no longer sets the Receipt** (office's choice). CRS 7
   September moves from its Sales Close 112 / 11 / 33 to 311 / 39 / 88 —
   its POLY / C.BOX Closings −28 / −55 → 0; every other live shop unchanged.
-- **Monthly Sales is the single source — nothing typed overrides it**
+- **Monthly Sales is the single source — nothing typed overrides it** (amended
+  the same afternoon: an administrator's `receiptTyped` does; see "Gunny Stock
+  Management's own Save")
   (office's second instruction, 2026-09-30; reverses "an administrator's
   Receipt wins" of the same morning). The Receipt is the SUM OF THE BAG
   COUNTS MONTHLY SALES SHOWS in its Sales column, by pack: `salesBags` is

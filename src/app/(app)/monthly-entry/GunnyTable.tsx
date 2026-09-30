@@ -24,8 +24,18 @@
  * are keyed once, here. And, the same day: Receipt is counted from the
  * month's saved sales (engine/gunnyPack.ts — never Sales Close), and Issues
  * are typed by the shop as well as an administrator.
+ *
+ * Save-only (office, 2026-09-30): typing changes a DRAFT held here, never the
+ * store, so nothing reaches the database until Save — which is what the
+ * office expects the button to do (the store's 5-second autosave used to send
+ * each keystroke, leaving Save nothing to send). Total and Closing follow the
+ * draft on the same render; the button turns amber with "Unsaved changes"
+ * until Save lands, and leaving the page with a draft asks first. Drafts are
+ * kept per shop-month, so another shop or month never shows them. An
+ * administrator may type the Receipt (receiptTyped); clearing it goes back
+ * to Monthly Sales.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { saveSuccess } from '@/components/SaveSuccess';
 import { crsData } from '@/lib/dataStore';
@@ -70,9 +80,33 @@ export default function GunnyTable({
   isAdmin: boolean;
   subtitle: string;
 }) {
-  const month = gunny[ctx.key] ?? {};
+  // The person's unsaved edits, per shop-month and item: only the fields they
+  // type (Opening, Receipt, Issues). Everything shown is worked out from the
+  // stored month with these laid over it.
+  type Draft = Record<string, Partial<Pick<GunnyRec, 'opening' | 'openingAuto' | 'issues' | 'receiptTyped'>>>;
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const draft = drafts[ctx.key] ?? {};
+  const dirty = Object.keys(draft).length > 0;
+  const withDraft = (stored: Record<string, GunnyRec>, d: Draft): Record<string, GunnyRec> => {
+    const out: Record<string, GunnyRec> = { ...stored };
+    for (const [id, patch] of Object.entries(d)) out[id] = { ...(stored[id] ?? {}), ...patch };
+    return out;
+  };
+  const month = withDraft(gunny[ctx.key] ?? {}, draft);
   const prevKey = `${ctx.crsId}_${ctx.month === 1 ? 12 : ctx.month - 1}_${ctx.month === 1 ? ctx.year - 1 : ctx.year}`;
   const prevMonth = gunny[prevKey] ?? {};
+
+  // Leaving the page (reload, close, typed address) with unsaved Gunny edits asks first.
+  const anyDirty = Object.values(drafts).some((d) => Object.keys(d).length > 0);
+  useEffect(() => {
+    if (!anyDirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [anyDirty]);
 
   // The row's arithmetic lives in lib.ts (gunnyRowFor), shared with the
   // 3-month PV so the two can never show different September Gunny figures.
@@ -80,30 +114,22 @@ export default function GunnyTable({
   // (15-monthly-extras).
   const rowFor = (id: string) => gunnyRowFor(id, month, prevMonth, salesClose, gridGunnySales, packSales, packTypes);
 
-  const write = (id: string, patch: Partial<GunnyRec>) => {
-    crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
-      const m = { ...(d[ctx.key] ?? {}) };
-      const label = ME_GUNNY_ITEMS.find((i) => i.id === id)?.label ?? id;
-      const cur = { ...(m[id] ?? {}) };
-      const r = rowFor(id);
-      m[id] = {
-        itemName: cur.itemName ?? label,
-        crsId: String(ctx.crsId),
-        month: ctx.month,
-        year: ctx.year,
-        ...cur,
-        // A carried Opening is stored as the carry, never a stale copy.
-        ...(r.openingAuto ? { opening: r.openingVal !== '' ? Number(r.openingVal) : undefined, openingAuto: true } : {}),
-        ...patch,
-        updatedAt: new Date().toISOString(),
-      };
-      // keep the derived fields stored, as the legacy table did — the rule's own figures
-      const after = m[id];
-      const r2 = gunnyRowFor(id, m, prevMonth, salesClose, gridGunnySales, packSales, packTypes);
-      after.receipt = r2.rc.val;
-      after.total = r2.total;
-      after.closing = r2.closing;
-      d[ctx.key] = m;
+  // Typing changes the draft only. A value typed back to what is stored drops
+  // out of the draft, so the button is amber only while something differs.
+  const write = (id: string, patch: Draft[string]) => {
+    const key = ctx.key;
+    setDrafts((all) => {
+      const stored = (crsData.get<Record<string, Record<string, GunnyRec>>>('meGunnyStore') ?? {})[key]?.[id] ?? {};
+      const cur = { ...(all[key]?.[id] ?? {}), ...patch };
+      for (const f of Object.keys(cur) as (keyof typeof cur)[]) {
+        const was = stored[f];
+        if (String(cur[f] ?? '') === String(was ?? '') && !(f === 'openingAuto')) delete cur[f];
+      }
+      if (cur.opening === undefined) delete cur.openingAuto;
+      const d = { ...(all[key] ?? {}) };
+      if (Object.keys(cur).length) d[id] = cur;
+      else delete d[id];
+      return { ...all, [key]: d };
     });
   };
 
@@ -126,7 +152,13 @@ export default function GunnyTable({
   const save = async () => {
     if (busy.current) return; // a second tap while the first is being sent
     const d0 = crsData.get<Record<string, Record<string, GunnyRec>>>('meGunnyStore') ?? {};
-    const { errors, deficits } = gunnySaveProblems(d0[ctx.key] ?? {}, d0[prevKey] ?? {}, salesClose, gridGunnySales, packSales, packTypes);
+    // What is saved: the month as the database holds it, with this person's
+    // edits laid over it — read now, so a figure someone else saved meanwhile
+    // is kept and only the fields typed here change.
+    const saveKey = ctx.key;
+    const edits = drafts[saveKey] ?? {};
+    const own = withDraft(d0[saveKey] ?? {}, edits);
+    const { errors, deficits } = gunnySaveProblems(own, d0[prevKey] ?? {}, salesClose, gridGunnySales, packSales, packTypes);
     if (errors.length) {
       setStatus({ key: ctx.key, msg: `⚠ Not saved — ${errors.join(' ')}`, tone: 'warn' });
       return;
@@ -152,7 +184,7 @@ export default function GunnyTable({
       const want: Partial<Record<GunnySyncId, number>> = {};
       for (const item of ME_GUNNY_ITEMS) {
         const cid = ME_GUNNY_TO_COMM[item.id] as GunnySyncId | undefined;
-        const r = rowFor(item.id);
+        const r = gunnyRowFor(item.id, own, d0[prevKey] ?? {}, salesClose, gridGunnySales, packSales, packTypes);
         if (cid && (GUNNY_SYNC_IDS as readonly string[]).includes(cid) && r.issues !== '') want[cid] = Number(r.issues) || 0;
       }
       const stores: GunnySyncStores = {
@@ -177,11 +209,28 @@ export default function GunnyTable({
       const soldNow = { ...packSales, ...sync.monthly };
       crsData.markEdited('meGunnyStore', ctx.key);
       crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
-        d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[prevKey] ?? {}, ctx, salesClose, gridGunnySales, soldNow, undefined, packTypes);
+        const merged = withDraft(d[saveKey] ?? {}, edits);
+        for (const item of ME_GUNNY_ITEMS) {
+          if (!edits[item.id]) continue;
+          merged[item.id] = { itemName: item.label, crsId: String(ctx.crsId), month: ctx.month, year: ctx.year, ...merged[item.id] };
+          // A cleared typed Receipt goes back to Monthly Sales: drop the field.
+          if (merged[item.id].receiptTyped === '') delete merged[item.id].receiptTyped;
+        }
+        d[saveKey] = gunnyMonthRecords(merged, d[prevKey] ?? {}, ctx, salesClose, gridGunnySales, soldNow, undefined, packTypes);
       });
       // Next month opens at this Closing: the months after it re-carry (lib.ts refreshGunnyMonths).
       refreshGunnyFor(ctx.crsId, [nextMonthFirst(ctx.month, ctx.year)]);
       if (await crsData.saveConfirmed()) {
+        // Landed: the draft that was sent is now the stored month. Edits typed
+        // while it was on its way stay in the draft (they were not sent).
+        setDrafts((all) => {
+          const cur = { ...(all[saveKey] ?? {}) };
+          for (const [id, sent] of Object.entries(edits)) {
+            const now = cur[id];
+            if (now && JSON.stringify(now) === JSON.stringify(sent)) delete cur[id];
+          }
+          return { ...all, [saveKey]: cur };
+        });
         saveSuccess(gunnySaved(ctx.crsId, ctx.month, ctx.year));
         const note = gunnySyncNote(sync, dmy);
         setStatus({ key: ctx.key, msg: `✓ Saved for ${monthLabel(ctx.month, ctx.year)}.${note ? ` ${note}` : ''}`, tone: 'ok' });
@@ -221,7 +270,7 @@ export default function GunnyTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ item, openingVal, openingAuto, rc, issues, issuesAuto, total, closing }, i) => (
+            {rows.map(({ item, openingVal, openingAuto, rc, rcAuto, issues, issuesAuto, total, closing }, i) => (
               <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAF5FF' }}>
                 <td style={{ padding: 8, textAlign: 'center', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid #EDE9FE' }}>{i + 1}</td>
                 <td style={{ padding: '8px 12px', fontWeight: 600, fontSize: 12, borderBottom: '1px solid #EDE9FE' }}>{item.label}</td>
@@ -246,16 +295,21 @@ export default function GunnyTable({
                 </td>
                 <td style={{ padding: '4px 5px', borderBottom: '1px solid #EDE9FE' }}>
                   <input
-                    // Monthly Sales is the only source (office, 2026-09-30):
-                    // the sum of the bag counts the grid above shows, by pack.
-                    // Never typed — by anyone — so it cannot disagree with it.
-                    type="text"
-                    readOnly
-                    tabIndex={-1}
+                    // Monthly Sales' figure (the sum of the bag counts the grid
+                    // above shows, by pack) unless an administrator types one
+                    // (office, 2026-09-30); clearing it goes back to Monthly
+                    // Sales. Shop staff: read-only (stockGuard rule 5 too).
+                    type={isAdmin ? 'number' : 'text'}
+                    min={0}
+                    step={1}
+                    readOnly={!isAdmin}
+                    tabIndex={isAdmin ? undefined : -1}
                     data-gunny-receipt={item.id}
-                    value={rc.val ? String(rc.val) : ''}
-                    title={rc.src}
-                    style={{ width: '100%', border: '1px solid #BBF7D0', borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', color: '#15803D', fontWeight: 700, background: '#F0FDF4' }}
+                    value={isAdmin && draft[item.id]?.receiptTyped !== undefined ? String(draft[item.id]?.receiptTyped) : rc.imported || rc.val ? String(rc.val) : ''}
+                    placeholder={isAdmin ? String(rcAuto) : undefined}
+                    onChange={isAdmin ? (e) => write(item.id, { receiptTyped: e.target.value === '' ? '' : Number(e.target.value) }) : undefined}
+                    title={rc.src + (isAdmin && !rc.imported ? ' — type to set it' : '')}
+                    style={{ width: '100%', border: `1px solid ${rc.imported ? '#FDBA74' : '#BBF7D0'}`, borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', color: rc.imported ? '#C2410C' : '#15803D', fontWeight: 700, background: rc.imported ? '#FFF7ED' : '#F0FDF4' }}
                   />
                 </td>
                 <td style={{ padding: '4px 5px', borderBottom: '1px solid #EDE9FE' }}>
@@ -293,7 +347,7 @@ export default function GunnyTable({
       </div>
       <div style={{ marginTop: 8, fontSize: 10, color: 'var(--muted)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <span>ⓘ Opening auto-fills from last month&apos;s Closing and locks once carried forward</span>
-        <span>ⓘ Receipt is Monthly Sales&apos; own bag counts, added up: sacks ÷50, poly ÷50 (salt ÷25), boxes ÷10 (palm oil) / ÷50 (tea); Wheat, RRA, NPHH FRK RRA as the Receipt page&apos;s Gunny / Poly switch says. It is never typed</span>
+        <span>ⓘ Receipt is Monthly Sales&apos; own bag counts, added up: sacks ÷50, poly ÷50 (salt ÷25), boxes ÷10 (palm oil) / ÷50 (tea); Wheat, RRA, NPHH FRK RRA as the Receipt page&apos;s Gunny / Poly switch says. {isAdmin ? <>An administrator may type one (shown <b style={{ color: '#C2410C' }}>orange</b>); clearing it goes back to Monthly Sales</> : null}</span>
         <span>ⓘ Issues are typed; left blank, POLY and C.BOX show this month&apos;s Empty Polythene Bag / Empty Card+Box sales — Save carries them into Monthly Sales and the month&apos;s last-day Daily Entry</span>
         <span>
           ⓘ Total = Opening + Receipt &nbsp;|&nbsp; Closing = Total − Issues (turns <b style={{ color: '#DC2626' }}>red</b> if Issues exceed Total)
@@ -301,10 +355,23 @@ export default function GunnyTable({
         </span>
       </div>
       <div className="gunny-save-bar">
-        <button type="button" className="gunny-save-btn" onClick={save} disabled={saving} aria-busy={saving}>
-          {saving ? '⏳ Saving…' : '💾 Save Gunny Stock'}
+        <button
+          type="button"
+          className={`gunny-save-btn${dirty ? ' is-dirty' : ''}`}
+          onClick={save}
+          disabled={saving}
+          aria-busy={saving}
+          data-dirty={dirty ? 'true' : 'false'}
+          title={dirty ? 'You have unsaved Gunny changes — press Save to keep them' : undefined}
+        >
+          {saving ? '⏳ Saving…' : dirty ? '💾 Save Gunny Stock — unsaved changes' : '💾 Save Gunny Stock'}
         </button>
-        {shown ? (
+        {dirty && !saving ? (
+          <span className="gunny-save-status gunny-unsaved" role="status" style={{ color: '#B45309' }}>
+            ● Unsaved changes — not in the database until you press Save.
+          </span>
+        ) : null}
+        {!dirty && shown ? (
           <span className="gunny-save-status" role="status" style={{ color: shown.tone === 'ok' ? '#15803D' : '#B45309' }}>
             {shown.msg}
           </span>

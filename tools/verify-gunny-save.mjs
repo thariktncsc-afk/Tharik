@@ -148,9 +148,9 @@ console.log('\n6. Wiring');
   check('the month-close stores the gunny rows through the one rule (refreshGunnyFor → gunnyMonthRecords)',
     /refreshGunnyFor\(ctx\.crsId/.test(page) && /gunnyMonthRecords\(/.test(libSrc.slice(libSrc.indexOf('export function refreshGunnyMonths'))));
   check('…and has no gunny calculation of its own any more', !/gunnyRowFor\(item\.id/.test(page));
-  check('the Save button stores through the same function', /d\[ctx\.key\] = gunnyMonthRecords\(/.test(table));
+  check('the Save button stores through the same function', /d\[saveKey\] = gunnyMonthRecords\(/.test(table));
   const save = table.slice(table.indexOf('const save = async'), table.indexOf('const th ='));
-  check('the tick waits for the database (saveConfirmed before saveSuccess)', /if \(await crsData\.saveConfirmed\(\)\) \{\s*saveSuccess\(gunnySaved\(/.test(save));
+  check('the tick waits for the database (saveConfirmed before saveSuccess)', save.indexOf('if (await crsData.saveConfirmed())') > 0 && save.indexOf('saveSuccess(gunnySaved(') > save.indexOf('if (await crsData.saveConfirmed())'));
   check('a second tap while saving is ignored', /if \(busy\.current\) return;/.test(save));
   check('validation runs before anything is written', save.indexOf('gunnySaveProblems') < save.indexOf('crsData.update'));
   // Opening and Receipt stay the office's; Issues are typed by the shop too (office, 2026-09-30).

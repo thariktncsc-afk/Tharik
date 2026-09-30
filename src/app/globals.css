@@ -205,6 +205,9 @@ input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,5
 .gunny-save-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:9px 22px;border:none;border-radius:8px;background:linear-gradient(135deg,#6D28D9,#8B5CF6);color:#fff;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(109,40,217,.28);transition:filter .15s,box-shadow .15s}
 .gunny-save-btn:hover:not(:disabled){filter:brightness(1.07);box-shadow:0 4px 12px rgba(109,40,217,.36)}
 .gunny-save-btn:focus-visible{outline:3px solid #C4B5FD;outline-offset:2px}
+/* Unsaved Gunny edits (office, 2026-09-30): amber until Save lands. */
+.gunny-save-btn.is-dirty{background:linear-gradient(135deg,#D97706,#F59E0B);box-shadow:0 0 0 3px #FDE68A,0 2px 8px rgba(217,119,6,.35)}
+.gunny-unsaved{font-weight:700}
 .gunny-save-btn:disabled{opacity:.7;cursor:progress}
 .gunny-save-status{font-size:11.5px;font-weight:600;line-height:1.4}
 @media (max-width:560px){.gunny-save-btn{width:100%}.gunny-save-status{width:100%}}
