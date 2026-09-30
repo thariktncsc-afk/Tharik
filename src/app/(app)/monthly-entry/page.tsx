@@ -385,6 +385,12 @@ export default function MonthlyEntryPage() {
       const staleG = src === 'receipt' && (f === 'receipt' || f === 'total' || f === 'close');
       g[f] = !derived && !staleG && storedG > 0 && storedG !== auto ? storedG : auto;
     }
+    // Closing bags = Total bags − Sales bags (− C.S bags), the bag columns' own
+    // arithmetic (office, 2026-09-30). Dividing the kgs Closing by the pack size
+    // lost the part-bags: 23571 − 23522 = 49 kg is 0 bags, while the columns
+    // say 471 − 470 = 1. The Total bags stay as they were (the kgs Total ÷ pack
+    // size, adjustments included); Closing is read-only, so nothing typed is replaced.
+    g.close = g.total - g.sales - gCs;
     return { c, sec, derived, rcpLocked, rcpHeld, openHeld, open, receipt, sales, total, close, amount, adj, cs, gCs, g };
   };
 
