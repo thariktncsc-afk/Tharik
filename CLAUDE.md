@@ -1414,6 +1414,18 @@ types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
   (POLY / C.BOX were blank on the sheet and are left blank). Started-record
   01-09-2026. Read back on the day sheet, the published month, Gunny, and
   CRS Page 2 / CRS Police PDFs. Backup `backups/day-sheet-27_2026-09-01-…`.
+- **CRS 27, September 2026 movement** (office, 2026-09-30, POS summary 01-09
+  → 30-09): one sheet dated 30-09 — Receipt `POS/27/09/2026` (14
+  commodities), the month's Sales, and NPHH FRK's −19 in the POS's
+  இருப்பு சரிசெய்தல் column as a SHORTAGE of 19 on 30-09 (the app stores a
+  shortage as a positive amount taken off, shown red as −19; a literal −19
+  would have added 19). All 19 closings equal the POS (NPHH FRK 2633.062,
+  PHH FRK 501.062, AAY FRK 74.010, SUGAR 705.502, WHEAT 1483, T.DHALL
+  216.020, P.OIL 217, …). Office's answers: R.R.A takes the screenshot's
+  500 / 1500 (the typed list said 0 / 0); the POS's "P FRK BR" (police FRK
+  rice, 54 / 36 / 18 — the app has no such line) is ADDED INTO Police B.R.A,
+  which therefore reads 26 + 54 − 36 = 44 where the POS shows B.R.A 26 and
+  P FRK BR 18 apart. Backup `backups/day-sheet-27_2026-09-30-…`.
 
 ## Receipts keyed from a shop's POS challans
 
