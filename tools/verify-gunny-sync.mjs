@@ -147,7 +147,7 @@ check('POLY / C.BOX Issues are not stored by the save (they follow the sales)', 
 
 console.log('\n8. Wiring');
 const gt = readFileSync(join(root, 'src/app/(app)/monthly-entry/GunnyTable.tsx'), 'utf8');
-const iSync = gt.indexOf('syncGunnyToSales(stores'), iGun = gt.indexOf('gunnyMonthRecords(d[ctx.key]');
+const iSync = gt.indexOf('syncGunnyToSales(stores'), iGun = gt.indexOf('gunnyMonthRecords(merged');
 check('Gunny Save syncs first, then stores the gunny rows against the synced sales', iSync > 0 && iGun > iSync && /soldNow/.test(gt.slice(iGun - 200, iGun + 200)));
 check('a problem refuses the whole save before anything is written', /if \(!sync\.ok\) \{[\s\S]{0,300}return;/.test(gt) && gt.indexOf('if (!sync.ok)') < gt.indexOf('crsData.set(store'));
 check('the tick still waits for the database', gt.indexOf('await crsData.saveConfirmed()') > gt.indexOf('crsData.set(store'));

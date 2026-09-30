@@ -495,6 +495,10 @@ function inspectGunnyWrite(
       if (row.receiptImported !== undefined && String(row.receiptImported) !== String(wasRow.receiptImported ?? '')) {
         say('Receipt (imported)', num(row.receiptImported), num(wasRow.receiptImported));
       }
+      // An administrator's typed Receipt (office, 2026-09-30) is theirs alone.
+      if (String(row.receiptTyped ?? '') !== String(wasRow.receiptTyped ?? '')) {
+        say('Receipt (typed)', num(row.receiptTyped), num(wasRow.receiptTyped));
+      }
       // Issues are typed by the shop (office, 2026-09-30) — a number, 0 or more.
       if (row.issues !== undefined && row.issues !== '' && !(Number.isFinite(Number(row.issues)) && Number(row.issues) >= 0)) {
         out.push({ store: 'meGunnyStore', key, crsId, section: 'a', commodity: `Gunny ${itemId.toUpperCase()}`, kind: 'gunny-locked', detail: `Issues must be a number, 0 or more — ${String(row.issues)} was sent.` });
