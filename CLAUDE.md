@@ -1450,6 +1450,14 @@ never replaces.
   2333) and no longer equal the POS stock summary, which leaves them out.
   CRS 26 is not a COLL shop, so there is no ADVANCE FOR OCT'2026 table.
   Backup `backups/receipts-crs26-…`.
+- **CRS 27, advance for October 2026** (office, 2026-09-30, same POS screen,
+  received 28-09-2026, TN38H3303): two ADVANCE receipts dated 28-09 —
+  S184607327 SUGAR 500, NPHH FRK 5000, WHEAT 100, AAY SUGAR 9, T.DHALL 550;
+  S184607328 AAY FRK 150, PHH FRK 1500. Wheat 100 was in two overlapping
+  screenshots of S184607327 and is entered once (office's answer). Dated
+  28-09 as for CRS 26, so September's Receipts / Closings rose by those
+  quantities (NPHH FRK 2633.062 → 7633.062, PHH FRK 501.062 → 2001.062, …).
+  CRS 27 is not a COLL shop. Backup `backups/receipts-crs27-…`.
 
 ## Allotment keyed from the FPS Allocation Report
 
