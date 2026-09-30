@@ -930,6 +930,34 @@ read 29 / 59 again). `npm run verify:daily-bags`.
   a refresh, CRS and month changes; Opening only / Receipt only / Sales only;
   typed back to kgs ÷ 50; CRS 19 with all three — each saved and read back.
 
+### A commodity's bags on the statements are Monthly Sales' bags
+
+Office, 2026-09-30 (`src/legacy/45-bag-counts.js`, `npm run
+verify:bag-counts`). CRS 19 September: Palm Oil's Opening bags saved as 53
+on Monthly Sales — stored, published, shown again after navigating away —
+while CRS Page 2 printed 52. Nothing was cached (every Preview / Print / PDF
+re-renders from the database); **Page 2's `bags()` never read a saved
+count** — it divided the kgs every time (525 ÷ 10), so Wheat 40 / Toor Dal
+11 / AAY Sugar 1 printed 39 / 10 / 0 too. Free Com, Cost Com and B6 read
+the stored Opening / Receipt / Sales but took Total and Closing from stored
+copies (kgs Total ÷ pack), not the grid's arithmetic.
+- `stmtBagCounts(d, id)` is Monthly Entry's `rowFor()`, bag for bag:
+  Opening / Receipt / Sales = a count typed on a FROM-DAILY row (dailyBags, a
+  typed 0 included), else a stored count above 0 that differs from kgs ÷
+  pack, else kgs ÷ pack; **Total = Opening + Receipt, Closing = Total −
+  Sales − C.S**. CRS Page 2 (rows and RICE TOTAL), Free Com, Cost Com and B6
+  all print from it; a 0 prints "0" where the figure has kgs, blank where it
+  has none (Page 2's old convention). The kgs, amounts and every other cell
+  are untouched.
+- Golden dump: all four sheets byte-identical for every shop. Live,
+  September 2026: 69 of 120 sheets change, every changed cell a bag count
+  (452 cells) — the saved counts, and Totals / Closings that now add up the
+  grid's way (e.g. CRS 19 B.RICE CB 71 → 72, CRS 5 SUGAR TOT 34 → 33).
+- Browser run on a copy of live data, each write judged by the real guard,
+  the statement built as loadStatementEngine builds it: CRS 19 Palm Oil
+  53 → 54 → 52 → 53 (each saved, page left and reopened, Preview and PDF
+  equal to the screen), Wheat Sales bags, CRS 1 BRA Opening bags.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -2156,6 +2184,7 @@ npm run verify:remit-total       every statement's remittance (Page 2, Cost Com,
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
 npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, kept by every republish and by Gunny Save, logged
+npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
