@@ -1396,6 +1396,30 @@ every Closing equals the paper's).
   (September EXCESS reads −88810.25 until deposits are keyed). Backup
   `backups/day-sheet-26_2026-09-30-…`.
 
+## Receipts keyed from a shop's POS challans
+
+`node tools/add-receipts.mjs --data=<file.json>` (dry run), then `--write`:
+the Receipt page's Save for one shop — Receipt Register rows
+(`{ crsId, receipts: [{ date, receiptNo, type: regular|advance, items }] }`),
+then what `republishMonth` does: the day sheet takes the receipt, the month
+republishes, the chain rebuilds from the date, Gunny follows. Refuses a
+commodity not on the shop's Receipt list, a quantity ≤ 0, a receipt number
+the register already holds, any other shop's keys, or the stock guard;
+backs up to `backups/`, writes under version, logs activity. It adds; it
+never replaces.
+- **CRS 26, advance for October 2026** (office, 2026-09-30, POS "பொருட்கள்
+  வருகை வரலாறு", received 28-09-2026, vehicle TN38H3303): three ADVANCE
+  receipts dated 28-09 — S184607324 BRA 2000, T.DHALL 550, SUGAR 500, WHEAT
+  400, AAY SUGAR 12; S184607325 NPHH FRK 2000; S184607326 AAY FRK 250, PHH
+  FRK 2000. S184607324's BRA 2000 appears in two overlapping screenshots of
+  that one challan and is entered once (office's answer). Dated 28-09 on the
+  office's choice, so — as Advance receipts always are — September counts
+  them as stock received: CRS 26 September's Receipts and Closings rose by
+  exactly those quantities (e.g. NPHH FRK 2384.014 → 4384.014, BRA 333 →
+  2333) and no longer equal the POS stock summary, which leaves them out.
+  CRS 26 is not a COLL shop, so there is no ADVANCE FOR OCT'2026 table.
+  Backup `backups/receipts-crs26-…`.
+
 ## Allotment keyed from the FPS Allocation Report
 
 `node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
