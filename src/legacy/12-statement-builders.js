@@ -1068,6 +1068,11 @@ function buildCostCom(d){
   function C(x){ return '<td>'+(x==null?'':x)+'</td>'; }
   function L(x){ return '<td class="l">'+(x==null?'':x)+'</td>'; }
   function R(x){ return '<td class="r">'+(x==null?'':x)+'</td>'; }
+  // A CLOSING BALANCE below zero prints as 0 on this sheet (office,
+  // 2026-09-30: CRS 5 September printed C.BOX -62 and POLY -22 — the grid
+  // holds no C.Box / Poly stock, it is kept in Gunny Stock Management). Display
+  // only: the figure itself, and everything computed from it, is unchanged.
+  function cbShown(x){ return (typeof x === 'number' && x < 0) ? 0 : x; }
   function v(id){
     var ob=d.getVal(id,'open'),rec=d.getVal(id,'receipt');
     var tot=d.getVal(id,'total')||(ob+rec), sal=d.getVal(id,'sales');
@@ -1097,7 +1102,7 @@ function buildCostCom(d){
       C(nz(d.getInsp(r.id,'transfer')))+          // transfer (Inspection module)
       C(x.gtot)+C(nz(x.tot))+
       C(x.gsal)+C(nz(x.sal))+ C(amt2(x.rt))+R(amt2(x.am))+
-      C(x.gcb)+C(nz(x.cb))+'</tr>';
+      C(cbShown(x.gcb))+C(nz(cbShown(x.cb)))+'</tr>';
   });
 
   // amount-only row (label + amount in AMOUNT column)
@@ -1114,7 +1119,7 @@ function buildCostCom(d){
     var rt=rateOf(id), am=d.getVal(id,'amount')||sal*rt;
     return '<tr>'+C(sl)+L(label)+
       C(ob||'0')+C('')+ C(rec||'')+C('')+ C('')+ C(tot||'')+C('')+
-      C(sal||'')+C('')+ C(amt2(rt))+R(am?amt2(am):'')+ C(cb||'0')+C('')+'</tr>';
+      C(sal||'')+C('')+ C(amt2(rt))+R(am?amt2(am):'')+ C(cbShown(cb)||'0')+C('')+'</tr>';
   }
 
   var jaggery=0;

@@ -1414,6 +1414,17 @@ as "-13".
   on Monthly Entry 2026-09-30) = 62471.70 against 62472 → +0.30. Golden
   dump: only `*_crs_daily_sale.html` changes (its TOTAL-row EXCESS cell).
 
+### Cost Com prints no negative CLOSING BALANCE
+
+`buildCostCom` (office, 2026-09-30): a CB below zero prints **0** — both the
+bags and the kgs column, and the C.BOX / POLY rows. CRS 5 September printed
+C.BOX **-62** and POLY **-22**: they were sold on Monthly Entry with no stock
+on the grid (their stock is kept in Gunny Stock Management), so the stored
+close is Opening 0 − Sales. **Display only** (`cbShown`): the stored close,
+the amounts, EXCESS and NET TOTAL are unchanged, and every other sheet prints
+its own closing exactly as before. Golden dump: Cost Com byte-identical for
+all shops (none there is negative). `verify:reconcile` §7.
+
 ## Remittance — who may change what
 
 One sales date, many deposits, all on the day sheet's `remits` array
