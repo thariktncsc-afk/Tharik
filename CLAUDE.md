@@ -1466,6 +1466,16 @@ types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
   (POLY / C.BOX were blank on the sheet and are left blank). Started-record
   01-09-2026. Read back on the day sheet, the published month, Gunny, and
   CRS Page 2 / CRS Police PDFs. Backup `backups/day-sheet-27_2026-09-01-…`.
+- **CRS 10, from 01-09-2026, re-entered** (office, 2026-09-30): an
+  administrator had cleared CRS 10's whole September that evening (request
+  #16 — every day sheet, the 01-09 Initial Opening included; receipt
+  R/2026/046 of 25-09 stays), leaving it not started. Re-keyed BY DAY, as
+  before (office's answer): `--open` on 01-09, no sales — BRA 4792, PHH BRA
+  2056.020, PHH FRK 1195.982, AAY 1326, OAP 3 (the sheet's "OAP FRK"), APS 10
+  ("ANP FRK"), SUGAR 779, AAY SUGAR 49.5, WHEAT 1825.030, T.DHALL 506, P.OIL
+  505, OOTY 340; police BRA 36.5, SUGAR 2, WHEAT 2, T.DHALL 4, P.OIL 1; Gunny
+  50 KG SS 1751, POLY 0, C.BOX 0. Started-record 01-09-2026. Backup
+  `backups/day-sheet-10_2026-09-01-…`.
 - **CRS 27, September 2026 movement** (office, 2026-09-30, POS summary 01-09
   → 30-09): one sheet dated 30-09 — Receipt `POS/27/09/2026` (14
   commodities), the month's Sales, and NPHH FRK's −19 in the POS's
