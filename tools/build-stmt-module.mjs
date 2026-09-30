@@ -167,7 +167,9 @@ const EPILOGUE = `
     sectionsFor: function(crsId){
       return (typeof isCrs29 === 'function' && isCrs29(crsId)) ? CRS29_SECTIONS : STMT_SECTIONS_STANDARD;
     },
-    printCss: STMT_PRINT_CSS
+    printCss: STMT_PRINT_CSS,
+    // The month's reconciliation (44-remit-total.js) — for /api/statements/reconcile.
+    reconcile: function(d){ return stmtReconcile(d); }
   };
 `;
 

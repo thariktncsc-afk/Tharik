@@ -1349,6 +1349,44 @@ Remittance sheet totals 55095.
   screen shows the deposit. No such date exists live (2026-09-30); if one
   ever does, the office decides which rule is right.
 
+## The month's reconciliation — Expected vs Remittance, one Excess
+
+Office, 2026-09-30 (`npm run verify:reconcile`). `stmtReconcile(d)`
+(`src/legacy/44-remit-total.js`) is the one calculation:
+
+    Expected = POS sales + TEA / SALT + Police + C.Box / Poly
+    Excess   = actual remittance (stmtRemitTotal) − Expected
+
+- **POS sales**: every priced Page 2 commodity except tea / salt.
+  **TEA / SALT**: OOTY, TAN, SALT CIS, SALT RFFS (keyed by hand, not on the
+  POS). **Police**: Section B, as Page 2's POLICE row — included (office's
+  decision). **C.Box / Poly**: Empty Card+Box / Empty Polythene Bag sold on
+  the sales grid; when a shop keyed none there, the Monthly Remittance
+  "Poly Gunny & C.Box" row (office's decision — CRS 5 keys it only there).
+  Every figure is Page 2's own arithmetic.
+- **Printed**: CRS Page 2's TOTAL is Expected and its EXCESS the Excess;
+  Cost Com and Sale Tax print the SAME Excess (they had their own
+  subtotals). Negative is printed as it is — never forced to 0; nothing
+  banked prints −Expected. CRS 29 has its own sheets: `null`, unchanged.
+- **The popup**: `ReconcileNotice` on the Statements page (under shop /
+  month / year) and Monthly Remittance (above Save Remittance) asks
+  `/api/statements/reconcile` — the engine's own calculation from the saved
+  stores (signed in; a shop user only for their own shop). Negative → the
+  "Reconciliation Mismatch" popup opens once per shop-month-figure with
+  Statement Amount / Actual Remittance / Difference, the breakdown and the
+  reasons, and a red line with "View details" stays; it refetches when a
+  save of the remittance / day sheets / month lands, so a correction turns it
+  green ("Reconciled … Excess ₹11.00") with no popup.
+- **Reasons are the shop-month's own** (`reconcileReasons`,
+  `src/lib/statements/reconcile.ts`): the shortfall equal to one component
+  (Police, C.Box/Poly, TEA/SALT or one tea/salt item) or two together; for a
+  month keyed day by day, the days banked below their own sales; nothing
+  banked; else a plain statement of the gap.
+- Live, September 2026: 16 shops with remittance, all consistent (Page 2
+  TOTAL = Expected, one Excess on the three sheets); only **CRS 5 is short,
+  −97.50 — exactly its Police sales** (60032 + 2250 + 97.50 + 90 = 62469.50
+  against 62372 banked).
+
 ## Remittance — who may change what
 
 One sales date, many deposits, all on the day sheet's `remits` array
@@ -1685,6 +1723,7 @@ npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per 
 npm run verify:date-format      dates on screen are DD-MM-YYYY: DateField for every date box, day-first parsing, stored dates untouched
 npm run verify:opening-correction  Daily Entry asks an administrator before saving an Opening that differs from the carry
 npm run verify:remit-total       every statement's remittance (Page 2, Cost Com, Sale Tax, CRS 29) = the Remittance sheet TOTAL, never a total
+npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

@@ -52,6 +52,7 @@ import {
 import { remitMonthProblems, type MonthCtx, type RemitDay, type RemitExtra, type RemitMonth } from './lib';
 import DateField from '@/components/DateField';
 import { dmy } from '@/lib/dateFormat';
+import ReconcileNotice from '@/components/ReconcileNotice';
 
 const inr = (n: number) => '₹' + n.toFixed(2);
 
@@ -509,6 +510,8 @@ export default function RemitTable({
         <span>ⓘ Same Remittance Date allowed for multiple days (batch deposit)</span>
         <span>ⓘ Leave Remittance Date empty if no deposit was made that day</span>
       </div>
+      {/* The month's reconciliation, from the SAVED figures — pops up when short. */}
+      <ReconcileNotice crsId={ctx.crsId} month={ctx.month} year={ctx.year} />
       <div className="remit-save-bar">
         <button type="button" className="remit-save-btn" onClick={saveMonth} disabled={saving} aria-busy={saving}>
           {saving ? '⏳ Saving…' : '💾 Save Remittance'}
