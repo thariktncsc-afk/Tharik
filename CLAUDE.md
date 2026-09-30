@@ -1339,6 +1339,12 @@ under version; a re-run with the same figures writes nothing.
   LOF RICE 12 / SUGAR 20 / LOF SUGAR 1 / AAY 14 / LOF AAY 0 / OAP 1 / POLICE 0
   / "N" CARD (பண்டகமில்லா அட்டை) 4 → TOTAL 1247, as the POS says (backup
   `backups/card-details-crs26-9-2026-…`). Page 1 preview and PDF read back.
+- **CRS 27, September 2026** (office, 2026-09-30, POS photos): RICE 1123 /
+  LOF RICE 19 / SUGAR 177 / LOF SUGAR 9 / AAY 12 / LOF AAY 0 / OAP 0 /
+  POLICE 4 / "N" CARD (பண்டகமில்லா அட்டை) 25 → TOTAL 1369, as the POS's
+  மொத்த அட்டைகள் says (LOF AAY and OAP are not on the POS: 0). Page 1
+  preview and PDF read back; the screen holds them after reload, shop and
+  month changes (backup `backups/card-details-crs27-9-2026-…`).
 
 ## A day sheet keyed from a paper statement
 
