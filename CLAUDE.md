@@ -1496,6 +1496,13 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   are entered once; the four police rows are 0 and have no field; rows 1–5
   were not in the images and nothing was stored for them. Page 1 PDF read
   back; the screen holds them after reload, shop and month changes.
+- **CRS 27, September 2026** (office, 2026-09-30, the same POS screen, rows
+  6–17; FPS code 22DA004PN from `__crsMaster`): BRA 11207.988, AAY 310,
+  PHH_BRA 2809, WHEAT 1253.262, SUGAR 1584.498, AAY_SUGAR 15.5, TOOR
+  952.171, PALM 951. The four police rows are NOT zero here (Police Rice 54,
+  Sugar 6, Toor Dal 12, Palm Oil 3) but still have no Allotment field, so
+  they are not stored — and never added into the Section A lines. Rows 1–5
+  not in the images, nothing stored. Page 1 PDF and screen read back.
 
 ## Monthly Sales Close needs both sections SAVED
 
