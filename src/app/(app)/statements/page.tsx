@@ -41,6 +41,8 @@ import {
   type Section,
   type Upi,
 } from '@/lib/payments/client';
+import { dmyTime } from '@/lib/dateFormat';
+import ReconcileNotice from '@/components/ReconcileNotice';
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -125,7 +127,7 @@ export default function StatementsPage() {
   );
 
   const record = (label: string) =>
-    setHistory((h) => [{ at: new Date().toLocaleString('en-IN'), label, crsId: crsId!, period: `${MONTHS[month]} ${year}` }, ...h].slice(0, 50));
+    setHistory((h) => [{ at: dmyTime(new Date()), label, crsId: crsId!, period: `${MONTHS[month]} ${year}` }, ...h].slice(0, 50));
 
   // ── Rendering (server) ────────────────────────────────────────────────────
 
@@ -366,6 +368,9 @@ export default function StatementsPage() {
               </select>
             </div>
           </div>
+
+          {/* The month's reconciliation — the Excess the statements print; pops up when short. */}
+          <ReconcileNotice crsId={crsId} month={month} year={year} />
 
           <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Source modules</div>

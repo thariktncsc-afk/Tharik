@@ -50,6 +50,8 @@ import { withReceiptOnlyDays } from '@/lib/engine/dssDays';
 import { saveSuccess } from '@/components/SaveSuccess';
 import { dailySaved, monthlySaved } from '@/lib/saveSuccess';
 import { dateNav, dmy } from './dateNav';
+import { newOpeningCorrections, openingCorrectionMessage } from './openingCorrections';
+import DateField from '@/components/DateField';
 
 type ShopRec = { name: string };
 
@@ -736,6 +738,31 @@ export default function DailyEntryPage() {
       if (!ok) return false;
     }
 
+    // An administrator's Opening that differs from the carry is a correction
+    // the month does not account for — asked about before it is saved
+    // (openingCorrections.ts; office, 2026-09-30).
+    if (isAdmin) {
+      const corrections = newOpeningCorrections(
+        (['a', 'b'] as const).flatMap((sec) =>
+          (sec === 'a' ? lists.a : lists.b).map((c) => {
+            const d = derive(sec, c);
+            return { label: c.en, unit: c.unit, carry: d.carry, open: d.open, fixed: d.openFixed, saved: saved?.[sec]?.[c.id] ?? null };
+          }),
+        ),
+      );
+      if (corrections.length) {
+        const ok = await appConfirm({
+          title: 'Opening differs from the carried balance',
+          tone: 'warning',
+          confirmLabel: 'Save correction',
+          cancelLabel: 'Go back',
+          defaultCancel: true,
+          message: openingCorrectionMessage(corrections, dmy(date)),
+        });
+        if (!ok) return false;
+      }
+    }
+
     const snap: SavedSheet = { a: {}, b: {} };
     for (const [sec, comms] of [['a', lists.a], ['b', lists.b]] as const) {
       for (const c of comms) {
@@ -884,8 +911,8 @@ export default function DailyEntryPage() {
       tone: 'primary',
       icon: '🔒',
       message:
-        `Sales Close marked for ${date.split('-').reverse().join('/')}` +
-        (prev && prev.date !== date ? `\n(previous mark on ${prev.date.split('-').reverse().join('/')} was replaced)` : '') +
+        `Sales Close marked for ${dmy(date)}` +
+        (prev && prev.date !== date ? `\n(previous mark on ${dmy(prev.date)} was replaced)` : '') +
         `\n\nMonth totals up to this date:\n  Sales Gunny = ${agg.gunny}  → 50 KG SS Receipt\n  Sales Poly  = ${agg.poly}  → POLY Receipt\n  Sales C.Box = ${agg.cbox}  → C.BOX Receipt`,
     });
   };
@@ -1349,7 +1376,7 @@ export default function DailyEntryPage() {
             </div>
             <div>
               <label className="form-label">Entry Date (நாள்)</label>
-              <input type="date" value={date} max={todayIso()} onChange={(e) => void goToDate(e.target.value)} />
+              <DateField value={date} max={todayIso()} onChange={(v) => void goToDate(v)} aria-label="Entry date" />
             </div>
             {crsVal && date ? (
               <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 14px' }}>
@@ -1695,11 +1722,10 @@ export default function DailyEntryPage() {
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text)', marginBottom: 5 }}>
                       Remittance Date 📅 <span style={{ color: '#DC2626' }}>*</span>
                     </label>
-                    <input
-                      type="date"
+                    <DateField
                       value={remitDate}
-                      onChange={(e) => {
-                        setRemitDate(e.target.value);
+                      onChange={(v) => {
+                        setRemitDate(v);
                         setRemitErr((p) => ({ ...p, date: undefined }));
                       }}
                       style={{ width: '100%', border: `2px solid ${remitErr.date ? '#DC2626' : '#BAE6FD'}`, borderRadius: 8, padding: '9px 12px', fontSize: 13, fontWeight: 600, color: '#0369A1', background: '#F0F9FF', outline: 'none' }}
@@ -1767,11 +1793,10 @@ export default function DailyEntryPage() {
                                   />
                                 </td>
                                 <td style={{ padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }}>
-                                  <input
-                                    type="date"
+                                  <DateField
                                     aria-label="Remittance date"
                                     value={remitEdit.date}
-                                    onChange={(e) => setRemitEdit({ ...remitEdit, date: e.target.value })}
+                                    onChange={(v) => setRemitEdit({ ...remitEdit, date: v })}
                                     style={{ border: '1px dashed #A78BFA', borderRadius: 6, padding: '4px 6px', fontSize: 12 }}
                                   />
                                 </td>
@@ -1795,7 +1820,7 @@ export default function DailyEntryPage() {
                                 )}
                               </td>
                               <td style={{ padding: '6px 10px', fontSize: 13, fontWeight: 800, color: ACCT[r.account].fg, textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{inr(r.amount)}</td>
-                              <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, color: '#334155', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{r.date.split('-').reverse().join('/')}</td>
+                              <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 600, color: '#334155', textAlign: 'center', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>{dmy(r.date)}</td>
                               <td style={{ padding: '4px 10px', textAlign: 'right', borderBottom: '1px solid #F1F5F9', whiteSpace: 'nowrap' }}>
                                 {isAdmin ? (
                                   <button
@@ -1844,7 +1869,7 @@ export default function DailyEntryPage() {
               <div className="de-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', width: '100%' }}>
                 {scRec ? (
                   <span style={{ background: scRec.date === date ? '#DCFCE7' : '#FEF3C7', border: `1px solid ${scRec.date === date ? '#86EFAC' : '#FDE047'}`, color: scRec.date === date ? '#15803D' : '#92400E', fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 7 }}>
-                    {scRec.date === date ? '🔒 THIS DAY is the Sales Close (last sales day)' : `🔒 Sales Close: ${scRec.date.split('-').reverse().join('/')}`}
+                    {scRec.date === date ? '🔒 THIS DAY is the Sales Close (last sales day)' : `🔒 Sales Close: ${dmy(scRec.date)}`}
                   </span>
                 ) : null}
                 <button className="btn btn-outline btn-sm" onClick={clearForm}>🗑 Clear</button>

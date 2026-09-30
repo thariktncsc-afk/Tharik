@@ -34,6 +34,8 @@ export type StatementEngine = {
   buildSection: (id: string, d: StmtData) => string;
   sectionsFor: (crsId: number) => Section[];
   printCss: string;
+  /** The month's reconciliation (stmtReconcile, 44-remit-total.js); null for CRS 29. */
+  reconcile: (d: StmtData) => unknown;
 };
 
 export async function requireSession(): Promise<Session | null> {

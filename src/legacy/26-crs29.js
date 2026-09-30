@@ -201,7 +201,9 @@ function c29StockGrid(d, withMoney){
 
 function c29CrsPage2(d){
   var g = c29StockGrid(d, true);
-  var remit = d.remitDayTotal || 0;
+  // The Remittance sheet's TOTAL (stmtRemitTotal, 44-remit-total.js) — the
+  // day total left the extra rows out (office, 2026-09-30).
+  var remit = stmtRemitTotal(d);
   var foot =
     '<table class="c29-tbl" style="margin-top:6px">' +
       '<tr class="sub"><td class="l">Sales Amount</td><td style="width:22%">' + c29money(g.amount) + '</td></tr>' +

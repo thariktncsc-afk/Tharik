@@ -21,6 +21,7 @@
 import { useEffect, useState } from 'react';
 import { crsData, useLiveRevision } from '@/lib/dataStore';
 import { decideRequest, findLatest, listRequests, requestClear, type ClearRequest, type ClearScope } from '@/lib/clearClient';
+import { dmy, dmyTime } from '@/lib/dateFormat';
 
 const overlay: React.CSSProperties = {
   position: 'fixed',
@@ -50,7 +51,7 @@ function scopeNote(s: ClearScope): string {
   return '';
 }
 
-const dayOf = (key: string) => key.slice(key.indexOf('_') + 1).split('-').reverse().join('/');
+const dayOf = (key: string) => dmy(key.slice(key.indexOf('_') + 1));
 
 export default function ClearRequestDialog({
   scope,
@@ -200,7 +201,7 @@ export default function ClearRequestDialog({
         <div style={{ marginTop: 12, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#475569' }}>
           <div><strong>Request #{current.id}</strong> · {current.modules.join(', ') || 'Saved data'}</div>
           <div style={{ marginTop: 4 }}>Reason: {current.reason}</div>
-          <div style={{ marginTop: 4, color: '#64748B' }}>Raised {new Date(current.createdAt).toLocaleString('en-IN')}</div>
+          <div style={{ marginTop: 4, color: '#64748B' }}>Raised {dmyTime(current.createdAt)}</div>
         </div>
         <div style={{ marginTop: 10, fontSize: 11.5, color: '#64748B', lineHeight: 1.5 }}>{scopeNote(scope)}</div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>{closeBtn()}</div>

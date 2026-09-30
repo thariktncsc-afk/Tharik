@@ -96,6 +96,16 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
 input,select,textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;font-family:inherit;transition:.15s}
 input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,58,107,.1)}
+/* DateField (components/DateField.tsx; office, 2026-09-29): our own
+   DD-MM-YYYY text over the browser's date input, which Chrome would draw in
+   the phone's language (09/29/2026). On a touch screen the native input lies
+   invisibly over the box, so a tap opens the phone's own calendar. */
+.date-field-btn{position:absolute;right:5px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:none;background:none;cursor:pointer;opacity:.7;line-height:0}
+.date-field-btn:hover:not(:disabled){opacity:1}
+.date-field-btn:disabled{cursor:default;opacity:.35}
+.date-field-native{position:absolute;right:0;bottom:0;width:1px!important;height:1px;padding:0!important;border:0!important;opacity:0;pointer-events:none;box-shadow:none!important}
+.date-field-native.is-touch{top:0;left:0;right:0;bottom:0;width:100%!important;height:100%;pointer-events:auto;cursor:pointer;z-index:1}
+.date-field input[aria-invalid="true"]:focus{border-color:#DC2626}
 
 .stat-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F1F5F9}
 .stat-row:last-child{border-bottom:none}
@@ -207,6 +217,14 @@ input:focus,select:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,5
 .remit-save-btn:disabled{opacity:.7;cursor:progress}
 .remit-save-status{font-size:11.5px;font-weight:600;line-height:1.4}
 @media (max-width:560px){.remit-save-btn{width:100%}.remit-save-status{width:100%}}
+/* Reconciliation line (components/ReconcileNotice.tsx; office, 2026-09-30):
+   red with "View details" when the remittance is short, green once it reconciles. */
+.reconcile-note{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:12px 0;padding:9px 12px;border-radius:8px;font-size:12px;line-height:1.45}
+.reconcile-note.is-short{background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B}
+.reconcile-note.is-ok{background:#F0FDF4;border:1px solid #86EFAC;color:#166534}
+.reconcile-btn{border:1px solid #DC2626;background:#fff;color:#B91C1C;font-weight:700;font-size:11.5px;border-radius:6px;padding:4px 10px;cursor:pointer}
+.reconcile-btn:hover{background:#FEE2E2}
+@media (max-width:560px){.reconcile-btn{width:100%}}
 @media (max-width:560px){.de-entry-summary{flex-direction:column;align-items:flex-start;gap:2px}.de-entry-summary .de-sep{display:none}}
 
 /* Monthly Entry — where the Dashboard's "Card Details & Allotment" lands

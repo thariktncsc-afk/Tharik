@@ -23,6 +23,7 @@ import { useAuth } from '@/lib/authClient';
 import { crsData, useStore } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
 import { appAlert } from '@/components/dialog';
+import DateField from '@/components/DateField';
 import {
   dateFor, duplicateShops, emptyStore, groupOf, normalise, officerLabel,
   unassignedShops, type PvOfficerStore,
@@ -166,7 +167,7 @@ export default function PvOfficersPage() {
             </div>
             <div>
               <label className="form-label">DATE OF P.V.</label>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inp} />
+              <DateField value={date} onChange={(v) => setDate(v)} style={inp} />
             </div>
             <div>
               <button onClick={saveGroup} className="btn btn-primary" style={{ width: '100%', fontSize: 13, padding: '9px 0' }}>
@@ -220,10 +221,9 @@ export default function PvOfficersPage() {
                     <td style={{ ...td, color: g?.designation ? 'var(--text)' : 'var(--muted)' }}>{g?.designation || '—'}</td>
                     <td style={td}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input
-                          type="date"
+                        <DateField
                           value={effective}
-                          onChange={(e) => setShopDate(crsId, e.target.value)}
+                          onChange={(v) => setShopDate(crsId, v)}
                           style={{ ...inp, padding: '5px 7px', fontSize: 12, borderColor: overridden ? '#F59E0B' : 'var(--border)', background: overridden ? '#FFFBEB' : '#fff' }}
                         />
                         {overridden ? (

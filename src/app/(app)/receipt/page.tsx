@@ -29,6 +29,8 @@ import { type MonthlyBlock, type SourceBlock } from '@/lib/engine/monthlyRollup'
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { resyncReceiptMonth } from '@/lib/engine/receiptSync';
 import { rechainAndRepublish } from '@/lib/engine/rechain';
+import DateField from '@/components/DateField';
+import { dmy, dmyFromLocale } from '@/lib/dateFormat';
 
 type ShopRec = { name: string };
 type ReceiptRec = {
@@ -381,7 +383,7 @@ export default function ReceiptPage() {
       tone: 'danger',
       confirmLabel: 'Delete',
       message:
-        `Delete receipt ${rec.receiptNo} of ${rec.date.split('-').reverse().join('/')} (CRS ${rec.crsId})?\n\n` +
+        `Delete receipt ${rec.receiptNo} of ${dmy(rec.date)} (CRS ${rec.crsId})?\n\n` +
         'Its quantities stop counting in Daily Entry, Monthly Entry, the statements and the COLL report. This cannot be undone.',
     });
     if (!ok) return;
@@ -451,7 +453,7 @@ export default function ReceiptPage() {
                 </div>
                 <div>
                   <label className="form-label">Receipt Date</label>
-                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...input, width: '100%' }} />
+                  <DateField value={date} onChange={(v) => setDate(v)} style={{ ...input, width: '100%' }} />
                 </div>
                 <div>
                   <label className="form-label">Receipt No.</label>
@@ -702,7 +704,7 @@ export default function ReceiptPage() {
                       </span>
                     ))}
                   </td>
-                  <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', textAlign: 'center', fontSize: 11, color: 'var(--muted)' }}>{r.savedAt}</td>
+                  <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', textAlign: 'center', fontSize: 11, color: 'var(--muted)' }}>{dmyFromLocale(r.savedAt)}</td>
                   <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', textAlign: 'center' }}>
                     <button
                       onClick={() => void deleteReceipt(r)}
