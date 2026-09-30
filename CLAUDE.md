@@ -1506,6 +1506,47 @@ never replaces.
   quantities (NPHH FRK 2633.062 → 7633.062, PHH FRK 501.062 → 2001.062, …).
   CRS 27 is not a COLL shop. Backup `backups/receipts-crs27-…`.
 
+**Correcting a saved receipt line** — `node tools/correct-receipt.mjs --crs=N
+--receipt-no=NO --move=FROM:TO,…` (dry run), then `--write`: moves a line's
+quantity to the commodity it belongs to on ONE receipt (date, number, type
+and every other line kept), then republishes as the Receipt page's save
+does. Refuses a FROM the receipt lacks, a TO it already carries or that is
+not on the shop's list, another shop's keys, or the stock guard.
+
+## A month keyed BY MONTH, closed from a POS stock summary
+
+`node tools/close-month.mjs --crs=N --month=M --year=Y --sales=ID:qty,…
+[--shortage=ID:qty,…] [--expect=ID:closing,…]` (dry run), then `--write`:
+Monthly Entry's month-close as an administrator, for a month with NO real
+day sheets (refused otherwise — use save-day-sheet.mjs). Only Sales and the
+month's Inspection shortages come from the paper; Opening is what the month
+holds (never typed by the tool), Receipt the register's (refused if a Receipt
+is not a register total — add it with add-receipts.mjs first), Total /
+Closing / Amount worked out as rowFor does. Then what the save does:
+meManualStore rows, the shortages as Monthly Inspection's record on the last
+calendar day, ONE projected sheet on that day (`__projection`; one DSS page),
+republish, rechain from the 1st, Gunny refresh. Backed up, under version,
+activity logged, started-record reconciled; a re-run writes nothing
+(timestamps are not figures).
+- **CRS 14, September 2026** (office, 2026-09-30, POS summary 01-09 → 30-09):
+  Receipt and Sales only. The register's S184606559 (10-09) held PHH BRA 2429
+  and AAY 255 where the POS has them under PHH FRK and AAY FRK — moved
+  (correct-receipt); Wheat 1217 was on no receipt — added as
+  `POS/14/09/2026` dated 30-09. Sales: BRA 10892, NPHH FRK 2182, PHH BRA 2000,
+  PHH FRK 2038, AAY 200, AAY FRK 255, T.DHALL 1129, P.OIL 1129, SUGAR 1941,
+  AAY SUGAR 15.5, WHEAT 1627; shortages BRA 25, SUGAR 7 (the POS's red
+  −25 / −7). The office's typed list had Sugar at 532 / 1129 (the Palm Oil
+  row) and Wheat sales 1627.060 — the screenshots' figures were used on the
+  office's answer (Sugar 1439 / 1941, Palm Oil 532 / 1129, Wheat 1627, which
+  the POS's own OB + Receipt − Sales = CB confirms). **No Opening was
+  entered (office's choice)**: CRS 14 had never been started, so every
+  Closing is the POS's CB less its OB — BRA −7917, PHH BRA −2000, WHEAT
+  −410, SUGAR −509, … — until the Opening is keyed (POS OB: BRA 7917.330,
+  PHH BRA 2000, PHH FRK 196, AAY 200, T.DHALL 737.914, P.OIL 741, SUGAR
+  1084.180, WHEAT 2400). CRS 14 is now "started" (30-09-2026), so that
+  Opening is an administrator's correction on Monthly Entry. Backups
+  `backups/correct-receipt-crs14-…`, `receipts-crs14-…`, `close-month-crs14-…`.
+
 ## Allotment keyed from the FPS Allocation Report
 
 `node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
