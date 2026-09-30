@@ -9,6 +9,10 @@
 // Remittance Amount 55061.30 (= Sales 54803.00 + C.Box 100.80 + P.Gunny
 // 157.50) while its Remittance sheet — the deposits themselves — totals 55095.
 //
+// Every statement that states the month's remittance reads it here: CRS Page 2
+// (Remittance Amount), Cost Com and Sale Tax (EXCESS / NET TOTAL) and CRS 29's
+// Page 2 — one figure, so no two sheets can disagree (office, 2026-09-30).
+//
 // stmtRemitTotal(d) is the Remittance sheet's own TOTAL (buildRemittance in
 // 12-statement-builders.js), worked out the same way, day by day:
 //   · the Monthly Remittance row's Non-Cereal + Cereal for that sales date;

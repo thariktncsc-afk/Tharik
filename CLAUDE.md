@@ -1329,10 +1329,25 @@ Remittance sheet totals 55095.
   sheet's TOTAL on Page 2 (each had printed less — TOTAL or the hand-keyed
   part only). Rendered from the golden dump, Page 2 is byte-identical for
   every shop (none there keeps deposits on day sheets).
-- **The same fallback is still in two other builders, not asked for:** the
-  one at `12-statement-builders.js` ~1127 (INSPEC. CHARGES / EXCESS / NET
-  TOTAL) and the `st-wrap` one ~1326 — hand-keyed rows only, TOTAL when
-  empty. `stmtRemitTotal` is the fix for both if the office wants it.
+- **Every statement that states the month's remittance reads it there**
+  (office, same day, "one single source"): Cost Com (EXCESS / NET TOTAL) and
+  Sale Tax (EXCESS / GRAND TOTAL) had the same hand-keyed-rows-only source;
+  CRS 29's Page 2 read `remitDayTotal`, which leaves the extra rows out.
+  Each sheet keeps its OWN EXCESS formula against its own totals, so
+  EXCESS may differ between sheets (CRS 5 Sept: Page 2 and Cost Com −7.50,
+  Sale Tax −457.50) — the remittance in all of them is the same figure.
+  The Daily Sale sheet's remittance column already agreed.
+- Live, September 2026: for all 16 shops with remittance, the Monthly
+  Remittance screen's total = the Remittance sheet = Page 2 = Cost Com NET
+  TOTAL = Sale Tax GRAND TOTAL = the Daily Sale remittance total (CRS 5:
+  62372 everywhere; it had printed 62282 — the hand-keyed rows without the
+  90 Poly & C.Box row, which happens to equal its Sales Amount).
+- **One rule NOT changed:** for a date holding BOTH a Daily Entry deposit
+  and a hand-keyed row, the Remittance sheet (and so `stmtRemitTotal`)
+  takes the hand-keyed row — its comment calls that row the cereal /
+  non-cereal split of the day's banking — while the Monthly Remittance
+  screen shows the deposit. No such date exists live (2026-09-30); if one
+  ever does, the office decides which rule is right.
 
 ## Remittance — who may change what
 
@@ -1669,7 +1684,7 @@ npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, 
 npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database
 npm run verify:date-format      dates on screen are DD-MM-YYYY: DateField for every date box, day-first parsing, stored dates untouched
 npm run verify:opening-correction  Daily Entry asks an administrator before saving an Opening that differs from the carry
-npm run verify:remit-total       CRS Page 2 Remittance Amount = the Remittance sheet TOTAL (actual deposits, never TOTAL)
+npm run verify:remit-total       every statement's remittance (Page 2, Cost Com, Sale Tax, CRS 29) = the Remittance sheet TOTAL, never a total
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

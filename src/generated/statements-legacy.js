@@ -2352,11 +2352,9 @@ function buildCostCom(d){
   var rs=(typeof meRemitStore!=='undefined')?meRemitStore[moKey]:null;
   var ex=(rs&&rs['extra'])?rs['extra']:{};
   var inspec=(parseFloat(ex.e2nc)||0)+(parseFloat(ex.e2ce)||0);
-  var totalRemit=0;
-  try{ if(rs){ Object.keys(rs).forEach(function(k){ if(k==='extra')return;
-        var day=rs[k]||{}; totalRemit+=(parseFloat(day.nonCereal)||0)+(parseFloat(day.cereal)||0); });
-      ['e1','e2','e3'].forEach(function(e){ totalRemit+=(parseFloat(ex[e+'nc'])||0)+(parseFloat(ex[e+'ce'])||0); });
-  } }catch(e){}
+  // The month's deposits as the Remittance sheet totals them (stmtRemitTotal,
+  // 44-remit-total.js) — it read the hand-keyed rows only (office, 2026-09-30).
+  var totalRemit=stmtRemitTotal(d);
   var subtotal=grand+cboxAmt+polyAmt+inspec;
   var excess=totalRemit>0?(totalRemit-subtotal):0;
   var netTotal=totalRemit>0?totalRemit:subtotal;
@@ -2549,9 +2547,9 @@ function buildSaleTax(d){
   // Excess & grand total from the Monthly Remittance table
   var moKey=d.crsId+'_'+d.month+'_'+d.year;
   var rs=(typeof meRemitStore!=='undefined')?meRemitStore[moKey]:null;
-  var totalRemit=0;
-  try{ if(rs){ Object.keys(rs).forEach(function(k){ if(k==='extra')return; var day=rs[k]||{}; totalRemit+=(parseFloat(day.nonCereal)||0)+(parseFloat(day.cereal)||0); });
-    if(rs.extra){ ['e1','e2','e3'].forEach(function(e){ totalRemit+=(parseFloat(rs.extra[e+'nc'])||0)+(parseFloat(rs.extra[e+'ce'])||0); }); } } }catch(e){}
+  // The month's deposits as the Remittance sheet totals them (stmtRemitTotal,
+  // 44-remit-total.js) — it read the hand-keyed rows only (office, 2026-09-30).
+  var totalRemit=stmtRemitTotal(d);
   var excess=totalRemit>0?(totalRemit-(mainTotal+polTotal)):0;
   var grand=totalRemit>0?totalRemit:(mainTotal+polTotal);
 
@@ -4415,7 +4413,9 @@ function c29StockGrid(d, withMoney){
 
 function c29CrsPage2(d){
   var g = c29StockGrid(d, true);
-  var remit = d.remitDayTotal || 0;
+  // The Remittance sheet's TOTAL (stmtRemitTotal, 44-remit-total.js) — the
+  // day total left the extra rows out (office, 2026-09-30).
+  var remit = stmtRemitTotal(d);
   var foot =
     '<table class="c29-tbl" style="margin-top:6px">' +
       '<tr class="sub"><td class="l">Sales Amount</td><td style="width:22%">' + c29money(g.amount) + '</td></tr>' +
@@ -5378,6 +5378,10 @@ stmtGetData = function(crsId, month, year){
 // sheets, so its hand-keyed rows are empty: CRS 8, September 2026, printed
 // Remittance Amount 55061.30 (= Sales 54803.00 + C.Box 100.80 + P.Gunny
 // 157.50) while its Remittance sheet — the deposits themselves — totals 55095.
+//
+// Every statement that states the month's remittance reads it here: CRS Page 2
+// (Remittance Amount), Cost Com and Sale Tax (EXCESS / NET TOTAL) and CRS 29's
+// Page 2 — one figure, so no two sheets can disagree (office, 2026-09-30).
 //
 // stmtRemitTotal(d) is the Remittance sheet's own TOTAL (buildRemittance in
 // 12-statement-builders.js), worked out the same way, day by day:

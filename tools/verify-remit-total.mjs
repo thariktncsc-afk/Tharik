@@ -38,7 +38,7 @@ const txt = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const monthly = { [KEY]: { a: { SUGAR: { open: 100, receipt: 0, total: 100, sales: 40, close: 60, amount: 1000 } }, b: {} } };
 const sheet = (remits) => ({ a: { SUGAR: { open: 100, receipt: 0, total: 100, sales: 40, close: 60, amount: 1000 } }, b: {}, remits, remitAmount: remits.reduce((t, r) => t + r.amount, 0), remitDate: remits[0]?.date ?? '' });
 
-function render(entryStore, meRemitStore) {
+function render(entryStore, meRemitStore, crs = CRS) {
   const e = createStatementEngine({
     stores: {
       entryStore, inspectionStore: {}, monthlyStore: monthly, meManualStore: {}, meSourceStore: {}, meRemitStore, meGunnyStore: {}, meCardStore: {},
@@ -46,8 +46,10 @@ function render(entryStore, meRemitStore) {
     },
     users: [], CRS_LIST: Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `CRS ${i + 1}` })), CRS_MASTER: [], APP_CONFIG: {}, CRS_ACCOUNTS: {}, currentUser: null,
   });
-  const d = e.getData(CRS, 9, 2026);
+  const d = e.getData(crs, 9, 2026);
   const p2 = txt(e.buildSection('crs_page2', d));
+  const cc = txt(e.buildSection('cost_com', d)).replace(/,/g, '');
+  const st = txt(e.buildSection('sale_tax', d)).replace(/,/g, '');
   const rm = txt(e.buildSection('remittance', d));
   const num = (re, s) => { const m = s.match(re); return m ? Number(m[1]) : 0; };
   return {
@@ -56,6 +58,10 @@ function render(entryStore, meRemitStore) {
     excess: num(/EXCESS ([\d.-]+) Remittance Amount/, p2),
     remit: num(/Remittance Amount ([\d.-]+)/, p2),
     sheetTotal: num(/TOTAL ([\d.]+)\s*$/, rm),
+    // Cost Com prints its rate column's dash before the figure: "NET TOTAL - 600".
+    costNet: num(/NET TOTAL (?:[-–—] )?([\d.]+)/, cc),
+    saleTaxGrand: num(/GRAND TOTAL ([\d.]+)/, st),
+    c29: num(/Remittance Amount ([\d.,]+)/, p2.replace(/,/g, '')),
   };
 }
 const dep = (amount, date = '2026-09-02') => ({ id: `r${amount}`, amount, date, account: 'nc' });
@@ -70,8 +76,10 @@ const cases = [
 ];
 for (const [label, es, rs, want] of cases) {
   const r = render(es, rs);
-  check(`${label}: Remittance Amount ${r.remit} = sheet TOTAL ${r.sheetTotal} = ${want}`, r.remit === want && r.sheetTotal === want, JSON.stringify(r));
+  check(`${label}: Remittance Amount ${r.remit} = sheet TOTAL ${r.sheetTotal} = Cost Com NET TOTAL ${r.costNet} = Sale Tax GRAND TOTAL ${r.saleTaxGrand} = ${want}`, r.remit === want && r.sheetTotal === want && r.costNet === want && r.saleTaxGrand === want, JSON.stringify(r));
 }
+const c29 = render({ '29_2026-09-01': sheet([dep(600)]) }, { '29_9_2026': { extra: { e1nc: 90 } } }, 29);
+check(`CRS 29's Page 2 counts the extra rows too: ${c29.c29} = its Remittance sheet TOTAL ${c29.sheetTotal}`, c29.c29 === 690 && c29.sheetTotal === 690, JSON.stringify(c29));
 const none = render({}, {});
 check(`no remittance at all: Remittance Amount ${none.remit || 'blank'} — never the TOTAL (${none.total})`, none.remit === 0 && none.total === 1000, JSON.stringify(none));
 
