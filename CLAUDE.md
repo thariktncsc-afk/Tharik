@@ -1505,6 +1505,17 @@ never replaces.
   28-09 as for CRS 26, so September's Receipts / Closings rose by those
   quantities (NPHH FRK 2633.062 → 7633.062, PHH FRK 501.062 → 2001.062, …).
   CRS 27 is not a COLL shop. Backup `backups/receipts-crs27-…`.
+- **CRS 14, advance for October 2026** (office, 2026-09-30, same POS screen,
+  received 28-09-2026, TN60A6777): three ADVANCE receipts dated 28-09 —
+  S184607300 BRA 2000, WHEAT 100, SUGAR 1000, T.DHALL 650, AAY SUGAR 9;
+  S184607301 NPHH FRK 3000; S184607302 AAY FRK 250, PHH FRK 2000. Wheat 100
+  was in two overlapping screenshots of S184607300 and is entered once
+  (office's answer). CRS 14 is keyed by month and already closed: the
+  receipt path updated its manual rows and the 30-09 projection as well, so
+  September's Receipts / Closings rose by exactly those quantities (BRA
+  0.330 → 2000.330, NPHH FRK 2953 → 5953, PHH FRK 587 → 2587, …) and no
+  longer equal the POS summary. Not a COLL shop. Backup
+  `backups/receipts-crs14-…`.
 
 **Correcting a saved receipt line** — `node tools/correct-receipt.mjs --crs=N
 --receipt-no=NO --move=FROM:TO,…` (dry run), then `--write`: moves a line's
