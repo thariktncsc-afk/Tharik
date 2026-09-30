@@ -1450,6 +1450,13 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   OAP 0, APS 0 (the POS's "ANP Rice"). The POS lists Wheat twice; the
   office named the 6th row (1517.974) and the 2nd (1610.565) is ignored,
   never added. Police lines left out as before. Page 1 PDF read back.
+- **CRS 26, September 2026** (office, 2026-09-30, the POS's இருப்புப் பொருள்
+  ஒதுக்கீடு rows 6–17; FPS code 22DA007PN from `__crsMaster`): BRA 7946.875,
+  AAY 454, PHH_BRA 7389, WHEAT 1490.122, SUGAR 1358.998, AAY_SUGAR 21.5,
+  TOOR 917.98, PALM 918. Rows 11–15 were in two overlapping screenshots and
+  are entered once; the four police rows are 0 and have no field; rows 1–5
+  were not in the images and nothing was stored for them. Page 1 PDF read
+  back; the screen holds them after reload, shop and month changes.
 
 ## Monthly Sales Close needs both sections SAVED
 
