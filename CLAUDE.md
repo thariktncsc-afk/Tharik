@@ -1381,6 +1381,11 @@ under version; a re-run with the same figures writes nothing.
   மொத்த அட்டைகள் says (LOF AAY and OAP are not on the POS: 0). Page 1
   preview and PDF read back; the screen holds them after reload, shop and
   month changes (backup `backups/card-details-crs27-9-2026-…`).
+- **CRS 10, September 2026** (office, 2026-09-30, POS photos; the month
+  clear of the same evening had removed any earlier record): RICE 805 / LOF
+  RICE 6 / SUGAR 17 / LOF SUGAR 0 / AAY 57 / LOF AAY 0 / OAP 1 / POLICE 10 /
+  "N" CARD 2 → TOTAL 898, as the POS says. Page 1 read back (backup
+  `backups/card-details-crs10-9-2026-…`).
 - **CRS 14, September 2026** (office, 2026-09-30, POS photos): RICE 1190 /
   LOF RICE 29 / SUGAR 165 / LOF SUGAR 4 / AAY 12 / LOF AAY 0 / OAP 0 /
   POLICE 0 / "N" CARD (பண்டகமில்லா அட்டை) 34 → TOTAL 1434, as the POS says
@@ -1640,6 +1645,11 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   are entered once; the four police rows are 0 and have no field; rows 1–5
   were not in the images and nothing was stored for them. Page 1 PDF read
   back; the screen holds them after reload, shop and month changes.
+- **CRS 10, September 2026, re-entered** (office, 2026-09-30, the POS's
+  rows 6–17; FPS code 22EA003PN): the evening's month clear had removed the
+  TSO-report entry above. BRA 6623.026, AAY 1619, PHH_BRA 4637, WHEAT
+  892.876, SUGAR 1028.5, AAY_SUGAR 64.5, TOOR 703.792, PALM 704.7; police
+  rows have no field. Page 1 and the screen read back.
 - **CRS 14, September 2026** (office, 2026-09-30, the POS's இருப்புப் பொருள்
   ஒதுக்கீடு rows 6–17; FPS code 22CA002PN from `__crsMaster`): BRA 13135.048,
   AAY 455, PHH_BRA 4429, WHEAT 1241.457, SUGAR 1939.32, AAY_SUGAR 15.5, TOOR
