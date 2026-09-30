@@ -385,11 +385,16 @@ export default function MonthlyEntryPage() {
       const staleG = src === 'receipt' && (f === 'receipt' || f === 'total' || f === 'close');
       g[f] = !derived && !staleG && storedG > 0 && storedG !== auto ? storedG : auto;
     }
-    // Closing bags = Total bags − Sales bags (− C.S bags), the bag columns' own
-    // arithmetic (office, 2026-09-30). Dividing the kgs Closing by the pack size
-    // lost the part-bags: 23571 − 23522 = 49 kg is 0 bags, while the columns
-    // say 471 − 470 = 1. The Total bags stay as they were (the kgs Total ÷ pack
-    // size, adjustments included); Closing is read-only, so nothing typed is replaced.
+    // The bag columns are their own arithmetic (office, 2026-09-30):
+    //   Total bags   = Opening bags + Receipt bags
+    //   Closing bags = Total bags − Sales bags (− C.S bags)
+    // worked out from the boxes as they stand this moment — typed or not — so
+    // a +1 in Opening, Receipt or Sales moves Total and Closing at once. They
+    // used to be the kgs Total / Closing ÷ pack size, which ignored the bag
+    // boxes altogether (CRS 29 Sept: Opening typed 2 → 3, Total stayed 27) and
+    // lost part-bags (23571 − 23522 = 49 kg gave Closing 0, not 471 − 470 = 1).
+    // Both are read-only, so nothing typed is replaced.
+    g.total = g.open + g.receipt;
     g.close = g.total - g.sales - gCs;
     return { c, sec, derived, rcpLocked, rcpHeld, openHeld, open, receipt, sales, total, close, amount, adj, cs, gCs, g };
   };
