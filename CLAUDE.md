@@ -472,6 +472,31 @@ version. It first proves that rebuilding the untouched month reproduces the
 stored one. Used for CRS 10 on 2026-09-22: PHH BRA 2056.02 ↔ PHH FRK 1195.982
 on 01-09-2026 (backup `backups/swap-opening-crs10-…`).
 
+## Dates on screen are DD-MM-YYYY
+
+Office, 2026-09-29 (`npm run verify:date-format`). A phone's Chrome in US
+English showed Daily Entry's date as **09/29/2026**: `<input type="date">`
+draws its text in the BROWSER's language and ignores the page (`lang`, CSS,
+nothing changes it).
+
+- **Every date box is `DateField`** (`src/components/DateField.tsx`) — never
+  a bare `<input type="date">` (the verify refuses one). It shows our own
+  text, `29-09-2026`, and keeps the browser's calendar: on a touch screen the
+  native input lies invisibly over the box, so a tap opens the phone's own
+  picker; with a mouse the date can be typed (digits, dashes come by
+  themselves; `min`/`max` hold) and 📅 calls `showPicker()`.
+- **Value in and out is ISO `YYYY-MM-DD`**, exactly what the native input
+  gave — stores, keys, the chain, holidays and every calculation unchanged.
+- `src/lib/dateFormat.ts`: `dmy`, `dmyTime`, `parseDmy` (DAY FIRST; the US
+  `09/29/2026` is not a date, never guessed into one), `maskDmy`,
+  `dmyFromLocale` (a receipt's STORED `savedAt` text is only re-shown; what
+  is stored is unchanged).
+- The screens' hand-made `DD/MM/YYYY` (remittance rows, Sales Close, clear
+  requests, confirm dialogs) are `DD-MM-YYYY`. Named-month texts ("Tuesday,
+  29 September 2026", "29 Sept 2026") stay — they cannot be misread.
+- **The printed statements and the DSS are untouched**: their dates are the
+  statutory forms' own (`fmtDate` in the builders) and the goldens hold them.
+
 ## Daily Entry — which day is on screen
 
 The foot of Daily Entry reads `← Previous Date | Current Date | Next Date →`,
@@ -613,6 +638,32 @@ it — do not add a formula anywhere else.
   a duplicate row.
 
 `npm run verify:initial-opening` has the office's scenarios A–H.
+
+### An Opening correction is asked about before it is saved
+
+Office, 2026-09-30 (`npm run verify:opening-correction`). A correction on a
+LATER day is stock the month cannot see: the month opens at its first
+sheet's Opening and closes at Opening + Receipt ± adjustments − Sales, so
+the corrected day — and next month — no longer agree with it ("previous
+month CB → next month OB" breaks). CRS 5, 30-09-2026: Police BRA carried 0,
+12 was typed on Daily Entry; September closed at 0 while October would have
+opened at 12. It looked like "Police OB not syncing to Monthly Entry"; the
+roll-up was right.
+- Daily Entry's save now asks an administrator first (`newOpeningCorrections`
+  in `daily-entry/openingCorrections.ts`): every Opening about to be saved
+  fixed that differs from its carry, each with carried / typed / difference.
+  "Go back" is the default and saves nothing. Not asked: the start of the
+  chain (the Initial Opening), a figure typed back to the carry, a correction
+  already saved at that figure. The rule, the permission and the calculation
+  are unchanged.
+- The office decided the 12 was right, so CRS 5's 01-09 Police BRA Opening
+  was put back to 12 (it had been set to 0 from the POS on 2026-09-29):
+  01-09 12 → September 12 + 18 − 18 = 12 → 30-09 carries 12 (no longer a
+  correction) → October 12. Done with `node tools/correct-opening.mjs
+  --crs=N --date=YYYY-MM-DD --id=ID --open=V [--write]` — Daily Entry's admin
+  correction on a saved sheet; a later fixed Opening that then equals its
+  carry loses the mark; month republished, chain rebuilt, backed up, under
+  version.
 
 ## Gunny figures: the screen's rule is the only rule
 
@@ -1180,6 +1231,28 @@ reconciled, as after any landed save.
   CRS 19 September's stored PHH BRA and AAY (see "A month opens where its
   FIRST day sheet opens"). Backup `backups/day-sheet-19_2026-09-29-…`.
 
+**A whole month from a POS stock summary, on its last day** (same tool,
+office 2026-09-29). A shop keyed by DAY (its Initial Opening is a day sheet)
+cannot take the month on Monthly Entry, so the month goes onto ONE day
+sheet: `--receipt=ID:qty,… --receipt-no=…` (one Receipt Register receipt
+dated the sheet's date — the register stays the only source of receipts),
+`--shortage=ID:qty,…` (that date's inspection; Section A only),
+`--gunny-receipt=ss50:n,poly:n` (the Gunny table's administrator Receipt
+correction, stored through `gunnyMonthRecords`), `--correct-open=DATE:ID:v`
+(an administrator's Opening correction on an earlier sheet; the chain is
+rebuilt from it) and `--expect=ID:closing,…` (nothing is written unless
+every Closing equals the paper's).
+- **CRS 5, September 2026** (POS "பொருட்கள் இருப்பு நிலவரச் சுருக்கம்"
+  01-09 → 29-09): one sheet on 29-09-2026 — Receipt `POS/5/09/2026`
+  (14 commodities), Sales, shortage SUGAR 9 and PALM 4 — all 18 closings
+  equal the POS (BRA 2173, SUGAR 680.624, PALM 220…). Gunny 50 KG SS
+  89 + 236 = 325 and POLY 0 + 23 = 23 from the POS sack column (C.BOX kept
+  at the system's 61 from Palm Oil sales; the POS shows NA). Police BRA's
+  Opening on 01-09 corrected 12 → 0 (the POS's; office decision). DSS pages:
+  01-09 and 29-09 only. Monthly Remittance untouched (the 29th's ₹848 stays
+  there, so the 29-09 DSS C A/C line reads 0.00). Backup
+  `backups/day-sheet-5_2026-09-29-…`.
+
 ## Allotment keyed from the FPS Allocation Report
 
 `node tools/set-allotment.mjs --month=M --year=Y --data=<file.json>` (dry
@@ -1237,6 +1310,82 @@ never appears for a month that cannot close (`monthCloseBlock`,
   allotment figures are not shown.
 
 `npm run verify:month-close`.
+
+## CRS Page 2's Remittance Amount is the deposits
+
+Office, 2026-09-30 (`npm run verify:remit-total`). `buildCrsPage2` added up
+the Monthly Remittance table's hand-keyed rows only and, when they came to
+nothing, printed the sheet's own TOTAL as "Remittance Amount". A shop keyed
+by day keeps its deposits on the day sheets, so CRS 8, September 2026,
+printed 55061.30 (= Sales 54803.00 + C.Box 100.80 + P.Gunny 157.50) while its
+Remittance sheet totals 55095.
+- `stmtRemitTotal(d)` (`src/legacy/44-remit-total.js`) is the Remittance
+  sheet's own TOTAL, worked out the way `buildRemittance` works it: per sales
+  date the hand-keyed row, else the day sheet's deposits (`remitByDay`,
+  every deposit on the date), plus the three extra rows. Page 2 prints
+  exactly that; no remittance prints blank, never TOTAL. EXCESS keeps its
+  formula (Remittance − TOTAL). `buildRemittance` is untouched.
+- Live, September 2026: all 16 shops with deposits now print the Remittance
+  sheet's TOTAL on Page 2 (each had printed less — TOTAL or the hand-keyed
+  part only). Rendered from the golden dump, Page 2 is byte-identical for
+  every shop (none there keeps deposits on day sheets).
+- **Every statement that states the month's remittance reads it there**
+  (office, same day, "one single source"): Cost Com (EXCESS / NET TOTAL) and
+  Sale Tax (EXCESS / GRAND TOTAL) had the same hand-keyed-rows-only source;
+  CRS 29's Page 2 read `remitDayTotal`, which leaves the extra rows out.
+  Each sheet keeps its OWN EXCESS formula against its own totals, so
+  EXCESS may differ between sheets (CRS 5 Sept: Page 2 and Cost Com −7.50,
+  Sale Tax −457.50) — the remittance in all of them is the same figure.
+  The Daily Sale sheet's remittance column already agreed.
+- Live, September 2026: for all 16 shops with remittance, the Monthly
+  Remittance screen's total = the Remittance sheet = Page 2 = Cost Com NET
+  TOTAL = Sale Tax GRAND TOTAL = the Daily Sale remittance total (CRS 5:
+  62372 everywhere; it had printed 62282 — the hand-keyed rows without the
+  90 Poly & C.Box row, which happens to equal its Sales Amount).
+- **One rule NOT changed:** for a date holding BOTH a Daily Entry deposit
+  and a hand-keyed row, the Remittance sheet (and so `stmtRemitTotal`)
+  takes the hand-keyed row — its comment calls that row the cereal /
+  non-cereal split of the day's banking — while the Monthly Remittance
+  screen shows the deposit. No such date exists live (2026-09-30); if one
+  ever does, the office decides which rule is right.
+
+## The month's reconciliation — Expected vs Remittance, one Excess
+
+Office, 2026-09-30 (`npm run verify:reconcile`). `stmtReconcile(d)`
+(`src/legacy/44-remit-total.js`) is the one calculation:
+
+    Expected = POS sales + TEA / SALT + Police + C.Box / Poly
+    Excess   = actual remittance (stmtRemitTotal) − Expected
+
+- **POS sales**: every priced Page 2 commodity except tea / salt.
+  **TEA / SALT**: OOTY, TAN, SALT CIS, SALT RFFS (keyed by hand, not on the
+  POS). **Police**: Section B, as Page 2's POLICE row — included (office's
+  decision). **C.Box / Poly**: Empty Card+Box / Empty Polythene Bag sold on
+  the sales grid; when a shop keyed none there, the Monthly Remittance
+  "Poly Gunny & C.Box" row (office's decision — CRS 5 keys it only there).
+  Every figure is Page 2's own arithmetic.
+- **Printed**: CRS Page 2's TOTAL is Expected and its EXCESS the Excess;
+  Cost Com and Sale Tax print the SAME Excess (they had their own
+  subtotals). Negative is printed as it is — never forced to 0; nothing
+  banked prints −Expected. CRS 29 has its own sheets: `null`, unchanged.
+- **The popup**: `ReconcileNotice` on the Statements page (under shop /
+  month / year) and Monthly Remittance (above Save Remittance) asks
+  `/api/statements/reconcile` — the engine's own calculation from the saved
+  stores (signed in; a shop user only for their own shop). Negative → the
+  "Reconciliation Mismatch" popup opens once per shop-month-figure with
+  Statement Amount / Actual Remittance / Difference, the breakdown and the
+  reasons, and a red line with "View details" stays; it refetches when a
+  save of the remittance / day sheets / month lands, so a correction turns it
+  green ("Reconciled … Excess ₹11.00") with no popup.
+- **Reasons are the shop-month's own** (`reconcileReasons`,
+  `src/lib/statements/reconcile.ts`): the shortfall equal to one component
+  (Police, C.Box/Poly, TEA/SALT or one tea/salt item) or two together; for a
+  month keyed day by day, the days banked below their own sales; nothing
+  banked; else a plain statement of the gap.
+- Live, September 2026: 16 shops with remittance, all consistent (Page 2
+  TOTAL = Expected, one Excess on the three sheets); only **CRS 5 is short,
+  −97.50 — exactly its Police sales** (60032 + 2250 + 97.50 + 90 = 62469.50
+  against 62372 banked).
 
 ## Remittance — who may change what
 
@@ -1571,6 +1720,10 @@ npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C 
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
 npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database
+npm run verify:date-format      dates on screen are DD-MM-YYYY: DateField for every date box, day-first parsing, stored dates untouched
+npm run verify:opening-correction  Daily Entry asks an administrator before saving an Opening that differs from the carry
+npm run verify:remit-total       every statement's remittance (Page 2, Cost Com, Sale Tax, CRS 29) = the Remittance sheet TOTAL, never a total
+npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

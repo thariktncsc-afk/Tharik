@@ -51,11 +51,11 @@ console.log('1. What Save refuses (Daily Entry\'s rule, row by row)');
   const ok = remitMonthProblems({ 27: { remitDate: '2026-09-28', nonCereal: 980 }, 28: { remitDate: '2026-09-29', nonCereal: 0, cereal: '150' } }, none, ctx);
   check('amount + date (Non-Cereal, or Cereal alone): saved', ok.length === 0, J(ok));
   const noDate = remitMonthProblems({ 27: { nonCereal: 980 } }, none, ctx);
-  check(`an amount without a date: "${noDate[0]}"`, noDate.length === 1 && /^27\/09\/2026: Please select the Remittance Date\.$/.test(noDate[0]));
+  check(`an amount without a date: "${noDate[0]}"`, noDate.length === 1 && /^27-09-2026: Please select the Remittance Date\.$/.test(noDate[0]));
   const noAmt = remitMonthProblems({ 28: { remitDate: '2026-09-29', nonCereal: 0 } }, none, ctx);
-  check(`a date without an amount: "${noAmt[0]}"`, noAmt.length === 1 && /^28\/09\/2026: Please enter the Remittance Amount/.test(noAmt[0]));
+  check(`a date without an amount: "${noAmt[0]}"`, noAmt.length === 1 && /^28-09-2026: Please enter the Remittance Amount/.test(noAmt[0]));
   const neg = remitMonthProblems({ 3: { remitDate: '2026-09-04', nonCereal: -50 } }, none, ctx);
-  check('a negative amount is refused', neg.length === 1 && /03\/09\/2026: the Non-Cereal amount must be a number/.test(neg[0]), J(neg));
+  check('a negative amount is refused', neg.length === 1 && /03-09-2026: the Non-Cereal amount must be a number/.test(neg[0]), J(neg));
   const txt = remitMonthProblems({ 3: { remitDate: '2026-09-04', cereal: 'abc' } }, none, ctx);
   check('a Cereal figure that is not a number is refused', txt.length === 1 && /Cereal amount must be a number/.test(txt[0]), J(txt));
   const zero = remitMonthProblems({ 5: { nonCereal: 0, cereal: '' } }, none, ctx);
@@ -67,7 +67,7 @@ console.log('1. What Save refuses (Daily Entry\'s rule, row by row)');
   const ex = remitMonthProblems({ extra: { e1nc: 260, e2label: 'Inspection Charges', e2nc: 50, e2date: '2026-09-30', e3date: '2026-09-30' } }, none, ctx);
   check('extra rows: named by their label, same rule', ex.length === 2 && /^Poly & C\.Box Amount: Please select/.test(ex[0]) && /^Extra row 3: Please enter/.test(ex[1]), J(ex));
   const many = remitMonthProblems({ 2: { nonCereal: 10 }, 9: { remitDate: '2026-09-10' } }, none, ctx);
-  check('every problem is listed, in date order', many.length === 2 && many[0].startsWith('02/09') && many[1].startsWith('09/09'), J(many));
+  check('every problem is listed, in date order', many.length === 2 && many[0].startsWith('02-09') && many[1].startsWith('09-09'), J(many));
 }
 
 console.log('\n2. The statement uses the saved remittance (existing flow)');

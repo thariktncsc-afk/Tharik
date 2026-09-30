@@ -21,6 +21,7 @@ import { useAuth } from '@/lib/authClient';
 import { useLiveRevision, useUsers } from '@/lib/dataStore';
 import { useShops } from '@/lib/masters';
 import { ACTION_LABEL, ACTIONS, MODULES, entryLabel, roleLabel, type ActivityRow } from '@/lib/activityLog/core';
+import DateField from '@/components/DateField';
 
 const IST = 'Asia/Kolkata';
 const isoInIst = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: IST }).format(d);
@@ -277,9 +278,9 @@ export default function ActivityLogPage() {
             ))}
             {range === 'custom' ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <input type="date" value={customFrom} max={todayIso()} onChange={(e) => setCustomFrom(e.target.value)} style={{ ...selectStyle, width: 'auto' }} aria-label="From date" />
+                <DateField value={customFrom} max={todayIso()} onChange={(v) => setCustomFrom(v)} style={{ ...selectStyle, width: 'auto' }} aria-label="From date" />
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>to</span>
-                <input type="date" value={customTo} max={todayIso()} onChange={(e) => setCustomTo(e.target.value)} style={{ ...selectStyle, width: 'auto' }} aria-label="To date" />
+                <DateField value={customTo} max={todayIso()} onChange={(v) => setCustomTo(v)} style={{ ...selectStyle, width: 'auto' }} aria-label="To date" />
               </div>
             ) : null}
           </div>

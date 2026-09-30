@@ -39,6 +39,7 @@ const FILES = [
   '41-crs29-sales-report.js', // CRS 29 SALES REPORT: the office's own date-wise sheet
   '42-gunny-live.js',     // stmtGetData wrapper: gunny resolved as the screen resolves it
   '43-staff-posts.js',    // stmtGetData wrapper: BC / Packer by their role in the users table
+  '44-remit-total.js',    // stmtRemitTotal: the Remittance sheet's TOTAL, for CRS Page 2's Remittance Amount
 ];
 
 const PRELUDE = `
@@ -166,7 +167,9 @@ const EPILOGUE = `
     sectionsFor: function(crsId){
       return (typeof isCrs29 === 'function' && isCrs29(crsId)) ? CRS29_SECTIONS : STMT_SECTIONS_STANDARD;
     },
-    printCss: STMT_PRINT_CSS
+    printCss: STMT_PRINT_CSS,
+    // The month's reconciliation (44-remit-total.js) — for /api/statements/reconcile.
+    reconcile: function(d){ return stmtReconcile(d); }
   };
 `;
 

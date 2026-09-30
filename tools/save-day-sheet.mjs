@@ -21,6 +21,23 @@
  * row are dropped, the month republished (rebuildMonthlyFromDaily), and the
  * chain rebuilt from the date forward (rechainAndRepublish).
  *
+ * A MONTH FROM A POS SUMMARY on its last day (office, 2026-09-29 — CRS 5):
+ *   --receipt=ID:qty,…  --receipt-no=…   one Receipt Register receipt dated the
+ *        sheet's date, as the Receipt page saves it; the sheet then takes its
+ *        Receipt from the register, as always. Refused if the register already
+ *        holds a receipt for that shop on that date.
+ *   --shortage=ID:qty,…   that date's inspection, as the Inspection screen
+ *        saves it (Section A only — police ration has no shortage).
+ *   --gunny-receipt=ss50:n,poly:n,cbox:n   the Gunny table's administrator
+ *        Receipt correction (receiptImported), stored through
+ *        gunnyMonthRecords like the Gunny Save.
+ *   --correct-open=YYYY-MM-DD:ID:value,…   an administrator's Opening
+ *        correction on an EARLIER sheet of the same shop (Daily Entry's own:
+ *        Opening set, openFixed kept, Total and Closing worked out from the
+ *        row's own receipt, adjustments and sales); the chain is rebuilt from it.
+ *   --expect=ID:closing,…   refuse to write unless every named Closing comes
+ *        out exactly so (the paper's own CB, checked before anything is sent).
+ *
  * Before writing, the server's own guards are run on the result (stock guard,
  * CRS 29 rice guard) — refused writes are not sent. A date that already has
  * a sheet is refused (this tool adds a day; it does not replace one). Every
@@ -74,9 +91,11 @@ const { inspectRiceWrite, describeRice } = await imp('lib/engine/crs29Rice.ts');
 const { diffStateWrite } = await imp('lib/activityLog/core.ts');
 const { recordActivity } = await imp('lib/activityLog/server.ts');
 const { reconcileShops } = await imp('lib/stockInitServer.ts');
+const { gunnyMonthRecords, mePrevKey } = await imp('app/(app)/monthly-entry/lib.ts');
 
-const STORES = ['entryStore', 'inspectionStore', 'receiptStore', 'meManualStore', 'meSourceStore', 'monthlyStore', '__commodityMaster', '__stockInit'];
-const WRITABLE = ['entryStore', 'inspectionStore', 'receiptStore', 'meSourceStore', 'monthlyStore'];
+const STORES = ['entryStore', 'inspectionStore', 'receiptStore', 'meManualStore', 'meSourceStore', 'monthlyStore', 'meGunnyStore', 'salesCloseStore', '__counters', '__commodityMaster', '__stockInit'];
+const WRITABLE = ['entryStore', 'inspectionStore', 'receiptStore', 'meSourceStore', 'monthlyStore', 'meGunnyStore', '__counters'];
+const EMPTY = { receiptStore: [], __counters: {} };
 const canon = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -87,10 +106,32 @@ async function main() {
   const remit = arg('remit') !== undefined ? Number(arg('remit')) : null;
   const remitDate = arg('remit-date') ?? date;
   const write = process.argv.includes('--write');
-  const sales = {};
-  for (const part of (arg('sales') ?? '').split(',').filter(Boolean)) {
-    const [id, v] = part.split(':');
-    sales[id] = Number(v);
+  const pairs = (name) => {
+    const out = {};
+    for (const part of (arg(name) ?? '').split(',').filter(Boolean)) {
+      const [id, v] = part.split(':');
+      out[id] = Number(v);
+    }
+    return out;
+  };
+  const sales = pairs('sales');
+  const receipt = pairs('receipt');
+  const shortage = pairs('shortage');
+  const gunnyReceipt = pairs('gunny-receipt');
+  const expect = pairs('expect');
+  const receiptNo = arg('receipt-no') ?? '';
+  const corrections = (arg('correct-open') ?? '').split(',').filter(Boolean).map((p) => {
+    const [d, cid, v] = p.split(':');
+    return { date: d, id: cid, value: Number(v) };
+  });
+  if (corrections.some((c) => !/^\d{4}-\d{2}-\d{2}$/.test(c.date) || !c.id || !Number.isFinite(c.value) || c.value < 0)) {
+    console.error('Refused: --correct-open takes YYYY-MM-DD:ID:value (value 0 or more).');
+    return 2;
+  }
+  const bad = [sales, receipt, shortage, gunnyReceipt, expect].some((o) => Object.values(o).some((v) => !Number.isFinite(v))) || [sales, receipt, shortage, gunnyReceipt].some((o) => Object.values(o).some((v) => v < 0));
+  if (bad || (Object.keys(receipt).length && !receiptNo) || Object.keys(gunnyReceipt).some((k) => !['ss50', 'poly', 'cbox'].includes(k))) {
+    console.error('Refused: every figure must be a number of 0 or more (--expect may be any number); --receipt needs --receipt-no; --gunny-receipt takes ss50 / poly / cbox.');
+    return 2;
   }
   if (!Number.isInteger(crsId) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(remitDate) || Object.values(sales).some((v) => !Number.isFinite(v) || v < 0) || (remit !== null && !(remit > 0))) {
     console.error('Usage: node tools/save-day-sheet.mjs --crs=<n> --date=YYYY-MM-DD --sales=ID:qty,… [--remit=<amount>] [--remit-date=YYYY-MM-DD] [--write]');
@@ -108,16 +149,59 @@ async function main() {
     return 1;
   }
   const lists = commodityListsFor(stored.__commodityMaster ?? null, crsId);
-  const unknown = Object.keys(sales).filter((id) => ![...lists.a, ...lists.b].some((c) => c.id === id));
+  const unknown = [...new Set([...Object.keys(sales), ...Object.keys(receipt), ...Object.keys(shortage), ...Object.keys(expect)])].filter((id) => ![...lists.a, ...lists.b].some((c) => c.id === id));
+  const policeShort = Object.keys(shortage).filter((id) => lists.b.some((c) => c.id === id));
+  if (policeShort.length) {
+    console.error(`Refused: police ration has no shortage: ${policeShort.join(', ')}`);
+    return 1;
+  }
   if (unknown.length) {
     console.error(`Refused: not on CRS ${crsId}'s Daily Entry: ${unknown.join(', ')}`);
     return 1;
   }
 
+  const next = Object.fromEntries(WRITABLE.map((k) => [k, clone(stored[k] ?? EMPTY[k] ?? {})]));
+  // The month's receipts, into the Receipt Register (the Receipt page's save).
+  if (Object.keys(receipt).length) {
+    const clash = next.receiptStore.filter((r) => Number(r.crsId) === crsId && r.date === date);
+    if (clash.length) {
+      console.error(`Refused: the register already holds ${clash.map((r) => r.receiptNo).join(', ')} for CRS ${crsId} on ${date}.`);
+      return 1;
+    }
+    const id = Number(next.__counters.rpNextId) || next.receiptStore.reduce((mx, r) => Math.max(mx, Number(r.id) || 0), 0) + 1;
+    const items = Object.fromEntries(Object.entries(receipt).filter(([, q]) => q > 0).map(([cid, q]) => [cid, { qty: q }]));
+    next.receiptStore.push({ id, crsId, date, receiptNo, items, savedAt: new Date().toLocaleString('en-IN'), type: 'regular' });
+    next.__counters.rpNextId = id + 1;
+  }
+  // That date's inspection (the Inspection screen's save, shortage step).
+  if (Object.keys(shortage).length) {
+    const rec = { a: { ...(next.inspectionStore[key]?.a ?? {}) }, b: { ...(next.inspectionStore[key]?.b ?? {}) } };
+    for (const [cid, q] of Object.entries(shortage)) {
+      const { __projection: _p, ...prev } = rec.a[cid] ?? {};
+      rec.a[cid] = { ...prev, shortage: q };
+    }
+    next.inspectionStore[key] = rec;
+  }
+
+  // An administrator's Opening correction on an earlier sheet (Daily Entry's).
+  for (const c of corrections) {
+    const k = `${crsId}_${c.date}`;
+    const sheet = next.entryStore[k];
+    const sec = sheet?.a?.[c.id] ? 'a' : sheet?.b?.[c.id] ? 'b' : null;
+    if (!sheet || !sec || c.date >= date || sheet.__projection) {
+      console.error(`Refused: --correct-open needs an existing earlier day sheet holding ${c.id}: ${k}`);
+      return 1;
+    }
+    const r = sheet[sec][c.id];
+    const total = c.value + (Number(r.receipt) || 0) + (Number(r.excess) || 0) - (Number(r.shortage) || 0) - (Number(r.transfer) || 0);
+    console.log(`  Opening correction ${k} ${c.id}: ${r.open} → ${c.value} (Total ${r.total} → ${total}, Closing ${r.close} → ${total - (Number(r.sales) || 0)})`);
+    sheet[sec][c.id] = { ...r, open: c.value, openFixed: true, total, close: total - (Number(r.sales) || 0) };
+  }
+
   // ── The day sheet, as derive() / save() build it ─────────────────────────
-  const chain = buildChainIndex(stored.entryStore, stored.inspectionStore, stored.receiptStore, crsId);
-  const dayReceipts = receiptQtyForDay(stored.receiptStore, crsId, date);
-  const insp = stored.inspectionStore?.[key];
+  const chain = buildChainIndex(next.entryStore, next.inspectionStore, next.receiptStore, crsId);
+  const dayReceipts = receiptQtyForDay(next.receiptStore, crsId, date);
+  const insp = next.inspectionStore?.[key];
   const snap = { a: {}, b: {} };
   const shown = [];
   for (const [sec, comms] of [['a', lists.a], ['b', lists.b]]) {
@@ -140,7 +224,6 @@ async function main() {
   Object.assign(snap, sheetTotals(remits));
 
   // ── What the save then does to the stores ────────────────────────────────
-  const next = Object.fromEntries(WRITABLE.map((k) => [k, clone(stored[k] ?? (k === 'receiptStore' ? [] : {}))]));
   next.entryStore[key] = snap;
   const tookOver = dropProjectedSheet(next.entryStore, crsId, m, y);
   dropProjectedAdjustments(next.inspectionStore, crsId, m, y);
@@ -149,21 +232,59 @@ async function main() {
   const month = rebuildMonthlyFromDaily(crsId, m, y, next.entryStore, next.inspectionStore, stored.meManualStore?.[`${crsId}_${m}_${y}`], lists, next.receiptStore);
   next.monthlyStore[`${crsId}_${m}_${y}`] = month.merged;
   next.meSourceStore[`${crsId}_${m}_${y}`] = month.source;
-  const chained = rechainAndRepublish({ ...next, meManualStore: stored.meManualStore }, crsId, date, lists);
+  const from = corrections.reduce((d, c) => (c.date < d ? c.date : d), date);
+  const chained = rechainAndRepublish({ ...next, meManualStore: stored.meManualStore }, crsId, from, lists);
   for (const [k, v] of Object.entries(chained.patch)) next[k] = v;
+  // The Gunny table's administrator Receipt correction, then the month's gunny
+  // rows stored exactly as the Gunny Save / month-close store them.
+  const mKey = `${crsId}_${m}_${y}`;
+  if (Object.keys(gunnyReceipt).length) {
+    const own = clone(next.meGunnyStore[mKey] ?? {});
+    for (const [item, n] of Object.entries(gunnyReceipt)) own[item] = { ...(own[item] ?? {}), receiptImported: n };
+    const merged = next.monthlyStore[mKey] ?? { a: {}, b: {} };
+    const rows = { ...(merged.a ?? {}), ...(merged.b ?? {}) };
+    const bags = Object.fromEntries(Object.entries(rows).map(([cid, r]) => [cid, Number(r.g_sales) || 0]));
+    const soldQty = Object.fromEntries(Object.entries(rows).map(([cid, r]) => [cid, Number(r.sales) || 0]));
+    next.meGunnyStore[mKey] = gunnyMonthRecords(own, next.meGunnyStore[mePrevKey(crsId, m, y)] ?? {}, { crsId, month: m, year: y, key: mKey }, stored.salesCloseStore?.[mKey], bags, soldQty);
+  }
 
   console.log(`CRS ${crsId} · ${date} · new day sheet (${[...lists.a, ...lists.b].length} commodities)`);
   for (const r of shown) console.log(`  ${r.en.padEnd(18)} OB ${r.open}  + Rcp ${r.receipt}  = Total ${r.total}  − Sales ${r.sales}  = CB ${+r.close.toFixed(3)}   ${r.rate === 'free' ? 'free' : `@ ${r.rate} = ₹${r.amount.toFixed(2)}`}`);
   const amt = Object.values(snap.a).concat(Object.values(snap.b)).reduce((t, r) => t + (r.amount || 0), 0);
   console.log(`  Sales amount ₹${amt.toFixed(2)} · deposit ${remits.length ? `₹${remit.toFixed(2)} dated ${remitDate} (Non-Cereal)` : 'none'}`);
+  if (Object.keys(shortage).length) console.log(`  shortage (inspection ${date}): ${Object.entries(shortage).map(([cid, q]) => `${cid} ${q}`).join(', ')}`);
+  if (Object.keys(receipt).length) console.log(`  Receipt Register: ${receiptNo} dated ${date}, ${Object.keys(receipt).filter((cid) => receipt[cid] > 0).length} commodities`);
+  if (Object.keys(gunnyReceipt).length) {
+    const g = next.meGunnyStore[mKey] ?? {};
+    for (const it of ['ss50', 'poly', 'cbox']) if (g[it]) console.log(`  Gunny ${it.padEnd(4)}: Opening ${g[it].opening} + Receipt ${g[it].receipt} = Total ${g[it].total}; Closing ${g[it].closing}${gunnyReceipt[it] !== undefined ? ' (receipt from the POS)' : ''}`);
+  }
+  const off = Object.entries(expect).filter(([cid, cb]) => {
+    const r = snap.a[cid] ?? snap.b[cid];
+    return !r || Math.abs(r.close - cb) > 0.0005;
+  });
+  for (const [cid, cb] of off) console.log(`  ✗ ${cid}: Closing ${+(snap.a[cid] ?? snap.b[cid])?.close?.toFixed(3)} but the paper says ${cb}`);
+  if (Object.keys(expect).length && !off.length) console.log(`  ✓ every Closing matches the paper (${Object.keys(expect).length} commodities)`);
   const neg = shown.filter((r) => r.close < -0.0005);
   if (neg.length) console.log(`  ⚠ closes below zero: ${neg.map((r) => `${r.id} ${r.close}`).join(', ')}`);
   console.log(`  projection dropped: ${tookOver} · Monthly register row dropped: ${!!drop.dropped} · chain rebuilt on: ${chained.dates.join(', ') || 'no later day'}`);
 
-  const changed = WRITABLE.filter((k) => canon(next[k]) !== canon(stored[k] ?? (k === 'receiptStore' ? [] : {})));
+  const changed = WRITABLE.filter((k) => canon(next[k]) !== canon(stored[k] ?? EMPTY[k] ?? {}));
   // Only this shop may move.
   for (const k of changed) {
     const before = stored[k] ?? {}, after = next[k];
+    if (k === 'receiptStore') {
+      const kept = after.slice(0, before.length ?? 0);
+      const added = after.slice(before.length ?? 0);
+      if (canon(kept) !== canon(before) || added.some((r) => Number(r.crsId) !== crsId)) { console.error('Refused: receiptStore would change a row other than the one being added'); return 1; }
+      console.log(`  receiptStore: +${added.length} row (${added.map((r) => r.receiptNo).join(', ')})`);
+      continue;
+    }
+    if (k === '__counters') {
+      const movedC = Object.keys({ ...before, ...after }).filter((x) => canon(before[x]) !== canon(after[x]));
+      if (movedC.some((x) => x !== 'rpNextId')) { console.error(`Refused: __counters would change ${movedC.join(', ')}`); return 1; }
+      console.log(`  __counters: rpNextId ${before.rpNextId} → ${after.rpNextId}`);
+      continue;
+    }
     if (Array.isArray(after)) continue;
     const moved = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((x) => canon(before[x]) !== canon(after[x]));
     const other = moved.filter((x) => !x.startsWith(`${crsId}_`));
@@ -179,13 +300,17 @@ async function main() {
   if (rice.length) { console.error(`Refused by the CRS 29 rice guard: ${describeRice(rice)}`); return 1; }
   console.log('  server guards: stock ✓ · CRS 29 rice ✓');
 
+  if (off.length) {
+    console.error(`Refused: ${off.length} Closing(s) do not match the paper — nothing written.`);
+    return 1;
+  }
   if (!write) {
     console.log('DRY RUN — pass --write to apply.');
     return 0;
   }
   mkdirSync(join(root, 'backups'), { recursive: true });
   const file = join(root, 'backups', `day-sheet-${key}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  writeFileSync(file, JSON.stringify({ key, sales, remit, remitDate, versions, before: Object.fromEntries(changed.map((k) => [k, stored[k]])) }, null, 1));
+  writeFileSync(file, JSON.stringify({ key, corrections, sales, receipt, receiptNo, shortage, gunnyReceipt, expect, remit, remitDate, versions, before: Object.fromEntries(changed.map((k) => [k, stored[k]])) }, null, 1));
   console.log(`Backed up ${changed.join(', ')} to ${file}`);
   // The day sheet first; the month and anything else after, as the save sends them.
   const order = ['entryStore', ...changed.filter((k) => k !== 'entryStore')].filter((k) => changed.includes(k));
@@ -201,7 +326,8 @@ async function main() {
     console.log(`WROTE ${k} v${versions[k]} → v${upd[0].version}`);
   }
   const session = { userId: 1, username: 'admin', role: 'ADMIN', crsId: null, iat: Math.floor(Date.now() / 1000) };
-  await recordActivity(session, diffStateWrite(stored, landed, { entryStore: { [key]: 'edited' } }));
+  const edited = { [key]: 'edited', ...Object.fromEntries(corrections.map((c) => [`${crsId}_${c.date}`, 'edited'])) };
+  await recordActivity(session, diffStateWrite(stored, landed, { entryStore: edited }));
   await reconcileShops([crsId], 'admin');
   console.log(`Done: CRS ${crsId} ${date} saved — activity logged, started-record reconciled.`);
   return 0;

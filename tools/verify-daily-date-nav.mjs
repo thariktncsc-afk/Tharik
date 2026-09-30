@@ -70,7 +70,7 @@ console.log('\nThe bar takes the clerk back up to the entry');
     /<button type="button" className="de-datenav-current"[^>]*onClick=\{scrollToEntry\}/.test(page));
   check('the target is the start of the commodity entry (#de-entry), not the top of the window',
     /id="de-entry" className="de-entry-top"/.test(page) && /getElementById\('de-entry'\)\?\.scrollIntoView/.test(page));
-  check('the date box at the top does not scroll (only the bar asks for it)', /onChange=\{\(e\) => void goToDate\(e\.target\.value\)\}/.test(page));
+  check('the date box at the top does not scroll (only the bar asks for it)', /<DateField value=\{date\} max=\{todayIso\(\)\} onChange=\{\(v\) => void goToDate\(v\)\}/.test(page));
 
   console.log('\nRemittance: an administrator may save without one; shop staff may not');
   check('an empty deposit list stops shop staff, as before', /\} else if \(!list\.length && !isAdmin\) \{[\s\S]{0,400}?setRemitErr\(\{ amount: 'Please enter the Remittance Amount\.'/.test(page));

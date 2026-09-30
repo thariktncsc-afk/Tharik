@@ -719,17 +719,19 @@ function buildCrsPage2(d){
   bodyRows += nosRow('22','P.GUNNY','EMPTY_BAG',gunnyRate);
 
   // ── Footer totals ─────────────────────────────────────────────────────────
-  var grandTotal = salesAmountMain + policeAmt + cboxAmt + gunnyAmt;
-  // Remittance total for the month (from meRemitStore), if entered
-  var totalRemit = 0;
-  try{
-    var rk = d.crsId + '_' + d.month + '_' + d.year;
-    var rs = (typeof meRemitStore!=='undefined') ? meRemitStore[rk] : null;
-    if(rs){ Object.keys(rs).forEach(function(k){ if(k==='extra') return;
-      var day=rs[k]||{}; totalRemit += (parseFloat(day.nonCereal)||0)+(parseFloat(day.cereal)||0); }); }
-  }catch(e){}
-  var excess = totalRemit>0 ? (totalRemit - grandTotal) : 0;
-  var remitAmount = totalRemit>0 ? totalRemit : grandTotal;
+  // TOTAL and EXCESS are the month's reconciliation (stmtReconcile,
+  // 44-remit-total.js; office, 2026-09-30): Expected = POS + tea/salt + police
+  // + C.Box/Poly (the grid's, else the remittance's Poly Gunny & C.Box row),
+  // Excess = the deposits − Expected, negative when short — never forced to 0.
+  var rc = stmtReconcile(d);
+  var grandTotal = rc ? rc.expectedRaw : (salesAmountMain + policeAmt + cboxAmt + gunnyAmt);
+  // Remittance: the month's deposits as the Remittance sheet totals them
+  // (stmtRemitTotal, 44-remit-total.js) — never a stand-in for them. It used
+  // to read the hand-keyed rows only and print TOTAL when those were empty
+  // (office, 2026-09-30). EXCESS keeps its own formula.
+  var totalRemit = stmtRemitTotal(d);
+  var excess = rc ? rc.excess : (totalRemit - grandTotal);
+  var remitAmount = totalRemit;
 
   var css = [
     '.p2-wrap{font-family:Calibri,Arial,sans-serif;color:#000;background:#fff}',
@@ -1127,13 +1129,13 @@ function buildCostCom(d){
   var rs=(typeof meRemitStore!=='undefined')?meRemitStore[moKey]:null;
   var ex=(rs&&rs['extra'])?rs['extra']:{};
   var inspec=(parseFloat(ex.e2nc)||0)+(parseFloat(ex.e2ce)||0);
-  var totalRemit=0;
-  try{ if(rs){ Object.keys(rs).forEach(function(k){ if(k==='extra')return;
-        var day=rs[k]||{}; totalRemit+=(parseFloat(day.nonCereal)||0)+(parseFloat(day.cereal)||0); });
-      ['e1','e2','e3'].forEach(function(e){ totalRemit+=(parseFloat(ex[e+'nc'])||0)+(parseFloat(ex[e+'ce'])||0); });
-  } }catch(e){}
+  // The month's deposits as the Remittance sheet totals them (stmtRemitTotal,
+  // 44-remit-total.js) — it read the hand-keyed rows only (office, 2026-09-30).
+  var totalRemit=stmtRemitTotal(d);
   var subtotal=grand+cboxAmt+polyAmt+inspec;
-  var excess=totalRemit>0?(totalRemit-subtotal):0;
+  // EXCESS is the month's reconciliation, the same figure CRS Page 2 prints
+  // (stmtReconcile; office, 2026-09-30) — not this sheet's own subtotal.
+  var excess=stmtReconcile(d)?stmtReconcile(d).excess:(totalRemit-subtotal);
   var netTotal=totalRemit>0?totalRemit:subtotal;
   body+=amtRow(12,'INSPEC. CHARGES',inspec?inspec:0);
   body+=amtRow(13,'EXCESS',excess?excess:0);
@@ -1324,10 +1326,12 @@ function buildSaleTax(d){
   // Excess & grand total from the Monthly Remittance table
   var moKey=d.crsId+'_'+d.month+'_'+d.year;
   var rs=(typeof meRemitStore!=='undefined')?meRemitStore[moKey]:null;
-  var totalRemit=0;
-  try{ if(rs){ Object.keys(rs).forEach(function(k){ if(k==='extra')return; var day=rs[k]||{}; totalRemit+=(parseFloat(day.nonCereal)||0)+(parseFloat(day.cereal)||0); });
-    if(rs.extra){ ['e1','e2','e3'].forEach(function(e){ totalRemit+=(parseFloat(rs.extra[e+'nc'])||0)+(parseFloat(rs.extra[e+'ce'])||0); }); } } }catch(e){}
-  var excess=totalRemit>0?(totalRemit-(mainTotal+polTotal)):0;
+  // The month's deposits as the Remittance sheet totals them (stmtRemitTotal,
+  // 44-remit-total.js) — it read the hand-keyed rows only (office, 2026-09-30).
+  var totalRemit=stmtRemitTotal(d);
+  // EXCESS is the month's reconciliation, the same figure CRS Page 2 prints
+  // (stmtReconcile; office, 2026-09-30) — not this sheet's own totals.
+  var excess=stmtReconcile(d)?stmtReconcile(d).excess:(totalRemit-(mainTotal+polTotal));
   var grand=totalRemit>0?totalRemit:(mainTotal+polTotal);
 
   var css=[

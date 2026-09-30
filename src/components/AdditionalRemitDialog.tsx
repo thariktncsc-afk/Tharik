@@ -10,6 +10,7 @@
  */
 import { useState } from 'react';
 import { REMIT_REASONS, type RemitReason } from '@/lib/engine/remittance';
+import { dmy } from '@/lib/dateFormat';
 
 const TONE: Record<RemitReason, { icon: string; note: string }> = {
   Missed: { icon: '🕗', note: 'Part of the day’s takings was not banked on the day' },
@@ -32,7 +33,7 @@ export default function AdditionalRemitDialog({
   onClose: () => void;
 }) {
   const [picked, setPicked] = useState<RemitReason | null>(null);
-  const fmt = (d: string) => (d ? d.split('-').reverse().join('/') : '—');
+  const fmt = (d: string) => (d ? dmy(d) : '—');
   const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
