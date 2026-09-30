@@ -26,7 +26,7 @@
 import { DSS_A, DSS_B, entryListsFor, type Commodity } from '@/lib/engine/commodities';
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec } from '@/lib/engine/monthlyRollup';
 import { gunnyRowFor, type GunnyRec, type SalesClose } from '@/app/(app)/monthly-entry/lib';
-import { packTypesFor } from '@/lib/engine/gunnyPack';
+import { packTypesFor, salesBags } from '@/lib/engine/gunnyPack';
 import type { Flow, GunnyFlow, GunnyKey, PdfMonth } from '@/lib/engine/pvPdfParse';
 import type { PvCommRow } from '@/lib/engine/pvStatement';
 
@@ -138,7 +138,7 @@ export function systemQuarterMonth(
   // exactly as the Gunny Stock screen does (office, 2026-09-26).
   const packSales: Record<string, number> = {};
   for (const sec of ['a', 'b'] as const) for (const [id, r] of Object.entries(merged[sec])) {
-    gridGunnySales[id] = Number(r.g_sales) || 0;
+    gridGunnySales[id] = salesBags(r, id); // the count Monthly Sales shows
     packSales[id] = Number(r.sales) || 0;
   }
   const gunny = {} as Record<GunnyKey, GunnyFlow>;

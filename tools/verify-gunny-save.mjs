@@ -125,8 +125,12 @@ console.log('\n5. Refused, and asked');
   check('the office\'s figures: nothing to refuse, nothing to ask', ok.errors.length === 0 && ok.deficits.length === 0, JSON.stringify(ok));
   const neg = gunnySaveProblems({ ss50: { issues: -5 } }, prev, salesClose, {}, packSales);
   check('negative Issues are refused', neg.errors.some((e) => /50 KG SS: Issues/.test(e)), JSON.stringify(neg));
-  const nan = gunnySaveProblems({ poly: { opening: 'abc' }, cbox: { receiptImported: -1 } }, prev, salesClose, {}, packSales);
-  check('a non-number Opening and a negative Receipt are refused', nan.errors.length === 2, JSON.stringify(nan));
+  // Receipt is never typed since 2026-09-30 (Monthly Sales is its only source), so a stored
+  // receiptImported is neither read nor judged; Opening and Issues still are.
+  const nan = gunnySaveProblems({ poly: { opening: 'abc' }, cbox: { issues: 'x', receiptImported: -1 } }, prev, salesClose, {}, packSales);
+  check('a non-number Opening and a non-number Issues are refused; a stored typed Receipt is not read', nan.errors.length === 2 && !nan.errors.some((e) => /Receipt/.test(e)), JSON.stringify(nan));
+  const ignored = gunnyRowFor('cbox', { cbox: { receiptImported: 999 } }, prev, salesClose, {}, packSales);
+  check(`…C.BOX Receipt stays Monthly Sales' ${ignored.rc.val} with a typed 999 stored`, ignored.rc.val === 56);
   const blank = gunnySaveProblems({ ss50: { issues: '' }, poly: { opening: '' } }, prev, salesClose, {}, packSales);
   check('blank boxes are not errors (blank = not keyed)', blank.errors.length === 0, JSON.stringify(blank));
   const zero = gunnySaveProblems({ ss50: { issues: 0 } }, prev, salesClose, {}, packSales);

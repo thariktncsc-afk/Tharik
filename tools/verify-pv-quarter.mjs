@@ -480,7 +480,9 @@ console.log('\n4. The current month from the stores');
   const sep = Q.systemQuarterMonth(9, 9, 2026, stores, true);
   check('September BRA as Monthly Entry publishes it: 3050 → 3350', sep.rows.BRA.open === 3050 && sep.rows.BRA.closing === 3350, J(sep.rows.BRA));
   check('C.S leaves stock as a sale: WHEAT sales 40 + 2', sep.rows.WHEAT.sales === 42 && sep.rows.WHEAT.closing === 600, J(sep.rows.WHEAT));
-  check('its gunny as the Gunny Stock screen: 100 carried + 20 − 30 = 90', J(sep.gunny.ss50) === J({ opening: 100, receipt: 20, total: 120, issues: 30, closing: 90 }), J(sep.gunny.ss50));
+  // The Receipt is Monthly Sales' own bags since 2026-09-30 (BRA 200 kg = 4 sacks, WHEAT 40 kg = 0):
+  // the stored typed Receipt of 20 (receiptImported) is no longer read.
+  check('its gunny as the Gunny Stock screen: 100 carried + 4 (Monthly Sales\' bags, not the typed 20) − 30 = 74', J(sep.gunny.ss50) === J({ opening: 100, receipt: 4, total: 104, issues: 30, closing: 74 }), J(sep.gunny.ss50));
   check('police for a police shop', sep.police?.PB_BRA.open === 5);
   check('another shop\'s month never reaches it (CRS 10\'s 999 absent)', !Object.values(sep.rows).some((r) => r.open === 999));
   const sepNo = Q.systemQuarterMonth(9, 9, 2026, stores, false);

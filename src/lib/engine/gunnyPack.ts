@@ -5,10 +5,15 @@
  * the statements. `npm run verify:gunny-receipt`.
  *
  *   GUNNY (50 KG SS)  BRA, AAY, AAY FRK, NPHH FRK, PHH FRK, PHH BRA, RRA,
- *                     NPHH FRK RRA, WHEAT, T.DHALL (+ OAP, APS and the police
- *                     rice / wheat / dhall, as the engine always counted them)
- *   POLY              SUGAR, AAY SUGAR, SALT (CIS), SALT (RFFS) (+ police sugar)
- *   C.BOX             P.OIL, OOTY, TAN (+ police palm oil)
+ *                     NPHH FRK RRA, WHEAT, T.DHALL (+ OAP, APS and police BRA)
+ *   POLY              SUGAR, AAY SUGAR, SALT (CIS), SALT (RFFS)
+ *   C.BOX             P.OIL, OOTY, TAN
+ *
+ * Exactly the rows that HAVE a bag box on the Monthly Sales grid. Police
+ * sugar / wheat / dhall / palm oil have none there (NO_GUNNY,
+ * monthly-entry/lib.ts), so they are not counted here either — a bag Gunny
+ * counted that Monthly Sales does not show would be a mismatch (office,
+ * 2026-09-30). Live: no month has a police sale that fills a pack.
  *
  * WHEAT, RRA, NPHH FRK RRA (and police BRA) can come in poly bags instead:
  * the Receipt page's Gunny / Poly switch says so, and it is now SAVED on the
@@ -20,6 +25,14 @@
  * bagsOf (engine/commodities.ts), the same divisor the grids' bag columns use:
  * 50 kg a sack or a sugar poly, 25 a salt poly, 10 palm-oil packets a box, 50
  * tea packets a box. Per commodity, on the month's total.
+ *
+ * MONTHLY SALES IS THE SOURCE (office, 2026-09-30, second instruction): the
+ * Gunny Receipt is the SUM OF THE BAG COUNTS MONTHLY SALES SHOWS in its Sales
+ * column, by pack — nothing else. `salesBags` is that count for one row (the
+ * grid's own rule: the office's stored count where it keyed one that differs,
+ * else sales ÷ pack size), so the two screens cannot disagree. A Receipt typed
+ * into Gunny Stock Management (`receiptImported`) is no longer read: CRS 5
+ * September showed 236 / 23 from one while Monthly Sales said 227 / 28.
  */
 import { bagsOf } from '@/lib/engine/commodities';
 import type { ReceiptRow } from '@/lib/engine/receiptRollup';
@@ -29,9 +42,9 @@ export type PackType = 'GUNNY' | 'POLY' | 'CBOX';
 export const PACK_BASE: Record<string, PackType> = {
   BRA: 'GUNNY', AAY: 'GUNNY', AAY_FRK: 'GUNNY', NPHH_FRK: 'GUNNY', PHH_FRK: 'GUNNY', PHH_BRA: 'GUNNY',
   RRA: 'GUNNY', NPHH_RRA: 'GUNNY', WHEAT: 'GUNNY', TOOR: 'GUNNY', OAP: 'GUNNY', APS: 'GUNNY',
-  PB_BRA: 'GUNNY', PB_WHEAT: 'GUNNY', PB_TOOR: 'GUNNY',
-  SUGAR: 'POLY', AAY_SUGAR: 'POLY', SALT_CIS: 'POLY', SALT_RFFS: 'POLY', PB_SUGAR: 'POLY',
-  PALM: 'CBOX', OOTY: 'CBOX', TAN: 'CBOX', PB_PALM: 'CBOX',
+  PB_BRA: 'GUNNY',
+  SUGAR: 'POLY', AAY_SUGAR: 'POLY', SALT_CIS: 'POLY', SALT_RFFS: 'POLY',
+  PALM: 'CBOX', OOTY: 'CBOX', TAN: 'CBOX',
 };
 
 /** The Receipt page's Gunny ↔ Poly switch applies to these alone. */
@@ -64,9 +77,36 @@ export function packTypesFor(receiptStore: ReceiptRow[] | undefined, crsId: numb
   return out;
 }
 
-/** Packs emptied by the month's sales: Σ floor(sales ÷ pack size) per type. */
-export function packCounts(sales: Record<string, number>, types: Record<string, PackType> = PACK_BASE): Record<PackType, number> {
+/**
+ * The bag count Monthly Sales shows in one commodity's SALES column
+ * (monthly-entry/page.tsx rowFor): the stored count where it is the office's
+ * own — above zero and not what the division gives — else sales ÷ pack size.
+ */
+export function salesBags(row: { sales?: unknown; g_sales?: unknown } | undefined, id: string): number {
+  const auto = bagsOf(Number(row?.sales) || 0, id);
+  const stored = Math.round(Number(row?.g_sales) || 0);
+  return stored > 0 && stored !== auto ? stored : auto;
+}
+
+/** Every commodity's Monthly Sales bag count, from a published month (monthlyStore[key]). */
+export function monthSalesBags(block: { a?: Record<string, unknown>; b?: Record<string, unknown> } | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const sec of ['a', 'b'] as const) {
+    for (const [id, row] of Object.entries(block?.[sec] ?? {})) out[id] = salesBags(row as { sales?: unknown; g_sales?: unknown }, id);
+  }
+  return out;
+}
+
+/**
+ * Packs emptied by the month's sales, per type: the sum of Monthly Sales' bag
+ * counts. `bags` is those counts where the caller has them (the grid's own
+ * figures on screen, monthSalesBags elsewhere); a commodity it does not name
+ * is counted as sales ÷ pack size.
+ */
+export function packCounts(sales: Record<string, number>, types: Record<string, PackType> = PACK_BASE, bags?: Record<string, number>): Record<PackType, number> {
   const out: Record<PackType, number> = { GUNNY: 0, POLY: 0, CBOX: 0 };
-  for (const [id, type] of Object.entries(types)) out[type] += bagsOf(Number(sales[id]) || 0, id);
+  for (const [id, type] of Object.entries(types)) {
+    out[type] += bags && bags[id] !== undefined ? Math.round(Number(bags[id]) || 0) : bagsOf(Number(sales[id]) || 0, id);
+  }
   return out;
 }

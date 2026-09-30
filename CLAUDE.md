@@ -686,7 +686,7 @@ are not where those bags come from).
 | | |
 | --- | --- |
 | Opening | this month's own figure, else last month's Closing carried, else 0 — a stored COPY of the carry (`openingAuto`) follows last month's Closing |
-| Receipt | `receiptImported` (an administrator's figure), else the packs the month's SALES emptied — see "Gunny Receipt is counted from the saved sales" (Sales Close and stored `g_sales` no longer, 2026-09-30) |
+| Receipt | the sum of the bag counts MONTHLY SALES shows, by pack — its only source; see "Gunny Receipt is counted from the saved sales" (Sales Close and a typed `receiptImported` are no longer read, 2026-09-30) |
 | Issues | as typed, else POLY / C.BOX's month's EMPTY_BAG / EMPTY_BOX sales, else 0 |
 | Total | Opening + Receipt |
 | Closing | Total − Issues |
@@ -730,8 +730,10 @@ ran the wrong way: typing **Issues** in the Gunny table WROTE those sales rows
   sales. Nothing else subtracts those bags.
 - **The gunny figures are the office's.** Opening, Receipt, Total, Closing and
   the two automatic Issues are read-only for shop staff; an administrator may
-  correct Opening and Receipt (which writes `receiptImported`, the override
-  the engine already reads). **Total and Closing stay derived for everyone** —
+  correct Opening. (Receipt was admin-typable through `receiptImported` until
+  2026-09-30; it is now Monthly Sales' figure for everyone, and Issues are
+  typed by the shop too — see "Gunny Receipt is counted from the saved
+  sales".) **Total and Closing stay derived for everyone** —
   they are `Opening + Receipt` and `Total − Issues`, and a typable one only
   lets a row disagree with itself, the same rule the commodity grid keeps.
 - **Enforced on the server**: `stockGuard.ts` rule 5 (`inspectGunnyWrite`),
@@ -757,8 +759,8 @@ Office, 2026-09-29. `npm run verify:gunny-save`.
   width on a phone), saves the selected shop and month **exactly as the
   month-close does**: both call `gunnyMonthRecords` (monthly-entry/lib.ts).
   Do not give either one its own copy of that write.
-- Stored: keyed figures as keyed (an Opening the office set, 50 KG SS Issues,
-  an admin's Receipt override), plus the derived copies the table always
+- Stored: keyed figures as keyed (an Opening the office set, typed Issues),
+  plus the derived copies the table always
   kept — the carried Opening, Receipt, Total, Closing. POLY / C.BOX automatic
   Issues are still NOT stored. Next month opens at the Closing stored here.
 - `gunnySaveProblems` runs first: a keyed Opening / Receipt / Issues that is
@@ -812,10 +814,14 @@ and — in `42-gunny-live.js` — the statements:
 - **Receipt = the packs the month's saved sales emptied**: per commodity,
   floor(month's sales ÷ pack size) (`bagsOf`) — GUNNY: BRA, AAY, AAY FRK,
   NPHH FRK, PHH FRK, PHH BRA, RRA, NPHH FRK RRA, WHEAT, T.DHALL (+ OAP, APS,
-  police rice / wheat / dhall, as the engine always had) ÷50; POLY: SUGAR,
-  AAY SUGAR ÷50, SALT CIS / RFFS ÷25 (+ police sugar); C.BOX: P.OIL ÷10,
-  OOTY, TAN ÷50 (+ police palm oil). On the MONTH's total from the roll-up,
-  so keyed by day and keyed by month give the same count, once.
+  police BRA) ÷50; POLY: SUGAR, AAY SUGAR ÷50, SALT CIS / RFFS ÷25; C.BOX:
+  P.OIL ÷10, OOTY, TAN ÷50. On the MONTH's total from the roll-up, so keyed
+  by day and keyed by month give the same count, once.
+- **Only rows with a bag box on the Monthly Sales grid are counted.** Police
+  sugar / wheat / dhall / palm oil have none there (`NO_GUNNY`), so they left
+  `PACK_BASE` on 2026-09-30 — a bag Gunny counted that Monthly Sales does not
+  show would be a mismatch. No live month has a police sale that fills a
+  pack (largest 10), so no figure moved.
 - **The Receipt page's Gunny / Poly switch is saved** on the receipt line
   (`items[id].pack`) for WHEAT, RRA, NPHH FRK RRA (and police BRA); a
   month counts each as its latest receipt dated in that month says, else
@@ -823,9 +829,24 @@ and — in `42-gunny-live.js` — the statements:
 - **Sales Close no longer sets the Receipt** (office's choice). CRS 7
   September moves from its Sales Close 112 / 11 / 33 to 311 / 39 / 88 —
   its POLY / C.BOX Closings −28 / −55 → 0; every other live shop unchanged.
-  A stored bag count (`g_sales`) is not read either.
-- **An administrator's Receipt still wins** (`receiptImported`; CRS 5
-  keeps the POS's 236 / 23).
+- **Monthly Sales is the single source — nothing typed overrides it**
+  (office's second instruction, 2026-09-30; reverses "an administrator's
+  Receipt wins" of the same morning). The Receipt is the SUM OF THE BAG
+  COUNTS MONTHLY SALES SHOWS in its Sales column, by pack: `salesBags` is
+  one row's count exactly as the grid works it out (the office's stored
+  `g_sales` where it keyed one that differs from the division, else sales ÷
+  pack size), `monthSalesBags` a whole month's; on screen the table is
+  handed the grid's own figures. `receiptImported` is **no longer read** by
+  the screen, rule 5, the PV or the statements, and the Receipt box is
+  read-only for administrators too. CRS 5 September showed 236 / 23 from a
+  Receipt typed off the POS on 2026-09-29 while Monthly Sales said
+  **227 / 28** — it now reads 227 / 28 / 61. Live, read only: that was the
+  ONLY record with a typed Receipt, and no Monthly Sales row anywhere has a
+  bag count differing from the division, so no other shop moves; all 16
+  shop-months with sales: Monthly Sales = Gunny screen = Gunny statement.
+  The stored `receiptImported` values are left in place, unread.
+  `tools/import-monthly-xlsx.mjs` still writes one from an office workbook;
+  it is likewise unread — the imported sales' own bag counts decide.
 - **Issues are typed by the shop too** (office; reverses 2026-09-26's
   read-only POLY / C.BOX Issues for shop staff). Blank → POLY / C.BOX show
   the month's EMPTY sales, as before; a typed figure is never replaced.
@@ -1316,8 +1337,9 @@ cannot take the month on Monthly Entry, so the month goes onto ONE day
 sheet: `--receipt=ID:qty,… --receipt-no=…` (one Receipt Register receipt
 dated the sheet's date — the register stays the only source of receipts),
 `--shortage=ID:qty,…` (that date's inspection; Section A only),
-`--gunny-receipt=ss50:n,poly:n` (the Gunny table's administrator Receipt
-correction, stored through `gunnyMonthRecords`), `--correct-open=DATE:ID:v`
+`--gunny-receipt` (RETIRED 2026-09-30 and refused — the Gunny Receipt is
+Monthly Sales' bag counts, never typed; the tool now refreshes the stored
+Gunny copies from the sales as Daily Entry's save does), `--correct-open=DATE:ID:v`
 (an administrator's Opening correction on an earlier sheet; the chain is
 rebuilt from it) and `--expect=ID:closing,…` (nothing is written unless
 every Closing equals the paper's).
@@ -1326,7 +1348,9 @@ every Closing equals the paper's).
   (14 commodities), Sales, shortage SUGAR 9 and PALM 4 — all 18 closings
   equal the POS (BRA 2173, SUGAR 680.624, PALM 220…). Gunny 50 KG SS
   89 + 236 = 325 and POLY 0 + 23 = 23 from the POS sack column (C.BOX kept
-  at the system's 61 from Palm Oil sales; the POS shows NA). Police BRA's
+  at the system's 61 from Palm Oil sales; the POS shows NA) — **superseded
+  2026-09-30**: the office made Monthly Sales the only source, so these two
+  typed Receipts are no longer read and the month shows 227 / 28. Police BRA's
   Opening on 01-09 corrected 12 → 0 (the POS's; office decision). DSS pages:
   01-09 and 29-09 only. Monthly Remittance untouched (the 29th's ₹848 stays
   there, so the 29-09 DSS C A/C line reads 0.00). Backup
@@ -1849,7 +1873,7 @@ npm run verify:opening-correction  Daily Entry asks an administrator before savi
 npm run verify:remit-total       every statement's remittance (Page 2, Cost Com, Sale Tax, CRS 29) = the Remittance sheet TOTAL, never a total
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
-npm run verify:gunny-receipt    Gunny Receipt from saved sales: each commodity's pack and size, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
+npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

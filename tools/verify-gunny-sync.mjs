@@ -137,7 +137,8 @@ check(`01-10 re-carried from the new 30-09: SUGAR ${es13['20_2026-10-01'].a.SUGA
   es13['20_2026-10-01'].a.SUGAR.open === es13['20_2026-09-30'].a.SUGAR.close && es13['20_2026-10-01'].a.EMPTY_BOX.open === es13['20_2026-09-30'].a.EMPTY_BOX.close);
 // The Gunny table: September stored with the synced sales, October opens at its Closing.
 const ctx = { crsId: 20, month: 9, year: 2026, key: '20_9_2026' };
-const g9 = gunnyMonthRecords({ ss50: { opening: 874, issues: 1000, receiptImported: 425 }, poly: { opening: 40, receiptImported: 32 }, cbox: { opening: 1, receiptImported: 107 } }, {}, ctx, undefined, {}, { EMPTY_BAG: 72, EMPTY_BOX: 108 });
+// Receipt is Monthly Sales' own bags (never typed): BRA 21250 kg = 425 sacks, SUGAR 1600 kg = 32 poly, PALM 1070 pkts = 107 boxes.
+const g9 = gunnyMonthRecords({ ss50: { opening: 874, issues: 1000 }, poly: { opening: 40 }, cbox: { opening: 1 } }, {}, ctx, undefined, {}, { BRA: 21250, SUGAR: 1600, PALM: 1070, EMPTY_BAG: 72, EMPTY_BOX: 108 });
 const oct10 = (id) => gunnyRowFor(id, {}, g9, undefined, {}, {});
 check(`Gunny September: 50 KG SS ${g9.ss50.total}/${g9.ss50.closing}, POLY ${g9.poly.total}/${g9.poly.closing}, C.BOX ${g9.cbox.total}/${g9.cbox.closing} (the office's example)`,
   g9.ss50.total === 1299 && g9.ss50.closing === 299 && g9.poly.total === 72 && g9.poly.closing === 0 && g9.cbox.total === 108 && g9.cbox.closing === 0);

@@ -5217,12 +5217,13 @@ CRS29_SECTIONS.forEach(function(s){
      Opening  this month's own figure if it has one, else last month's
               Closing carried forward, else 0 — a stored copy of the carry
               (openingAuto) follows last month's Closing (office, 2026-09-30)
-     Receipt  an administrator's typed figure if there is one, else the packs
-              the month's SALES emptied — each commodity's sales ÷ its pack
-              size (bagsOf), into the pack its type says; Wheat / RRA / NPHH
-              FRK RRA as the month's latest receipt's Gunny / Poly switch
-              says (engine/gunnyPack.ts, office 2026-09-30). Not Sales Close,
-              not a stored bag count.
+     Receipt  the sum of the bag counts MONTHLY SALES shows, by pack — each
+              commodity's sales ÷ its pack size (bagsOf; the office's own
+              stored count where it keyed one), into the pack its type says;
+              Wheat / RRA / NPHH FRK RRA as the month's latest receipt's
+              Gunny / Poly switch says (engine/gunnyPack.ts, office
+              2026-09-30). Not Sales Close, and not a Receipt typed into the
+              Gunny table — receiptImported is no longer read.
      Issues   as typed, else POLY / C.BOX's month's sales of those bags
      Total    Opening + Receipt
      Closing  Total − Issues
@@ -5242,11 +5243,13 @@ CRS29_SECTIONS.forEach(function(s){
 */
 
 // The commodities whose sales bags make up each pack type's receipt —
-// engine/gunnyPack.ts PACK_BASE, which is what the screen sums.
+// engine/gunnyPack.ts PACK_BASE, which is what the screen sums: the rows that
+// have a bag box on the Monthly Sales grid (police sugar / wheat / dhall /
+// palm oil have none, so they are not counted — office, 2026-09-30).
 var GUNNY_PACK_COMMS = {
-  GUNNY: ['BRA','NPHH_FRK','PHH_FRK','AAY_FRK','AAY','OAP','APS','TOOR','PHH_BRA','WHEAT','RRA','NPHH_RRA','PB_BRA','PB_WHEAT','PB_TOOR'],
-  POLY:  ['SUGAR','AAY_SUGAR','SALT_CIS','SALT_RFFS','PB_SUGAR'],
-  CBOX:  ['PALM','OOTY','TAN','PB_PALM']
+  GUNNY: ['BRA','NPHH_FRK','PHH_FRK','AAY_FRK','AAY','OAP','APS','TOOR','PHH_BRA','WHEAT','RRA','NPHH_RRA','PB_BRA'],
+  POLY:  ['SUGAR','AAY_SUGAR','SALT_CIS','SALT_RFFS'],
+  CBOX:  ['PALM','OOTY','TAN']
 };
 // The Receipt page's Gunny / Poly switch applies to these (PACK_SWITCHABLE).
 var GUNNY_PACK_SWITCHABLE = ['WHEAT','RRA','NPHH_RRA','PB_BRA'];
@@ -5299,18 +5302,19 @@ function gunnyLiveItem(d, itemId){
               : gunnyHasValue(prev.closing) ? (parseFloat(prev.closing) || 0)
               : 0;
 
-  // Receipt: an administrator's typed figure, else the packs the month's sales
-  // emptied. The stored `receipt` is a derived copy and is ignored.
-  var receipt;
-  if(gunnyHasValue(rec.receiptImported)){
-    receipt = parseFloat(rec.receiptImported) || 0;
-  } else {
-    receipt = 0;
-    var types = gunnyPackTypes(d.crsId, d.month, d.year);
-    Object.keys(types).forEach(function(id){
-      if (types[id] === type) receipt += bagsOf(d.getVal(id, 'sales'), id);
-    });
-  }
+  // Receipt: the sum of the bag counts Monthly Sales shows, by pack — its
+  // only source (office, 2026-09-30). Per commodity that is the office's own
+  // stored count where it keyed one that differs, else sales ÷ pack size
+  // (salesBags, engine/gunnyPack.ts). A Receipt typed into the Gunny table
+  // (receiptImported) and the stored `receipt` copy are not read.
+  var receipt = 0;
+  var types = gunnyPackTypes(d.crsId, d.month, d.year);
+  Object.keys(types).forEach(function(id){
+    if (types[id] !== type) return;
+    var auto = bagsOf(d.getVal(id, 'sales'), id);
+    var stored = Math.round(parseFloat(d.getVal(id, 'g_sales')) || 0);
+    receipt += (stored > 0 && stored !== auto) ? stored : auto;
+  });
 
   // Issues: a keyed figure (an administrator's correction) wins; otherwise
   // POLY and C.BOX take the month's own SALES of those bags, which is where
