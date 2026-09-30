@@ -12,6 +12,10 @@
  * GUNNY ↔ POLY. Counts and pack-quantities are editable and stop mirroring
  * once hand-edited, exactly like the legacy inputs.
  *
+ * The Gunny / Poly switch is SAVED on the receipt line (`items[id].pack`,
+ * office 2026-09-30): the month's Gunny Stock counts Wheat / RRA / NPHH FRK
+ * RRA sales into the pack its latest receipt says (engine/gunnyPack.ts).
+ *
  * One deliberate fix over the legacy save: the stored quantity is the pack
  * quantity when present, else the entered quantity — the legacy collector
  * read every input in DOM order, so a cleared pack-qty could silently store
@@ -30,6 +34,8 @@ import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { resyncReceiptMonth } from '@/lib/engine/receiptSync';
 import { rechainAndRepublish } from '@/lib/engine/rechain';
 import DateField from '@/components/DateField';
+import { PACK_SWITCHABLE } from '@/lib/engine/gunnyPack';
+import { refreshGunnyFor } from '@/lib/gunnyRefresh';
 import { dmy, dmyFromLocale } from '@/lib/dateFormat';
 
 type ShopRec = { name: string };
@@ -38,7 +44,7 @@ type ReceiptRec = {
   crsId: number;
   date: string;
   receiptNo: string;
-  items: Record<string, { qty: number }>;
+  items: Record<string, { qty: number; pack?: 'GUNNY' | 'POLY' }>;
   savedAt: string;
   type?: 'regular' | 'advance';
 };
@@ -72,7 +78,7 @@ const PACK_RULES: Record<string, PackRule> = {
   PB_SUGAR: { type: 'POLY', div: 50, countLabel: 'poly', qtyLabel: 'kgs' },
   PB_PALM: { type: 'CBOX', div: 10, countLabel: 'boxes', qtyLabel: 'pkts' },
 };
-const SWITCHABLE = new Set(['WHEAT', 'RRA', 'NPHH_RRA', 'PB_BRA']);
+const SWITCHABLE = PACK_SWITCHABLE;
 const EXCLUDED = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
 const PACK_COLORS: Record<PackType, { bg: string; border: string; text: string; badge: string; label: string; countLabel: string; qtyLabel: string }> = {
@@ -167,6 +173,9 @@ export default function ReceiptPage() {
       commodityListsFor(commodityMaster, rCrsId),
     );
     for (const [store, value] of Object.entries(chained.patch)) crsData.set(store as never, value as never);
+    // The month's Gunny Stock follows its receipts' Gunny / Poly switch and the
+    // republished sales (lib/gunnyRefresh.ts).
+    refreshGunnyFor(rCrsId, [dateIso, ...chained.dates]);
   };
 
   /**
@@ -276,14 +285,15 @@ export default function ReceiptPage() {
       void appAlert('Please select a date.');
       return;
     }
-    const items: Record<string, { qty: number }> = {};
+    const items: ReceiptRec['items'] = {};
     for (const c of comms) {
       const r = rows[c.id];
       if (!r) continue;
       const packQty = parseFloat(r.packQty) || 0;
       const mainQty = parseFloat(r.qty) || 0;
       const qty = PACK_RULES[c.id] && packQty > 0 ? packQty : mainQty;
-      if (qty > 0) items[c.id] = { qty };
+      // The Gunny / Poly switch is kept with the line it was set on.
+      if (qty > 0) items[c.id] = SWITCHABLE.has(c.id) ? { qty, pack: r.type === 'POLY' ? 'POLY' : 'GUNNY' } : { qty };
     }
     if (!Object.keys(items).length) {
       void appAlert('Enter at least one commodity quantity.');

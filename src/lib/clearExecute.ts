@@ -43,6 +43,8 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { resyncReceiptMonth } from '@/lib/engine/receiptSync';
 import { syncSheetReceipts, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { rebuildChain } from '@/lib/engine/rechain';
+import { packTypesFor } from '@/lib/engine/gunnyPack';
+import { refreshGunnyMonths, type GunnyRec } from '@/app/(app)/monthly-entry/lib';
 import { isProtectedStore, STORE_LABEL } from '@/lib/clearGuard';
 import type { StoredRequest } from '@/lib/clearStore';
 
@@ -229,6 +231,29 @@ export function planClear(
     );
     for (const [store, value] of Object.entries(patch)) next[store] = value;
   }
+
+  // Gunny Stock follows what survives, as after any save that moves the sales:
+  // each month's Receipt / Total / Closing, and the carried Opening of the
+  // months after it (office, 2026-09-30; monthly-entry/lib.ts).
+  let gunny = obj(take('meGunnyStore')) as Record<string, Record<string, GunnyRec>>;
+  let gunnyMoved = false;
+  const receipts = ((take('receiptStore') as ReceiptRow[] | undefined) ?? []);
+  const ordered = [...months].map((k) => k.split('_').map(Number)).sort((a, b) => a[0] - b[0] || a[2] - b[2] || a[1] - b[1]);
+  const salesOf = (blk: unknown) => JSON.stringify(Object.fromEntries(['a', 'b'].flatMap((sec) => Object.entries(obj(obj(blk)[sec])).map(([id, r]) => [sec + id, Number(obj(r).sales) || 0]))));
+  for (const [crsId, m, y] of ordered) {
+    const mKey = `${crsId}_${m}_${y}`;
+    // Only a month that keeps a Gunny record and whose sales the clear moved:
+    // a clear never creates a record, nor rewrites a month it did not touch.
+    // (A clear only ever removes sales, so a month with none before has none to move.)
+    const before = salesOf(obj(rows.monthlyStore?.data)[mKey]);
+    if (!gunny[mKey] || before === '{}' || before === salesOf(obj(take('monthlyStore'))[mKey])) continue;
+    const g = refreshGunnyMonths(gunny, crsId, m, y, obj(take('monthlyStore')) as never, (mo, yr) => packTypesFor(receipts, crsId, mo, yr));
+    if (g) {
+      gunny = g;
+      gunnyMoved = true;
+    }
+  }
+  if (gunnyMoved) next.meGunnyStore = gunny;
 
   return { next, cleared, recalculated };
 }

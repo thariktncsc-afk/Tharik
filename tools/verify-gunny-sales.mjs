@@ -125,8 +125,14 @@ console.log('\n4. /api/state refuses a shop user keying the gunny figures');
   check('…a Closing of 999 is refused', closeTamper.some((v) => /Closing is the office/.test(v.detail)), describeStock(closeTamper));
   const totalTamper = asShop({ ...honest, total: 999 });
   check('…a Total of 999 is refused', totalTamper.some((v) => /Total is the office/.test(v.detail)), describeStock(totalTamper));
-  const issuesTamper = asShop({ ...honest, issues: 5, closing: 395 });
-  check('…and C.BOX Issues of 5 against a sale of 166 is refused', issuesTamper.some((v) => /Issues is the office/.test(v.detail)), describeStock(issuesTamper));
+  // Issues are the shop's to type since 2026-09-30 (office): 5 lands, with its own Closing;
+  // a Closing that does not follow from it, or a negative Issues, still does not.
+  const issuesTyped = asShop({ ...honest, issues: 5, closing: 395 });
+  check('…C.BOX Issues typed by the shop (5, Closing 395) lands', issuesTyped.length === 0, describeStock(issuesTyped));
+  const issuesWrongClose = asShop({ ...honest, issues: 5, closing: 234 });
+  check('…but its Closing must follow from it (234 is refused)', issuesWrongClose.some((v) => /Closing is the office/.test(v.detail)), describeStock(issuesWrongClose));
+  const issuesNeg = asShop({ ...honest, issues: -5, closing: 405 });
+  check('…and negative Issues are refused', issuesNeg.some((v) => /Issues must be a number, 0 or more/.test(v.detail)), describeStock(issuesNeg));
 
   check('an administrator may key all of them', asAdmin({ opening: 900, receipt: 500, total: 1400, issues: 5, closing: 1395 }).length === 0);
   check('the refusal names the store, so /api/state can say "Gunny Stock"', openTamper[0].store === 'meGunnyStore' && openTamper[0].kind === 'gunny-locked');

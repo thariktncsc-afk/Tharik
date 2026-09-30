@@ -685,9 +685,9 @@ are not where those bags come from).
 
 | | |
 | --- | --- |
-| Opening | this month's own figure, else last month's Closing carried, else 0 |
-| Receipt | `receiptImported` (the office's workbook), else the month's Sales Close totals for that pack type, else the bag counts on the month's own sales rows (`g_sales`, over `SC_PACK_TYPES`) |
-| Issues | as keyed, else 0 |
+| Opening | this month's own figure, else last month's Closing carried, else 0 — a stored COPY of the carry (`openingAuto`) follows last month's Closing |
+| Receipt | `receiptImported` (an administrator's figure), else the packs the month's SALES emptied — see "Gunny Receipt is counted from the saved sales" (Sales Close and stored `g_sales` no longer, 2026-09-30) |
+| Issues | as typed, else POLY / C.BOX's month's EMPTY_BAG / EMPTY_BOX sales, else 0 |
 | Total | Opening + Receipt |
 | Closing | Total − Issues |
 
@@ -803,6 +803,47 @@ be placed, nothing is sent.
 - On the day chain, C.Box / Poly have no stock (it is kept here), so their
   hidden Closing on the sheet goes below 0 by the sales — as it always has
   when those bags are sold on Daily Entry.
+
+### Gunny Receipt is counted from the saved sales
+
+Office, 2026-09-30 (`engine/gunnyPack.ts`, `npm run verify:gunny-receipt`).
+ONE rule for the Gunny screen, the month-close, Daily Entry, rule 5, the PV
+and — in `42-gunny-live.js` — the statements:
+- **Receipt = the packs the month's saved sales emptied**: per commodity,
+  floor(month's sales ÷ pack size) (`bagsOf`) — GUNNY: BRA, AAY, AAY FRK,
+  NPHH FRK, PHH FRK, PHH BRA, RRA, NPHH FRK RRA, WHEAT, T.DHALL (+ OAP, APS,
+  police rice / wheat / dhall, as the engine always had) ÷50; POLY: SUGAR,
+  AAY SUGAR ÷50, SALT CIS / RFFS ÷25 (+ police sugar); C.BOX: P.OIL ÷10,
+  OOTY, TAN ÷50 (+ police palm oil). On the MONTH's total from the roll-up,
+  so keyed by day and keyed by month give the same count, once.
+- **The Receipt page's Gunny / Poly switch is saved** on the receipt line
+  (`items[id].pack`) for WHEAT, RRA, NPHH FRK RRA (and police BRA); a
+  month counts each as its latest receipt dated in that month says, else
+  Gunny (receipts saved before 2026-09-30 carry no switch → Gunny).
+- **Sales Close no longer sets the Receipt** (office's choice). CRS 7
+  September moves from its Sales Close 112 / 11 / 33 to 311 / 39 / 88 —
+  its POLY / C.BOX Closings −28 / −55 → 0; every other live shop unchanged.
+  A stored bag count (`g_sales`) is not read either.
+- **An administrator's Receipt still wins** (`receiptImported`; CRS 5
+  keeps the POS's 236 / 23).
+- **Issues are typed by the shop too** (office; reverses 2026-09-26's
+  read-only POLY / C.BOX Issues for shop staff). Blank → POLY / C.BOX show
+  the month's EMPTY sales, as before; a typed figure is never replaced.
+  Rule 5 checks only that it is a number ≥ 0 and that Closing follows.
+- **The stored copies follow the sales** (`refreshGunnyMonths`,
+  `lib/gunnyRefresh.ts`): Daily Entry's save, a receipt saved or removed,
+  the month-close and Gunny Save's following months, and an approved clear
+  (`clearExecute.ts`, only a month that keeps a record and whose sales it
+  moved) re-work Receipt / Total / Closing and re-carry every following
+  month whose Opening is a carried copy — so CB → next month's OB holds.
+  Keyed figures stay. Rule 5 judges a re-carried Opening against last
+  month's Closing as the same write leaves it.
+- **Stored copies saved before this** lag (live 2026-09-30: 18 September
+  records, e.g. CRS 11 Closing 870 stored vs 1291). Each shop's next save
+  in the month refreshes it; `node tools/refresh-gunny.mjs --month=M
+  --year=Y [--crs=…] [--write]` catches all up (dry run; meGunnyStore
+  only, backed up, stock guard, under version).
+- Golden dump: Gunny and Receipt statements byte-identical for all shops.
 
 ## The Gunny statement: three rows, one column
 
@@ -1808,6 +1849,7 @@ npm run verify:opening-correction  Daily Entry asks an administrator before savi
 npm run verify:remit-total       every statement's remittance (Page 2, Cost Com, Sale Tax, CRS 29) = the Remittance sheet TOTAL, never a total
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
+npm run verify:gunny-receipt    Gunny Receipt from saved sales: each commodity's pack and size, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

@@ -21,7 +21,9 @@
  *
  * Office, 2026-09-30: the Save also carries POLY / C.BOX Issues into Monthly
  * Sales and the month's last-day Daily Entry (engine/gunnySync.ts), so they
- * are keyed once, here.
+ * are keyed once, here. And, the same day: Receipt is counted from the
+ * month's saved sales (engine/gunnyPack.ts — never Sales Close), and Issues
+ * are typed by the shop as well as an administrator.
  */
 import { useRef, useState } from 'react';
 import { appAlert, appConfirm } from '@/components/dialog';
@@ -30,10 +32,14 @@ import { crsData } from '@/lib/dataStore';
 import { dmy } from '@/lib/dateFormat';
 import type { Commodity } from '@/lib/engine/commodities';
 import { GUNNY_SYNC_IDS, gunnySyncNote, syncGunnyToSales, type GunnySyncId, type GunnySyncStores } from '@/lib/engine/gunnySync';
+import { refreshGunnyFor } from '@/lib/gunnyRefresh';
+import type { PackType } from '@/lib/engine/gunnyPack';
 import { gunnySaved, monthLabel } from '@/lib/saveSuccess';
 import { ME_GUNNY_ITEMS, ME_GUNNY_TO_COMM, gunnyMonthRecords, gunnyRowFor, gunnySaveProblems, type GunnyRec, type MonthCtx, type SalesClose } from './lib';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
+/** YYYY-MM-01 of the month after. */
+const nextMonthFirst = (month: number, year: number) => (month === 12 ? `${year + 1}-01-01` : `${year}-${pad2(month + 1)}-01`);
 /** Today in the office's own calendar (the browser's), YYYY-MM-DD. */
 const todayIso = () => {
   const t = new Date();
@@ -47,6 +53,7 @@ export default function GunnyTable({
   gridGunnySales,
   packSales,
   lists,
+  packTypes,
   isAdmin,
   subtitle,
 }: {
@@ -58,6 +65,8 @@ export default function GunnyTable({
   packSales: Record<string, number>;
   /** The shop's commodity lists — the rates the synced sales are priced at. */
   lists: { a: Commodity[]; b: Commodity[] };
+  /** The month's pack types — the Receipt page's saved Gunny / Poly switch (engine/gunnyPack.ts). */
+  packTypes: Record<string, PackType>;
   isAdmin: boolean;
   subtitle: string;
 }) {
@@ -69,7 +78,7 @@ export default function GunnyTable({
   // 3-month PV so the two can never show different September Gunny figures.
   // Opening auto-carries from last month's closing and locks once carried
   // (15-monthly-extras).
-  const rowFor = (id: string) => gunnyRowFor(id, month, prevMonth, salesClose, gridGunnySales, packSales);
+  const rowFor = (id: string) => gunnyRowFor(id, month, prevMonth, salesClose, gridGunnySales, packSales, packTypes);
 
   const write = (id: string, patch: Partial<GunnyRec>) => {
     crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
@@ -82,20 +91,18 @@ export default function GunnyTable({
         crsId: String(ctx.crsId),
         month: ctx.month,
         year: ctx.year,
-        opening: cur.opening !== undefined && cur.opening !== '' ? cur.opening : r.openingVal !== '' ? Number(r.openingVal) : undefined,
-        openingAuto: cur.opening === undefined || cur.opening === '' ? r.openingAuto : cur.openingAuto,
         ...cur,
+        // A carried Opening is stored as the carry, never a stale copy.
+        ...(r.openingAuto ? { opening: r.openingVal !== '' ? Number(r.openingVal) : undefined, openingAuto: true } : {}),
         ...patch,
         updatedAt: new Date().toISOString(),
       };
-      // keep the derived fields stored, as the legacy table did
+      // keep the derived fields stored, as the legacy table did — the rule's own figures
       const after = m[id];
-      const rc = after.receiptImported !== undefined && String(after.receiptImported) !== '' ? Number(after.receiptImported) || 0 : r.rc.val;
-      const open = Number(after.opening) || 0;
-      const iss = Number(after.issues) || 0;
-      after.receipt = rc;
-      after.total = open + rc;
-      after.closing = open + rc - iss;
+      const r2 = gunnyRowFor(id, m, prevMonth, salesClose, gridGunnySales, packSales, packTypes);
+      after.receipt = r2.rc.val;
+      after.total = r2.total;
+      after.closing = r2.closing;
       d[ctx.key] = m;
     });
   };
@@ -119,7 +126,7 @@ export default function GunnyTable({
   const save = async () => {
     if (busy.current) return; // a second tap while the first is being sent
     const d0 = crsData.get<Record<string, Record<string, GunnyRec>>>('meGunnyStore') ?? {};
-    const { errors, deficits } = gunnySaveProblems(d0[ctx.key] ?? {}, d0[prevKey] ?? {}, salesClose, gridGunnySales, packSales);
+    const { errors, deficits } = gunnySaveProblems(d0[ctx.key] ?? {}, d0[prevKey] ?? {}, salesClose, gridGunnySales, packSales, packTypes);
     if (errors.length) {
       setStatus({ key: ctx.key, msg: `⚠ Not saved — ${errors.join(' ')}`, tone: 'warn' });
       return;
@@ -170,8 +177,10 @@ export default function GunnyTable({
       const soldNow = { ...packSales, ...sync.monthly };
       crsData.markEdited('meGunnyStore', ctx.key);
       crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
-        d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[prevKey] ?? {}, ctx, salesClose, gridGunnySales, soldNow);
+        d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[prevKey] ?? {}, ctx, salesClose, gridGunnySales, soldNow, undefined, packTypes);
       });
+      // Next month opens at this Closing: the months after it re-carry (lib.ts refreshGunnyMonths).
+      refreshGunnyFor(ctx.crsId, [nextMonthFirst(ctx.month, ctx.year)]);
       if (await crsData.saveConfirmed()) {
         saveSuccess(gunnySaved(ctx.crsId, ctx.month, ctx.year));
         const note = gunnySyncNote(sync, dmy);
@@ -259,16 +268,12 @@ export default function GunnyTable({
                     min={0}
                     step={0.01}
                     placeholder="0"
-                    // POLY and C.BOX: the month's own sales of those bags, so
-                    // the stock leaves once and by the figure the shop keyed
-                    // on the grid — not typed again here. 50 KG SS has no
-                    // commodity row of its own, so it stays hand-keyed by the
-                    // shop, as it always has (office, 2026-09-26).
-                    readOnly={issuesAuto && !isAdmin}
-                    tabIndex={issuesAuto && !isAdmin ? -1 : undefined}
+                    // Typed by the shop and by an administrator (office,
+                    // 2026-09-30). Left blank, POLY and C.BOX show the month's
+                    // sales of those bags; a typed figure is never replaced.
                     value={issues === '' ? '' : String(issues)}
                     onChange={(e) => write(item.id, { issues: e.target.value === '' ? '' : Number(e.target.value) })}
-                    title={issuesAuto ? 'From this month’s sales of these bags on the grid above — an administrator can correct it' : undefined}
+                    title={issuesAuto ? 'From this month’s sales of these bags on the grid above — type to set the Issues' : undefined}
                     style={{ width: '100%', border: `1px solid ${issuesAuto ? '#FDE68A' : '#FCA5A5'}`, borderRadius: 6, padding: '5px 7px', fontSize: 12, textAlign: 'right', color: issuesAuto ? '#92400E' : '#DC2626', fontWeight: issuesAuto ? 700 : 600, background: issuesAuto ? '#FEF3C7' : '#FEF2F2' }}
                   />
                 </td>
@@ -289,8 +294,8 @@ export default function GunnyTable({
       </div>
       <div style={{ marginTop: 8, fontSize: 10, color: 'var(--muted)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <span>ⓘ Opening auto-fills from last month&apos;s Closing and locks once carried forward</span>
-        <span>ⓘ Receipt is automatic — imported workbook figure, Sales Close totals, or the Monthly Sales gunny/poly/c.box counts</span>
-        <span>ⓘ Issues for POLY and C.BOX are this month&apos;s Empty Polythene Bag / Empty Card+Box sales from the grid above — Save carries them into Monthly Sales and the month&apos;s last-day Daily Entry</span>
+        <span>ⓘ Receipt is automatic — the packs this month&apos;s saved sales emptied: sacks ÷50, poly ÷50 (salt ÷25), boxes ÷10 (palm oil) / ÷50 (tea); Wheat, RRA, NPHH FRK RRA as the Receipt page&apos;s Gunny / Poly switch says</span>
+        <span>ⓘ Issues are typed; left blank, POLY and C.BOX show this month&apos;s Empty Polythene Bag / Empty Card+Box sales — Save carries them into Monthly Sales and the month&apos;s last-day Daily Entry</span>
         <span>
           ⓘ Total = Opening + Receipt &nbsp;|&nbsp; Closing = Total − Issues (turns <b style={{ color: '#DC2626' }}>red</b> if Issues exceed Total)
           {isAdmin ? null : <> &nbsp;|&nbsp; these figures are the office&apos;s — an administrator can correct them</>}
