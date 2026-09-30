@@ -47,6 +47,38 @@ export type MonthlyRec = {
   g_cs?: number;
 };
 export type MonthlyBlock = { a: Record<string, MonthlyRec>; b: Record<string, MonthlyRec> };
+
+/**
+ * Bag counts typed on Monthly Entry for a row that comes FROM DAILY
+ * (office, 2026-09-30). The row's kgs are the day sheets' and read-only, but
+ * its Opening / Receipt / Sales bag boxes are keyable, and the office keys
+ * them — CRS 1 September, BRA Rice 29 → 30 and 59 → 60. The month-close used
+ * to skip a daily row altogether and the roll-up re-derived every daily bag
+ * count as kgs ÷ pack size, so the typed figure vanished on the next visit.
+ *
+ * Kept beside the month's hand-keyed rows (meManualStore[key].dailyBags), per
+ * section and commodity, and only for a figure that differs from kgs ÷ pack
+ * size — a count typed back to that figure is dropped and follows the kgs
+ * again. Not inside the a / b rows: a row there is a hand-keyed month, and a
+ * bags-only record would become one the day the sheets were cleared.
+ */
+export type DailyBagField = 'g_open' | 'g_receipt' | 'g_sales';
+export const DAILY_BAG_FIELDS: readonly DailyBagField[] = ['g_open', 'g_receipt', 'g_sales'];
+export type DailyBags = { a?: Record<string, Partial<Record<DailyBagField, number>>>; b?: Record<string, Partial<Record<DailyBagField, number>>> };
+export type ManualMonth = Partial<MonthlyBlock> & { dailyBags?: DailyBags };
+
+/** The typed bag counts over a daily row; Total and Closing as the grid works them. */
+export function withDailyBags<T extends Partial<MonthlyRec>>(rec: T, typed: Partial<Record<DailyBagField, number>> | undefined): T {
+  if (!typed) return rec;
+  const known = DAILY_BAG_FIELDS.filter((f) => typeof typed[f] === 'number' && Number.isFinite(typed[f]));
+  if (!known.length) return rec;
+  const out = { ...rec } as T & Record<string, number>;
+  for (const f of known) out[f] = typed[f] as number;
+  const g = (f: string) => Number(out[f]) || 0;
+  out.g_total = g('g_open') + g('g_receipt');
+  out.g_close = out.g_total - g('g_sales') - g('g_cs');
+  return out;
+}
 /**
  * Where each published figure came from.
  *   'daily'   — accumulated from day sheets; the whole row is read-only
@@ -301,7 +333,7 @@ export function rebuildMonthlyFromDaily(
         // The day sheets already carry the register's figure in their Receipt
         // column — dailyRollupForMonth substituted it day by day.
         const { days: _days, godown: _godown, ...rec } = d;
-        merged[sec][c.id] = rec;
+        merged[sec][c.id] = withDailyBags(rec, (manual as ManualMonth | undefined)?.dailyBags?.[sec]?.[c.id]);
         source[sec][c.id] = 'daily';
       } else if (m) {
         // A hand-keyed month. Its Opening and Sales are the clerk's and stay

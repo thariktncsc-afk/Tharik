@@ -894,6 +894,42 @@ and — in `42-gunny-live.js` — the statements:
   only, backed up, stock guard, under version).
 - Golden dump: Gunny and Receipt statements byte-identical for all shops.
 
+### A "from Daily" row's bag counts are saved as typed
+
+Office, 2026-09-30 (recording: CRS 1 September, BRA Rice — Opening bags
+29 → 30, Sales bags 59 → 60, Save, the tick — and back on Monthly Entry it
+read 29 / 59 again). `npm run verify:daily-bags`.
+- **Two faults, both fixed.** The month-close skipped a daily row entirely
+  (`if (r.derived) continue`), so its bag boxes — keyable on every row — were
+  never sent; the tick was true of everything else. And the roll-up
+  re-derived every daily row's bag counts as kgs ÷ pack size on each
+  republish, so even a stored figure would have been replaced by the next
+  Daily Entry save.
+- **Where they live**: `meManualStore[key].dailyBags[sec][id]` —
+  `g_open` / `g_receipt` / `g_sales`, only a count that DIFFERS from kgs ÷
+  pack size (a typed 0 included). Typed back to that figure → dropped, and
+  the box follows its kgs again. Not inside the a / b rows: a row there is a
+  hand-keyed month, and a bags-only row would become one the day the sheets
+  were cleared.
+- `rebuildMonthlyFromDaily` lays them over the daily row (`withDailyBags`:
+  Total = Opening + Receipt, Closing = Total − Sales − C.S, the grid's own
+  arithmetic), so every republish — Daily Entry save, receipt, rechain,
+  Gunny Save, the statement render — keeps them; a count NOT typed still
+  follows its kgs. The kgs are untouched and stay the day sheets'.
+- They reach what already reads the published bags: the Gunny Receipt
+  (`salesBags`: a stored g_sales that differs from the division wins), the
+  statements, the PV.
+- `syncGunnyToSales` now spreads the month record before rewriting a / b,
+  so Gunny Save cannot drop them. The activity log names each change
+  ("BRA Rice · Gunny Opening (bags): from kgs → 30").
+- Permissions unchanged: the boxes were already keyable for whoever sees
+  them; nothing in stockGuard judges bag counts. Clear: a month clear
+  removes the record with the month, as before.
+- Browser run on a copy of live data, each write judged by the real guard:
+  the recording (OB 13, Sales 60 → 13 + 30 = 43, CB −17), then another page,
+  a refresh, CRS and month changes; Opening only / Receipt only / Sales only;
+  typed back to kgs ÷ 50; CRS 19 with all three — each saved and read back.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1345,6 +1381,11 @@ under version; a re-run with the same figures writes nothing.
   மொத்த அட்டைகள் says (LOF AAY and OAP are not on the POS: 0). Page 1
   preview and PDF read back; the screen holds them after reload, shop and
   month changes (backup `backups/card-details-crs27-9-2026-…`).
+- **CRS 1, September 2026** (office, 2026-09-30, from a Page 1 sheet headed
+  "MONTH : AUG'2026" — saved under September on the office's answer): RICE
+  544 / LOF RICE 4 / SUGAR 54 / LOF SUGAR 1 / AAY 19 / LOF AAY 0 / OAP 0 /
+  POLICE 1 / "N" CARD 12 → TOTAL 635, as the sheet says (backup
+  `backups/card-details-crs1-9-2026-…`).
 
 ## A day sheet keyed from a paper statement
 
@@ -1509,6 +1550,12 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   Sugar 6, Toor Dal 12, Palm Oil 3) but still have no Allotment field, so
   they are not stored — and never added into the Section A lines. Rows 1–5
   not in the images, nothing stored. Page 1 PDF and screen read back.
+- **CRS 1, September 2026** (office, 2026-09-30, the same AUG'2026-headed
+  Page 1 sheet as its Card Details; FPS code 22BA003PN from `__crsMaster`):
+  BRA 5286, AAY 665, SUGAR 783, AAY_SUGAR 24, WHEAT 692, TOOR 547, PALM 547,
+  PHH_BRA 2981. The sheet's "5.PHH BRA&FRK : 2981" is one figure: stored as
+  PHH_BRA only, PHH_FRK not stored (office's answer), so Page 1 prints
+  "2981 & 0". Page 1 PDF and screen read back.
 
 ## Monthly Sales Close needs both sections SAVED
 
@@ -1996,6 +2043,7 @@ npm run verify:opening-correction  Daily Entry asks an administrator before savi
 npm run verify:remit-total       every statement's remittance (Page 2, Cost Com, Sale Tax, CRS 29) = the Remittance sheet TOTAL, never a total
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
+npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, kept by every republish and by Gunny Save, logged
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
