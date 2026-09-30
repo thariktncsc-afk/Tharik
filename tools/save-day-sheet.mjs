@@ -32,6 +32,15 @@
  *        sum of Monthly Sales' bag counts and is never typed, so the option
  *        is refused. The month's stored Gunny copies are refreshed from the
  *        sales after the save, as Daily Entry's own save does.
+ *   --open=ID:qty,…   the shop's INITIAL OPENING BALANCE, typed on this sheet
+ *        (Daily Entry's Initial Opening): only on the start of the shop's
+ *        chain — refused if any earlier day sheet exists. Saved fixed
+ *        (openFixed), as Daily Entry saves an Initial Opening, so a day keyed
+ *        before it later cannot carry it away. Every commodity not named opens
+ *        at 0.
+ *   --gunny-open=ss50:n,poly:n,cbox:n   the month's Gunny Stock Opening, as an
+ *        administrator types it on the Gunny table (openingAuto false); an
+ *        item not named keeps what it has (blank → carried / 0).
  *   --correct-open=YYYY-MM-DD:ID:value,…   an administrator's Opening
  *        correction on an EARLIER sheet of the same shop (Daily Entry's own:
  *        Opening set, openFixed kept, Total and Closing worked out from the
@@ -125,6 +134,12 @@ async function main() {
     return 2;
   }
   const expect = pairs('expect');
+  const opens = pairs('open');
+  const gunnyOpen = pairs('gunny-open');
+  if (Object.values(opens).some((v) => !Number.isFinite(v) || v < 0) || Object.values(gunnyOpen).some((v) => !Number.isFinite(v) || v < 0) || Object.keys(gunnyOpen).some((k) => !['ss50', 'poly', 'cbox'].includes(k))) {
+    console.error('Refused: --open / --gunny-open take ID:qty with qty 0 or more; --gunny-open items are ss50 / poly / cbox.');
+    return 2;
+  }
   const receiptNo = arg('receipt-no') ?? '';
   const corrections = (arg('correct-open') ?? '').split(',').filter(Boolean).map((p) => {
     const [d, cid, v] = p.split(':');
@@ -154,8 +169,16 @@ async function main() {
     console.error(`Refused: ${key} already has a day sheet — this tool adds a day, it does not replace one.`);
     return 1;
   }
+  // An Initial Opening only starts a chain: no earlier day sheet of the shop may exist.
+  if (Object.keys(opens).length) {
+    const earlier = Object.keys(stored.entryStore).filter((k) => k.startsWith(`${crsId}_`) && /^\d+_\d{4}-\d{2}-\d{2}$/.test(k) && k.slice(String(crsId).length + 1) < date);
+    if (earlier.length) {
+      console.error(`Refused: --open is the Initial Opening, and CRS ${crsId} already has an earlier day sheet (${earlier.sort()[0]}). Use --correct-open for a later correction.`);
+      return 1;
+    }
+  }
   const lists = commodityListsFor(stored.__commodityMaster ?? null, crsId);
-  const unknown = [...new Set([...Object.keys(sales), ...Object.keys(receipt), ...Object.keys(shortage), ...Object.keys(expect)])].filter((id) => ![...lists.a, ...lists.b].some((c) => c.id === id));
+  const unknown = [...new Set([...Object.keys(sales), ...Object.keys(receipt), ...Object.keys(shortage), ...Object.keys(expect), ...Object.keys(opens)])].filter((id) => ![...lists.a, ...lists.b].some((c) => c.id === id));
   const policeShort = Object.keys(shortage).filter((id) => lists.b.some((c) => c.id === id));
   if (policeShort.length) {
     console.error(`Refused: police ration has no shortage: ${policeShort.join(', ')}`);
@@ -213,7 +236,10 @@ async function main() {
   for (const [sec, comms] of [['a', lists.a], ['b', lists.b]]) {
     for (const c of comms) {
       const auto = openingFor(chain, date, c.id, sec).value;
-      const open = auto === null ? 0 : auto; // an administrator's untouched Opening: the carry
+      // The Initial Opening where one is typed (the chain start only — checked
+      // above); otherwise an administrator's untouched Opening: the carry.
+      const typedOpen = Object.keys(opens).length ? (opens[c.id] ?? 0) : null;
+      const open = typedOpen !== null ? typedOpen : auto === null ? 0 : auto;
       const receipt = dayReceipts[c.id] || 0;
       const r = insp?.[sec]?.[c.id] ?? {};
       const adj = { excess: Number(r.excess) || 0, shortage: Number(r.shortage) || 0, transfer: Number(r.transfer) || 0 };
@@ -221,7 +247,7 @@ async function main() {
       const total = open + receipt + adj.excess - adj.shortage - adj.transfer;
       const close = total - s;
       const amount = c.free ? 0 : s * c.rate;
-      snap[sec][c.id] = { open, receipt, total, sales: s, close, amount, ...adj };
+      snap[sec][c.id] = { open, receipt, total, sales: s, close, amount, ...adj, ...(typedOpen !== null ? { openFixed: true } : {}) };
       if (s || receipt || adj.excess || adj.shortage || adj.transfer) shown.push({ id: c.id, en: c.en, open, receipt, total, sales: s, close, rate: c.free ? 'free' : c.rate, amount });
     }
   }
@@ -245,6 +271,13 @@ async function main() {
   // (lib/gunnyRefresh.ts): every month the save moved, and the carried
   // Openings after it.
   const mKey = `${crsId}_${m}_${y}`;
+  // The Gunny table's Opening, as an administrator types it (openingAuto false).
+  if (Object.keys(gunnyOpen).length) {
+    const own = { ...(next.meGunnyStore[mKey] ?? {}) };
+    const LABEL = { ss50: '50 KG SS', poly: 'POLY', cbox: 'C.BOX' };
+    for (const [item, n] of Object.entries(gunnyOpen)) own[item] = { itemName: LABEL[item], crsId: String(crsId), month: m, year: y, ...(own[item] ?? {}), opening: n, openingAuto: false };
+    next.meGunnyStore = { ...next.meGunnyStore, [mKey]: own };
+  }
   for (const ym of [...new Set([date, ...chained.dates].map((d) => d.slice(0, 7)))].sort()) {
     const [gy, gm] = ym.split('-').map(Number);
     const g = refreshGunnyMonths(next.meGunnyStore, crsId, gm, gy, next.monthlyStore, (mo, yr) => packTypesFor(next.receiptStore, crsId, mo, yr));

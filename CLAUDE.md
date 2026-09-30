@@ -1335,6 +1335,16 @@ under version; a re-run with the same figures writes nothing.
   LOF RICE 254 / SUGAR 19 / LOF SUGAR 7 / AAY 38 / LOF AAY 5 / OAP 0 /
   POLICE 1 / "N" CARD (பண்டகமில்லா அட்டை) 1 → TOTAL 1373 (backup
   `backups/card-details-crs20-9-2026-…`).
+- **CRS 26, September 2026** (office, 2026-09-30, POS photos): RICE 1195 /
+  LOF RICE 12 / SUGAR 20 / LOF SUGAR 1 / AAY 14 / LOF AAY 0 / OAP 1 / POLICE 0
+  / "N" CARD (பண்டகமில்லா அட்டை) 4 → TOTAL 1247, as the POS says (backup
+  `backups/card-details-crs26-9-2026-…`). Page 1 preview and PDF read back.
+- **CRS 27, September 2026** (office, 2026-09-30, POS photos): RICE 1123 /
+  LOF RICE 19 / SUGAR 177 / LOF SUGAR 9 / AAY 12 / LOF AAY 0 / OAP 0 /
+  POLICE 4 / "N" CARD (பண்டகமில்லா அட்டை) 25 → TOTAL 1369, as the POS's
+  மொத்த அட்டைகள் says (LOF AAY and OAP are not on the POS: 0). Page 1
+  preview and PDF read back; the screen holds them after reload, shop and
+  month changes (backup `backups/card-details-crs27-9-2026-…`).
 
 ## A day sheet keyed from a paper statement
 
@@ -1383,6 +1393,77 @@ every Closing equals the paper's).
   01-09 and 29-09 only. Monthly Remittance untouched (the 29th's ₹848 stays
   there, so the 29-09 DSS C A/C line reads 0.00). Backup
   `backups/day-sheet-5_2026-09-29-…`.
+- **CRS 26, September 2026** (office, 2026-09-30; POS "பொருட்கள் இருப்பு
+  நிலவரச் சுருக்கம்" 01-09 → 30-09): Receipt and Sales only, on one sheet
+  dated 30-09 — Receipt `POS/26/09/2026` (11 commodities) and the month's
+  sales; Opening carried from the 01-09 Initial Opening, which already equals
+  the POS. All 14 closings equal the POS (BRA 333, RRA 294, PHH BRA 773,
+  PHH FRK 1443.126, AAY 3, AAY FRK 0.010, NPHH FRK 2384.014, NPHH RRA 0.026,
+  OAP 0, T.DHALL 189.010, P.OIL 190, SUGAR 422.502, AAY SUGAR 1.500, WHEAT
+  508.990). Sugar / AAY Sugar / Wheat were on the POS but not in the typed
+  list — included on the office's answer. The police "P" rows, PHH பச்சை
+  அரிசி and the Pongal lines are 0 or have no field. No remittance added
+  (September EXCESS reads −88810.25 until deposits are keyed). Backup
+  `backups/day-sheet-26_2026-09-30-…`.
+
+**A shop's Initial Opening, from an office sheet** (same tool, office
+2026-09-30): `--open=ID:qty,…` types the Openings on the shop's CHAIN START
+(refused if any earlier day sheet exists), saved fixed (`openFixed`) as Daily
+Entry saves an Initial Opening, every other commodity at 0; `--gunny-open=
+ss50:n,poly:n,cbox:n` sets the month's Gunny Opening as an administrator
+types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
+- **CRS 27, from 01-09-2026** (office, 2026-09-30; CRS 27 held no stock data
+  and was not started): BRA 3908, PHH BRA 850, PHH FRK 1500.062, NPHH FRK
+  5000.062, AAY 105, AAY FRK 154.010, RRA 1000, NPHH RRA 0.030, SUGAR
+  1348.002, AAY SUGAR 9, WHEAT 1525, T.DHALL 677.020, P.OIL 679, OOTY 304;
+  police BRA 26, SUGAR 2, WHEAT 2, T.DHALL 4, P.OIL 1; Gunny 50 KG SS 1496
+  (POLY / C.BOX were blank on the sheet and are left blank). Started-record
+  01-09-2026. Read back on the day sheet, the published month, Gunny, and
+  CRS Page 2 / CRS Police PDFs. Backup `backups/day-sheet-27_2026-09-01-…`.
+- **CRS 27, September 2026 movement** (office, 2026-09-30, POS summary 01-09
+  → 30-09): one sheet dated 30-09 — Receipt `POS/27/09/2026` (14
+  commodities), the month's Sales, and NPHH FRK's −19 in the POS's
+  இருப்பு சரிசெய்தல் column as a SHORTAGE of 19 on 30-09 (the app stores a
+  shortage as a positive amount taken off, shown red as −19; a literal −19
+  would have added 19). All 19 closings equal the POS (NPHH FRK 2633.062,
+  PHH FRK 501.062, AAY FRK 74.010, SUGAR 705.502, WHEAT 1483, T.DHALL
+  216.020, P.OIL 217, …). Office's answers: R.R.A takes the screenshot's
+  500 / 1500 (the typed list said 0 / 0); the POS's "P FRK BR" (police FRK
+  rice, 54 / 36 / 18 — the app has no such line) is ADDED INTO Police B.R.A,
+  which therefore reads 26 + 54 − 36 = 44 where the POS shows B.R.A 26 and
+  P FRK BR 18 apart. Backup `backups/day-sheet-27_2026-09-30-…`.
+
+## Receipts keyed from a shop's POS challans
+
+`node tools/add-receipts.mjs --data=<file.json>` (dry run), then `--write`:
+the Receipt page's Save for one shop — Receipt Register rows
+(`{ crsId, receipts: [{ date, receiptNo, type: regular|advance, items }] }`),
+then what `republishMonth` does: the day sheet takes the receipt, the month
+republishes, the chain rebuilds from the date, Gunny follows. Refuses a
+commodity not on the shop's Receipt list, a quantity ≤ 0, a receipt number
+the register already holds, any other shop's keys, or the stock guard;
+backs up to `backups/`, writes under version, logs activity. It adds; it
+never replaces.
+- **CRS 26, advance for October 2026** (office, 2026-09-30, POS "பொருட்கள்
+  வருகை வரலாறு", received 28-09-2026, vehicle TN38H3303): three ADVANCE
+  receipts dated 28-09 — S184607324 BRA 2000, T.DHALL 550, SUGAR 500, WHEAT
+  400, AAY SUGAR 12; S184607325 NPHH FRK 2000; S184607326 AAY FRK 250, PHH
+  FRK 2000. S184607324's BRA 2000 appears in two overlapping screenshots of
+  that one challan and is entered once (office's answer). Dated 28-09 on the
+  office's choice, so — as Advance receipts always are — September counts
+  them as stock received: CRS 26 September's Receipts and Closings rose by
+  exactly those quantities (e.g. NPHH FRK 2384.014 → 4384.014, BRA 333 →
+  2333) and no longer equal the POS stock summary, which leaves them out.
+  CRS 26 is not a COLL shop, so there is no ADVANCE FOR OCT'2026 table.
+  Backup `backups/receipts-crs26-…`.
+- **CRS 27, advance for October 2026** (office, 2026-09-30, same POS screen,
+  received 28-09-2026, TN38H3303): two ADVANCE receipts dated 28-09 —
+  S184607327 SUGAR 500, NPHH FRK 5000, WHEAT 100, AAY SUGAR 9, T.DHALL 550;
+  S184607328 AAY FRK 150, PHH FRK 1500. Wheat 100 was in two overlapping
+  screenshots of S184607327 and is entered once (office's answer). Dated
+  28-09 as for CRS 26, so September's Receipts / Closings rose by those
+  quantities (NPHH FRK 2633.062 → 7633.062, PHH FRK 501.062 → 2001.062, …).
+  CRS 27 is not a COLL shop. Backup `backups/receipts-crs27-…`.
 
 ## Allotment keyed from the FPS Allocation Report
 
@@ -1414,6 +1495,20 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   OAP 0, APS 0 (the POS's "ANP Rice"). The POS lists Wheat twice; the
   office named the 6th row (1517.974) and the 2nd (1610.565) is ignored,
   never added. Police lines left out as before. Page 1 PDF read back.
+- **CRS 26, September 2026** (office, 2026-09-30, the POS's இருப்புப் பொருள்
+  ஒதுக்கீடு rows 6–17; FPS code 22DA007PN from `__crsMaster`): BRA 7946.875,
+  AAY 454, PHH_BRA 7389, WHEAT 1490.122, SUGAR 1358.998, AAY_SUGAR 21.5,
+  TOOR 917.98, PALM 918. Rows 11–15 were in two overlapping screenshots and
+  are entered once; the four police rows are 0 and have no field; rows 1–5
+  were not in the images and nothing was stored for them. Page 1 PDF read
+  back; the screen holds them after reload, shop and month changes.
+- **CRS 27, September 2026** (office, 2026-09-30, the same POS screen, rows
+  6–17; FPS code 22DA004PN from `__crsMaster`): BRA 11207.988, AAY 310,
+  PHH_BRA 2809, WHEAT 1253.262, SUGAR 1584.498, AAY_SUGAR 15.5, TOOR
+  952.171, PALM 951. The four police rows are NOT zero here (Police Rice 54,
+  Sugar 6, Toor Dal 12, Palm Oil 3) but still have no Allotment field, so
+  they are not stored — and never added into the Section A lines. Rows 1–5
+  not in the images, nothing stored. Page 1 PDF and screen read back.
 
 ## Monthly Sales Close needs both sections SAVED
 
