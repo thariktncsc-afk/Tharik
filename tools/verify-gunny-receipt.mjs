@@ -12,7 +12,8 @@
  *      Wheat, RRA and NPHH FRK RRA;
  *   3. the office's example month;
  *   4. keyed by day and keyed by month give the same Receipt, counted once;
- *   5. Receipt is the sales, not Sales Close; an administrator's Receipt wins;
+ *   5. Receipt is Monthly Sales' own bag counts — not Sales Close, and not a
+ *      Receipt typed into the Gunny table (CRS 5: 227 / 28, never 236 / 23);
  *      Issues are typed and never replaced;
  *   6. after a Daily save: this month's Receipt / Total / Closing follow,
  *      and next month opens at the new Closing;
@@ -36,7 +37,7 @@ export async function resolve(spec, ctx, next) {
   import.meta.url,
 );
 const imp = (p) => import(pathToFileURL(join(root, p)).href);
-const { packTypesFor, packCounts, PACK_BASE } = await imp('src/lib/engine/gunnyPack.ts');
+const { packTypesFor, packCounts, salesBags, PACK_BASE } = await imp('src/lib/engine/gunnyPack.ts');
 const { gunnyRowFor, refreshGunnyMonths } = await imp('src/app/(app)/monthly-entry/lib.ts');
 const { rebuildMonthlyFromDaily } = await imp('src/lib/engine/monthlyRollup.ts');
 const { entryListsFor } = await imp('src/lib/engine/commodities.ts');
@@ -79,6 +80,13 @@ for (const id of ['WHEAT', 'RRA', 'NPHH_RRA']) {
     receiptOf(s, [], 'ss50') === 10);
 }
 check('the switch cannot move a commodity it does not apply to (SUGAR "GUNNY" on a receipt stays Poly)', receiptOf({ SUGAR: 100 }, [rcpt('SUGAR', 'GUNNY')], 'poly') === 2);
+{
+  // Only rows with a bag box on the Monthly Sales grid are counted — police sugar / wheat / dhall / palm oil have none.
+  const { NO_GUNNY } = await imp('src/app/(app)/monthly-entry/lib.ts');
+  check('no commodity without a bag box on Monthly Sales is counted (police sugar / wheat / dhall / palm oil)', Object.keys(PACK_BASE).every((id) => !NO_GUNNY.has(id)));
+  const pol = { PB_WHEAT: 500, PB_SUGAR: 500, PB_TOOR: 500, PB_PALM: 500, PB_BRA: 100 };
+  check('police BRA (it has a box) counts 2 sacks; the four without a box count nothing', receiptOf(pol, [], 'ss50') === 2 && receiptOf(pol, [], 'poly') === 0 && receiptOf(pol, [], 'cbox') === 0);
+}
 check('another shop\'s receipt does not decide', packTypesFor([{ ...rcpt('WHEAT', 'POLY'), crsId: 21 }], CRS, 9, 2026).WHEAT === 'GUNNY');
 
 console.log('\n3. The office\'s example: BRA 500, RRA 250, Wheat 100, Sugar 100, P.OIL 30');
@@ -114,8 +122,25 @@ console.log('\n5. Where the Receipt comes from; Issues');
   const sc = { date: '2026-09-30', gunny: 112, poly: 11, cbox: 33 };
   const r = gunnyRowFor('ss50', {}, {}, sc, {}, { BRA: 15550 }, PACK_BASE);
   check(`Sales Close (112) no longer sets it — the sales do: ${r.rc.val} (15550 kg ÷ 50)`, r.rc.val === 311 && !r.rc.imported);
-  const admin = gunnyRowFor('ss50', { ss50: { receiptImported: 236 } }, {}, sc, {}, { BRA: 11350 }, PACK_BASE);
-  check(`an administrator's Receipt still wins: ${admin.rc.val}`, admin.rc.val === 236 && admin.rc.imported);
+  // CRS 5 September as it stood: a Receipt of 236 / 23 typed into the Gunny table while
+  // Monthly Sales' bag columns said 227 / 28 (office, 2026-09-30). Monthly Sales is the source.
+  const crs5 = { BRA: 5814, NPHH_FRK: 168, PHH_FRK: 175, PHH_BRA: 2866, AAY: 700, RRA: 381, WHEAT: 750, TOOR: 616, SUGAR: 1031.5, AAY_SUGAR: 27, SALT_CIS: 215, PALM: 616 };
+  const typedRc = { ss50: { opening: 89, receiptImported: 236 }, poly: { opening: 0, receiptImported: 23, issues: 22 }, cbox: { opening: 2, issues: 62 } };
+  const g5 = Object.fromEntries(['ss50', 'poly', 'cbox'].map((k) => [k, gunnyRowFor(k, typedRc, {}, sc, {}, crs5, PACK_BASE)]));
+  check(`CRS 5's month: Gunny ${g5.ss50.rc.val} (116+3+3+57+14+7+15+12), Poly ${g5.poly.rc.val} (20+0+8), C.Box ${g5.cbox.rc.val} — the typed 236 / 23 are not read`,
+    g5.ss50.rc.val === 227 && g5.poly.rc.val === 28 && g5.cbox.rc.val === 61 && !g5.ss50.rc.imported);
+  check(`…Total and Closing follow: 50 KG SS ${g5.ss50.total} / ${g5.ss50.closing}, POLY ${g5.poly.total} / ${g5.poly.closing}, C.BOX ${g5.cbox.total} / ${g5.cbox.closing}`,
+    g5.ss50.total === 316 && g5.ss50.closing === 316 && g5.poly.total === 28 && g5.poly.closing === 6 && g5.cbox.total === 63 && g5.cbox.closing === 1);
+  // What Monthly Sales SHOWS is the figure: the grid's own bag counts, summed by pack.
+  const grid = { BRA: 116, NPHH_FRK: 3, PHH_FRK: 3, PHH_BRA: 57, AAY: 14, RRA: 7, WHEAT: 15, TOOR: 12, SUGAR: 20, AAY_SUGAR: 0, SALT_CIS: 8, PALM: 61 };
+  const fromGrid = Object.fromEntries(['ss50', 'poly', 'cbox'].map((k) => [k, gunnyRowFor(k, typedRc, {}, sc, grid, crs5, PACK_BASE).rc.val]));
+  check(`the grid's displayed bags give the same: ${fromGrid.ss50} / ${fromGrid.poly} / ${fromGrid.cbox}`, fromGrid.ss50 === 227 && fromGrid.poly === 28 && fromGrid.cbox === 61);
+  // A bag count the office keyed on Monthly Sales (it differs from the division) is what the grid shows — and so what Gunny takes.
+  check('a bag count keyed on Monthly Sales (BRA 120 shown, 116 by division) is the one Gunny takes: 231',
+    gunnyRowFor('ss50', {}, {}, undefined, { ...grid, BRA: 120 }, crs5, PACK_BASE).rc.val === 231 && salesBags({ sales: 5814, g_sales: 120 }, 'BRA') === 120 && salesBags({ sales: 5814, g_sales: 0 }, 'BRA') === 116 && salesBags({ sales: 5814 }, 'BRA') === 116);
+  const wheatPoly = packTypesFor([{ id: 1, crsId: CRS, date: '2026-09-10', receiptNo: 'R', items: { WHEAT: { qty: 1, pack: 'POLY' } } }], CRS, 9, 2026);
+  check('with Wheat switched to Poly its 15 bags move: Gunny 212, Poly 43 — one switch, both figures',
+    gunnyRowFor('ss50', {}, {}, undefined, grid, crs5, wheatPoly).rc.val === 212 && gunnyRowFor('poly', {}, {}, undefined, grid, crs5, wheatPoly).rc.val === 43);
   const typed = gunnyRowFor('poly', { poly: { issues: 30 } }, {}, undefined, {}, { SUGAR: 1000, EMPTY_BAG: 72 }, PACK_BASE);
   check(`typed Issues 30 stand, whatever the sales (Poly sold 72): Issues ${typed.issues}, Total ${typed.total}, Closing ${typed.closing}`, typed.issues === 30 && !typed.issuesAuto && typed.total === 20 && typed.closing === -10);
 }
@@ -179,11 +204,15 @@ console.log('\n9. Wiring');
   const me = readFileSync(join(root, 'src/app/(app)/monthly-entry/page.tsx'), 'utf8');
   check('Monthly Entry: the month-close refreshes Gunny; the table gets the switch types', /refreshGunnyFor\(ctx\.crsId/.test(me) && /packTypes=\{packTypes\}/.test(me));
   const gt = readFileSync(join(root, 'src/app/(app)/monthly-entry/GunnyTable.tsx'), 'utf8');
-  check('Gunny table: Issues typable by everyone; Opening and Receipt still admin-only', !/readOnly=\{issuesAuto && !isAdmin\}/.test(gt) && (gt.match(/readOnly=\{!isAdmin\}/g) ?? []).length === 2);
+  check('Gunny table: Issues typable by everyone; Opening admin-only; Receipt never typed (no receiptImported write)',
+    !/readOnly=\{issuesAuto && !isAdmin\}/.test(gt) && (gt.match(/readOnly=\{!isAdmin\}/g) ?? []).length === 1 && !/receiptImported:/.test(gt) && /data-gunny-receipt/.test(gt));
+  const lib = readFileSync(join(root, 'src/app/(app)/monthly-entry/lib.ts'), 'utf8');
+  check('the rule reads no typed Receipt anywhere (screen rule, statements)', !/rec\.receiptImported/.test(lib) && !/rec\.receiptImported/.test(readFileSync(join(root, 'src/legacy/42-gunny-live.js'), 'utf8')));
+  check('the server and the PV read Monthly Sales\' bag counts (salesBags)', /salesBags\(row, id\)/.test(readFileSync(join(root, 'src/lib/stockGuard.ts'), 'utf8')) && /salesBags\(r, id\)/.test(readFileSync(join(root, 'src/lib/engine/pvQuarter.ts'), 'utf8')));
   const cx = readFileSync(join(root, 'src/lib/clearExecute.ts'), 'utf8');
   check('an approved clear refreshes the Gunny months it moved', /refreshGunnyMonths\(gunny/.test(cx));
   const lg = readFileSync(join(root, 'src/legacy/42-gunny-live.js'), 'utf8');
-  check('the statements no longer read Sales Close or a stored bag count', !/d\.salesClose/.test(lg) && !/g_sales/.test(lg.slice(lg.indexOf('function gunnyLiveItem'))));
+  check('the statements no longer read Sales Close', !/d\.salesClose/.test(lg));
 }
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll gunny-receipt checks passed.');

@@ -28,9 +28,10 @@
  *        holds a receipt for that shop on that date.
  *   --shortage=ID:qty,…   that date's inspection, as the Inspection screen
  *        saves it (Section A only — police ration has no shortage).
- *   --gunny-receipt=ss50:n,poly:n,cbox:n   the Gunny table's administrator
- *        Receipt correction (receiptImported), stored through
- *        gunnyMonthRecords like the Gunny Save.
+ *   --gunny-receipt   RETIRED (office, 2026-09-30): the Gunny Receipt is the
+ *        sum of Monthly Sales' bag counts and is never typed, so the option
+ *        is refused. The month's stored Gunny copies are refreshed from the
+ *        sales after the save, as Daily Entry's own save does.
  *   --correct-open=YYYY-MM-DD:ID:value,…   an administrator's Opening
  *        correction on an EARLIER sheet of the same shop (Daily Entry's own:
  *        Opening set, openFixed kept, Total and Closing worked out from the
@@ -91,7 +92,8 @@ const { inspectRiceWrite, describeRice } = await imp('lib/engine/crs29Rice.ts');
 const { diffStateWrite } = await imp('lib/activityLog/core.ts');
 const { recordActivity } = await imp('lib/activityLog/server.ts');
 const { reconcileShops } = await imp('lib/stockInitServer.ts');
-const { gunnyMonthRecords, mePrevKey } = await imp('app/(app)/monthly-entry/lib.ts');
+const { refreshGunnyMonths } = await imp('app/(app)/monthly-entry/lib.ts');
+const { packTypesFor } = await imp('lib/engine/gunnyPack.ts');
 
 const STORES = ['entryStore', 'inspectionStore', 'receiptStore', 'meManualStore', 'meSourceStore', 'monthlyStore', 'meGunnyStore', 'salesCloseStore', '__counters', '__commodityMaster', '__stockInit'];
 const WRITABLE = ['entryStore', 'inspectionStore', 'receiptStore', 'meSourceStore', 'monthlyStore', 'meGunnyStore', '__counters'];
@@ -118,6 +120,10 @@ async function main() {
   const receipt = pairs('receipt');
   const shortage = pairs('shortage');
   const gunnyReceipt = pairs('gunny-receipt');
+  if (Object.keys(gunnyReceipt).length) {
+    console.error('Refused: --gunny-receipt is retired. The Gunny Receipt is the sum of Monthly Sales\' bag counts (office, 2026-09-30) and is never typed.');
+    return 2;
+  }
   const expect = pairs('expect');
   const receiptNo = arg('receipt-no') ?? '';
   const corrections = (arg('correct-open') ?? '').split(',').filter(Boolean).map((p) => {
@@ -235,17 +241,14 @@ async function main() {
   const from = corrections.reduce((d, c) => (c.date < d ? c.date : d), date);
   const chained = rechainAndRepublish({ ...next, meManualStore: stored.meManualStore }, crsId, from, lists);
   for (const [k, v] of Object.entries(chained.patch)) next[k] = v;
-  // The Gunny table's administrator Receipt correction, then the month's gunny
-  // rows stored exactly as the Gunny Save / month-close store them.
+  // Gunny Stock follows the saved sales, as after Daily Entry's own save
+  // (lib/gunnyRefresh.ts): every month the save moved, and the carried
+  // Openings after it.
   const mKey = `${crsId}_${m}_${y}`;
-  if (Object.keys(gunnyReceipt).length) {
-    const own = clone(next.meGunnyStore[mKey] ?? {});
-    for (const [item, n] of Object.entries(gunnyReceipt)) own[item] = { ...(own[item] ?? {}), receiptImported: n };
-    const merged = next.monthlyStore[mKey] ?? { a: {}, b: {} };
-    const rows = { ...(merged.a ?? {}), ...(merged.b ?? {}) };
-    const bags = Object.fromEntries(Object.entries(rows).map(([cid, r]) => [cid, Number(r.g_sales) || 0]));
-    const soldQty = Object.fromEntries(Object.entries(rows).map(([cid, r]) => [cid, Number(r.sales) || 0]));
-    next.meGunnyStore[mKey] = gunnyMonthRecords(own, next.meGunnyStore[mePrevKey(crsId, m, y)] ?? {}, { crsId, month: m, year: y, key: mKey }, stored.salesCloseStore?.[mKey], bags, soldQty);
+  for (const ym of [...new Set([date, ...chained.dates].map((d) => d.slice(0, 7)))].sort()) {
+    const [gy, gm] = ym.split('-').map(Number);
+    const g = refreshGunnyMonths(next.meGunnyStore, crsId, gm, gy, next.monthlyStore, (mo, yr) => packTypesFor(next.receiptStore, crsId, mo, yr));
+    if (g) next.meGunnyStore = g;
   }
 
   console.log(`CRS ${crsId} · ${date} · new day sheet (${[...lists.a, ...lists.b].length} commodities)`);
@@ -254,9 +257,9 @@ async function main() {
   console.log(`  Sales amount ₹${amt.toFixed(2)} · deposit ${remits.length ? `₹${remit.toFixed(2)} dated ${remitDate} (Non-Cereal)` : 'none'}`);
   if (Object.keys(shortage).length) console.log(`  shortage (inspection ${date}): ${Object.entries(shortage).map(([cid, q]) => `${cid} ${q}`).join(', ')}`);
   if (Object.keys(receipt).length) console.log(`  Receipt Register: ${receiptNo} dated ${date}, ${Object.keys(receipt).filter((cid) => receipt[cid] > 0).length} commodities`);
-  if (Object.keys(gunnyReceipt).length) {
+  {
     const g = next.meGunnyStore[mKey] ?? {};
-    for (const it of ['ss50', 'poly', 'cbox']) if (g[it]) console.log(`  Gunny ${it.padEnd(4)}: Opening ${g[it].opening} + Receipt ${g[it].receipt} = Total ${g[it].total}; Closing ${g[it].closing}${gunnyReceipt[it] !== undefined ? ' (receipt from the POS)' : ''}`);
+    for (const it of ['ss50', 'poly', 'cbox']) if (g[it]) console.log(`  Gunny ${it.padEnd(4)}: Opening ${g[it].opening ?? 0} + Receipt ${g[it].receipt} (Monthly Sales' bags) = Total ${g[it].total}; Closing ${g[it].closing}`);
   }
   const off = Object.entries(expect).filter(([cid, cb]) => {
     const r = snap.a[cid] ?? snap.b[cid];
