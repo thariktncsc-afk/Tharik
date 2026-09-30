@@ -1335,6 +1335,10 @@ under version; a re-run with the same figures writes nothing.
   LOF RICE 254 / SUGAR 19 / LOF SUGAR 7 / AAY 38 / LOF AAY 5 / OAP 0 /
   POLICE 1 / "N" CARD (பண்டகமில்லா அட்டை) 1 → TOTAL 1373 (backup
   `backups/card-details-crs20-9-2026-…`).
+- **CRS 26, September 2026** (office, 2026-09-30, POS photos): RICE 1195 /
+  LOF RICE 12 / SUGAR 20 / LOF SUGAR 1 / AAY 14 / LOF AAY 0 / OAP 1 / POLICE 0
+  / "N" CARD (பண்டகமில்லா அட்டை) 4 → TOTAL 1247, as the POS says (backup
+  `backups/card-details-crs26-9-2026-…`). Page 1 preview and PDF read back.
 
 ## A day sheet keyed from a paper statement
 
