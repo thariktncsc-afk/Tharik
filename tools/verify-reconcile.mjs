@@ -163,5 +163,31 @@ check(`a rate changed on the Commodities screen (SUGAR 25 → 26) follows on its
 const dsNoMaster = dailySale([]);
 check(`no saved master: the engine's compiled rates (SALT CIS 12) — sales ${dsNoMaster.sales}`, dsNoMaster.sales === 62282 + 225 * 2);
 
+console.log('\n7. Cost Com never prints a negative CLOSING BALANCE (office, 2026-09-30)');
+{
+  // CRS 5 September as stored: C.Box 62 / Poly 22 sold with no grid stock → close −62 / −22;
+  // and a kgs commodity whose stored close is below zero too.
+  const rowOf = (o) => ({ open: 0, receipt: 0, total: 0, sales: 0, close: 0, amount: 0, ...o });
+  const a = { EMPTY_BOX: rowOf({ sales: 62, close: -62, amount: 37.2 }), EMPTY_BAG: rowOf({ sales: 22, close: -22, amount: 55 }), SUGAR: rowOf({ open: 10, total: 10, sales: 15, close: -5, amount: 375 }) };
+  const stores = {
+    entryStore: {}, inspectionStore: {}, monthlyStore: { [KEY]: { a, b: {} } }, meManualStore: {}, meSourceStore: {},
+    meRemitStore: { [KEY]: { 3: { nonCereal: 467.2, remitDate: '2026-09-30' } } }, meGunnyStore: {}, meCardStore: {},
+    salesCloseStore: {}, receiptStore: [], meAllotStore: {}, meCardConfirmed: {}, meAdvanceStore: {},
+  };
+  const e = createStatementEngine({ stores, users: [], CRS_LIST: Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `CRS ${i + 1}` })), CRS_MASTER: [], APP_CONFIG: {}, CRS_ACCOUNTS: {}, currentUser: null });
+  const d = e.getData(CRS, 9, 2026);
+  const html = e.buildSection('cost_com', d);
+  const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((c) => c[1]));
+  const row = (label) => rows.find((r) => r[1] === label) ?? [];
+  const box = row('C.BOX'), poly = row('POLY'), sugar = row('SUGAR');
+  check(`C.BOX CB "${box[13]}", POLY CB "${poly[13]}" (stored −62 / −22)`, box[13] === '0' && poly[13] === '0');
+  check(`a kgs row below zero prints 0 too: SUGAR CB bags "${sugar[13]}", kgs "${sugar[14]}"`, sugar[13] === '0' && sugar[14] === '0');
+  check(`no negative figure anywhere on the sheet but EXCESS`, rows.every((r) => r[1] === 'EXCESS' || r.every((c) => !/^-\d/.test(c))));
+  check(`display only: the stored close is still −62 / −22 / −5, and the amounts stand (C.BOX ${box[12]}, POLY ${poly[12]}, SUGAR ${sugar[12]})`,
+    d.getVal('EMPTY_BOX', 'close') === -62 && d.getVal('EMPTY_BAG', 'close') === -22 && d.getVal('SUGAR', 'close') === -5 && box[12] === '37.2' && poly[12] === '55' && sugar[12] === '375');
+  const p2 = e.buildSection('crs_page2', d);
+  check('other sheets unchanged: CRS Page 2 still prints its own closing (-5 for SUGAR)', /<td[^>]*>-5(\.0+)?<\/td>/.test(p2));
+}
+
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll reconcile checks passed.');
 process.exitCode = failures ? 1 : 0;
