@@ -55,7 +55,7 @@ const PREV_KEY = `${CRS}_5_2026`;
  * published month (whose sales bag counts are a receipt's last source) and a
  * Sales Close.
  */
-function engineFor({ gunny = {}, prev = null, monthly = null, salesClose = null } = {}) {
+function engineFor({ gunny = {}, prev = null, monthly = null, salesClose = null, receipts = [] } = {}) {
   const meGunnyStore = { [KEY]: gunny };
   if (prev) meGunnyStore[PREV_KEY] = prev;
   return createStatementEngine({
@@ -69,7 +69,7 @@ function engineFor({ gunny = {}, prev = null, monthly = null, salesClose = null 
       meGunnyStore,
       meCardStore: {},
       salesCloseStore: salesClose ? { [KEY]: salesClose } : {},
-      receiptStore: [],
+      receiptStore: receipts,
       meAllotStore: {},
       meCardConfirmed: {},
       meAdvanceStore: {},
@@ -95,8 +95,14 @@ function render(gunny) {
   return e.buildSection('gunny', e.getData(CRS, 6, 2026));
 }
 
-/** A published month with these bag counts on its sales rows. */
-const bagSales = (counts) => ({ a: Object.fromEntries(Object.entries(counts).map(([id, n]) => [id, { g_sales: n }])), b: {} });
+/**
+ * A published month whose SALES empty exactly these packs. Since 2026-09-30
+ * the Receipt is counted from the sales (sales ÷ pack size, rounded down —
+ * engine/gunnyPack.ts), never from a stored bag count, so each commodity gets
+ * n × its pack size (palm oil 10 a box, salt 25 a poly, the rest 50).
+ */
+const PACK_SIZE = { PALM: 10, PB_PALM: 10, SALT_CIS: 25, SALT_RFFS: 25 };
+const bagSales = (counts) => ({ a: Object.fromEntries(Object.entries(counts).map(([id, n]) => [id, { sales: n * (PACK_SIZE[id] ?? 50) }])), b: {} });
 
 /** The statement's body rows, each as [variety, ...ten sub-cells]. */
 function table(html) {
@@ -189,12 +195,28 @@ console.log('\nWhere each figure comes from');
   check('a keyed Opening of 0 is respected, not treated as missing',
     resolved({ gunny: { ss50: { opening: 0 } }, prev: { ss50: { closing: 180 } }, monthly: month }).ss50.ob === 0);
 
-  // Receipt: imported → Sales Close → the month's own sales bags.
+  // Receipt: an administrator's typed figure → the packs the month's sales emptied
+  // (office, 2026-09-30: never Sales Close, never a stored bag count).
   check('the office’s imported Receipt wins over everything',
     resolved({ gunny: { ss50: { receiptImported: 42 } }, monthly: month, salesClose: { date: '2026-06-20', gunny: 99, poly: 9, cbox: 9 } }).ss50.rec === 42);
-  check('…else the month’s Sales Close totals',
-    resolved({ gunny: {}, monthly: month, salesClose: { date: '2026-06-20', gunny: 99, poly: 9, cbox: 9 } }).ss50.rec === 99);
-  check('…else the month’s own sales bags', resolved({ gunny: {}, monthly: month }).ss50.rec === 100);
+  check('…else the month’s own sales — a Sales Close no longer sets it (99 is ignored)',
+    resolved({ gunny: {}, monthly: month, salesClose: { date: '2026-06-20', gunny: 99, poly: 9, cbox: 9 } }).ss50.rec === 100);
+  check('…and a stored bag count on the sales row is not read (g_sales 7 on 5000 kg BRA → 100)',
+    resolved({ gunny: {}, monthly: { a: { BRA: { sales: 5000, g_sales: 7 } }, b: {} } }).ss50.rec === 100);
+  check('the month’s own sales bags', resolved({ gunny: {}, monthly: month }).ss50.rec === 100);
+  // The Receipt page's Gunny / Poly switch, saved on the receipt: WHEAT 1000 kg = 20 packs.
+  const wheat = { a: { WHEAT: { sales: 1000 } }, b: {} };
+  const rcpt = (pack, date = '2026-06-10', id = 1) => ({ id, crsId: CRS, date, receiptNo: 'R' + id, items: { WHEAT: pack ? { qty: 1000, pack } : { qty: 1000 } } });
+  const asGunny = resolved({ gunny: {}, monthly: wheat });
+  check('Wheat with no receipt this month counts as Gunny (20 sacks)', asGunny.ss50.rec === 20 && asGunny.poly.rec === 0);
+  const asPoly = resolved({ gunny: {}, monthly: wheat, receipts: [rcpt('POLY')] });
+  check('Wheat whose receipt was switched to Poly counts as Poly (20 poly)', asPoly.poly.rec === 20 && asPoly.ss50.rec === 0, JSON.stringify(asPoly));
+  const latest = resolved({ gunny: {}, monthly: wheat, receipts: [rcpt('POLY', '2026-06-05', 1), rcpt('GUNNY', '2026-06-20', 2)] });
+  check('…the month’s LATEST receipt decides (Poly on 05-06, Gunny on 20-06 → Gunny)', latest.ss50.rec === 20 && latest.poly.rec === 0);
+  const otherMonth = resolved({ gunny: {}, monthly: wheat, receipts: [rcpt('POLY', '2026-05-28')] });
+  check('…a receipt of another month does not', otherMonth.ss50.rec === 20);
+  const oldRcpt = resolved({ gunny: {}, monthly: wheat, receipts: [rcpt(null)] });
+  check('…a receipt saved before the switch was kept counts as Gunny', oldRcpt.ss50.rec === 20);
   check('each pack type reads its own commodities',
     resolved({ gunny: {}, monthly: month }).poly.rec === 7 && resolved({ gunny: {}, monthly: month }).cbox.rec === 3);
 

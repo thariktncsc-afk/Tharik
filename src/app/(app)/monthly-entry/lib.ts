@@ -6,6 +6,7 @@ import { CRS29_STOCK, DSS_A, isCrs29, type Commodity } from '@/lib/engine/commod
 export { SALES_ONLY } from '@/lib/engine/commodities';
 import type { MonthlyBlock } from '@/lib/engine/monthlyRollup';
 import { dmy } from '@/lib/dateFormat';
+import { PACK_BASE, packCounts, type PackType } from '@/lib/engine/gunnyPack';
 
 export type GunnyRec = {
   itemName?: string;
@@ -49,14 +50,19 @@ export type GunnyRow = {
  * The screen and the 3-month PV both call this, so the PV's September Gunny
  * cannot differ from what the office sees on that screen.
  *
- *   Opening  this month's own figure, else last month's Closing carried
- *   Receipt  the office's imported figure, else the Sales Close totals,
- *            else the month's own sales bag counts for that pack type
- *   Issues   POLY and C.BOX: the month's own Empty Polythene Bag / Empty
- *            Card+Box SALES, so the bags leave the gunny stock exactly once
- *            and by the figure the shop keyed (office, 2026-09-26). An
- *            administrator's keyed figure still wins. 50 KG SS has no
- *            commodity row of its own, so it stays hand-keyed.
+ *   Opening  this month's own figure, else last month's Closing carried. A
+ *            stored copy of the carry (openingAuto) follows last month's
+ *            Closing, so a change there reaches this month (office,
+ *            2026-09-30: CB → next month's OB, always).
+ *   Receipt  an administrator's typed figure (receiptImported), else the
+ *            packs the month's SAVED SALES emptied — engine/gunnyPack.ts:
+ *            each commodity's sales ÷ its pack size, into the pack its type
+ *            (and, for Wheat / RRA / NPHH FRK RRA, the month's Receipt-page
+ *            switch) says. Not Sales Close, not a stored bag count (office,
+ *            2026-09-30).
+ *   Issues   typed — by the shop or an administrator (office, 2026-09-30).
+ *            Left blank, POLY and C.BOX show the month's Empty Polythene
+ *            Bag / Empty Card+Box sales; 50 KG SS shows nothing.
  *   Total    Opening + Receipt;   Closing = Total − Issues
  */
 export function gunnyRowFor(
@@ -65,22 +71,26 @@ export function gunnyRowFor(
   prevMonth: Record<string, GunnyRec>,
   salesClose: SalesClose | undefined,
   gridGunnySales: Record<string, number>,
-  /** The month's sales per commodity id — EMPTY_BAG / EMPTY_BOX are the two read here. */
+  /** The month's sales per commodity id — the Receipt is counted from these. */
   packSales?: Record<string, number>,
+  /** The month's pack types (packTypesFor — the Receipt page's switch); the base types when not given. */
+  packTypes?: Record<string, PackType>,
 ): GunnyRow {
   const rec = month[id] ?? {};
   const prevClosing = prevMonth[id]?.closing;
-  const hasOwnOpening = rec.opening !== undefined && rec.opening !== '';
+  // A stored copy of the carry is not the office's own Opening: it follows
+  // last month's Closing, so the carry can never go stale.
+  const carriedCopy = !!rec.openingAuto && prevClosing !== undefined && prevClosing !== null;
+  const hasOwnOpening = rec.opening !== undefined && rec.opening !== '' && !carriedCopy;
   const openingAuto = !hasOwnOpening && prevClosing !== undefined ? true : !!rec.openingAuto && hasOwnOpening;
   const opening = hasOwnOpening ? Number(rec.opening) || 0 : prevClosing !== undefined ? Number(prevClosing) || 0 : 0;
   const openingVal = hasOwnOpening ? String(rec.opening) : prevClosing !== undefined ? String(prevClosing) : '';
   let rc: GunnyRow['rc'];
   if (rec.receiptImported !== undefined && rec.receiptImported !== null && String(rec.receiptImported) !== '') {
     rc = { val: Number(rec.receiptImported) || 0, src: 'Imported from the office workbook', imported: true };
-  } else if (salesClose) {
+  } else if (packSales) {
     const type = ME_GUNNY_TYPE[id];
-    const v = type === 'GUNNY' ? salesClose.gunny : type === 'POLY' ? salesClose.poly : salesClose.cbox;
-    rc = { val: v || 0, src: `Auto from Sales Close (${dmy(salesClose.date)})`, imported: false };
+    rc = { val: packCounts(packSales, packTypes ?? PACK_BASE)[type], src: `Auto from this month's saved sales (${PACK_SRC[type]})`, imported: false };
   } else {
     rc = { val: monthlySalesBags(ME_GUNNY_TYPE[id], gridGunnySales), src: `Auto from Monthly Entry Sales (${ME_GUNNY_TYPE[id].toLowerCase()} counts)`, imported: false };
   }
@@ -92,6 +102,7 @@ export function gunnyRowFor(
   const commId = ME_GUNNY_TO_COMM[id];
   const derived = commId && packSales ? Math.round((Number(packSales[commId]) || 0) * 1000) / 1000 : null;
   const issuesAuto = keyed === null && derived !== null;
+  void salesClose; // Sales Close no longer sets the Receipt (office, 2026-09-30)
   const issues: number | '' = keyed !== null ? keyed : derived !== null ? derived : '';
   const total = opening + rc.val;
   const closing = total - (Number(issues) || 0);
@@ -109,6 +120,7 @@ export function gunnySaveProblems(
   salesClose: SalesClose | undefined,
   gridGunnySales: Record<string, number>,
   packSales: Record<string, number>,
+  packTypes?: Record<string, PackType>,
 ): { errors: string[]; deficits: string[] } {
   const errors: string[] = [];
   const deficits: string[] = [];
@@ -118,7 +130,7 @@ export function gunnySaveProblems(
     if (bad(cur.opening)) errors.push(`${item.label}: Opening must be a number, 0 or more.`);
     if (bad(cur.receiptImported)) errors.push(`${item.label}: Receipt must be a number, 0 or more.`);
     if (bad(cur.issues)) errors.push(`${item.label}: Issues must be a number, 0 or more.`);
-    const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales);
+    const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales, packTypes);
     if (r.closing < 0) deficits.push(`${item.label}: Issues ${r.issues} exceed Total ${r.total} (Closing ${r.closing})`);
   }
   return { errors, deficits };
@@ -144,12 +156,14 @@ export function gunnyMonthRecords(
   gridGunnySales: Record<string, number>,
   packSales: Record<string, number>,
   now = new Date().toISOString(),
+  packTypes?: Record<string, PackType>,
 ): Record<string, GunnyRec> {
   const next = { ...own };
   for (const item of ME_GUNNY_ITEMS) {
-    const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales);
+    const r = gunnyRowFor(item.id, own, prev, salesClose, gridGunnySales, packSales, packTypes);
     const cur = next[item.id] ?? {};
-    const ownOpening = cur.opening !== undefined && cur.opening !== '';
+    // A stored copy of the carry is re-carried, never kept as the office's own.
+    const ownOpening = cur.opening !== undefined && cur.opening !== '' && !r.openingAuto;
     next[item.id] = {
       itemName: cur.itemName ?? item.label,
       crsId: String(ctx.crsId),
@@ -175,14 +189,13 @@ export const ME_GUNNY_ITEMS = [
   { id: 'cbox', label: 'C.BOX' },
 ] as const;
 export const ME_GUNNY_TYPE: Record<string, 'GUNNY' | 'POLY' | 'CBOX'> = { ss50: 'GUNNY', poly: 'POLY', cbox: 'CBOX' };
+const PACK_SRC: Record<PackType, string> = { GUNNY: 'sacks ÷50', POLY: 'poly ÷50 / salt ÷25', CBOX: 'boxes: palm oil ÷10, tea ÷50' };
 /** Gunny Issues flow into these Monthly Sales rows (poly bags / card+box). */
 export const ME_GUNNY_TO_COMM: Record<string, string> = { poly: 'EMPTY_BAG', cbox: 'EMPTY_BOX' };
 
-export const SC_PACK_TYPES: Record<'GUNNY' | 'POLY' | 'CBOX', Record<string, number>> = {
-  GUNNY: { BRA: 50, NPHH_FRK: 50, PHH_FRK: 50, AAY_FRK: 50, AAY: 50, OAP: 50, APS: 50, TOOR: 50, PHH_BRA: 50, WHEAT: 50, RRA: 50, NPHH_RRA: 50, PB_BRA: 50, PB_WHEAT: 50, PB_TOOR: 50 },
-  POLY: { SUGAR: 50, AAY_SUGAR: 50, SALT_CIS: 25, SALT_RFFS: 25, PB_SUGAR: 50 },
-  CBOX: { PALM: 10, OOTY: 50, TAN: 50, PB_PALM: 10 },
-};
+/** The base pack of every commodity, grouped (engine/gunnyPack.ts PACK_BASE is the rule). */
+export const SC_PACK_TYPES: Record<'GUNNY' | 'POLY' | 'CBOX', Record<string, number>> = { GUNNY: {}, POLY: {}, CBOX: {} };
+for (const [id, t] of Object.entries(PACK_BASE)) SC_PACK_TYPES[t][id] = 1;
 
 export const ME_CARD_TYPES = [
   { id: 'rice', label: 'RICE CARD' },
@@ -370,4 +383,49 @@ export function remitMonthProblems(
     judge(label, ex[`e${n}nc`], ex[`e${n}ce`], ex[`e${n}date`]);
   });
   return out;
+}
+
+/**
+ * After a save that moves the month's SALES (Daily Entry, a receipt's
+ * Gunny / Poly switch, a Monthly Entry month-close), the month's stored Gunny
+ * copies — Receipt, Total, Closing — are brought up to the rule, and so is
+ * every following month whose Opening is a carried copy, because next month
+ * opens at this Closing (office, 2026-09-30). Keyed figures stay: Opening an
+ * administrator set, Issues, an administrator's Receipt. A month with no
+ * sales and no Gunny record is left alone. Returns the new meGunnyStore, or
+ * null when nothing changed.
+ */
+export function refreshGunnyMonths(
+  gunnyStore: Record<string, Record<string, GunnyRec>>,
+  crsId: number,
+  month: number,
+  year: number,
+  monthlyStore: Record<string, Partial<MonthlyBlock> | undefined>,
+  typesFor: (month: number, year: number) => Record<string, PackType>,
+): Record<string, Record<string, GunnyRec>> | null {
+  const salesOf = (key: string) => {
+    const out: Record<string, number> = {};
+    const blk = monthlyStore[key];
+    for (const sec of ['a', 'b'] as const) for (const [id, r] of Object.entries(blk?.[sec] ?? {})) out[id] = Number((r as { sales?: unknown })?.sales) || 0;
+    return out;
+  };
+  const figures = (m: Record<string, GunnyRec> | undefined) =>
+    JSON.stringify(ME_GUNNY_ITEMS.map((i) => { const { updatedAt: _u, ...rest } = m?.[i.id] ?? {}; return rest; }));
+  const next = { ...gunnyStore };
+  let changed = false;
+  let m = month, y = year;
+  for (let step = 0; step < 24; step++) {
+    const key = `${crsId}_${m}_${y}`;
+    const own = next[key];
+    const sales = salesOf(key);
+    if (step === 0 ? !own && !Object.values(sales).some(Boolean) : !own) break;
+    const rec = gunnyMonthRecords(own ?? {}, next[mePrevKey(crsId, m, y)] ?? {}, { crsId, month: m, year: y, key }, undefined, {}, sales, undefined, typesFor(m, y));
+    if (figures(rec) !== figures(own)) {
+      next[key] = rec;
+      changed = true;
+    } else if (step > 0) break; // this month already agrees, so the ones after it do too
+    m = m === 12 ? 1 : m + 1;
+    if (m === 1) y++;
+  }
+  return changed ? next : null;
 }

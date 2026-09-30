@@ -54,7 +54,10 @@ const NOW = '2026-09-29T10:00:00.000Z';
 //   50 KG SS 739 / 217 / 956 / 650 / 306 · POLY 36 / 27 / 63 / 63 / 0 · C.BOX 112 / 56 / 168 / 168 / 0
 const prev = { ss50: { closing: 739 }, poly: { closing: 36 }, cbox: { closing: 112 } };
 const salesClose = { date: '2026-09-30', gunny: 217, poly: 27, cbox: 56 };
-const packSales = { EMPTY_BAG: 63, EMPTY_BOX: 168 };
+// Receipt is counted from the month's SALES (office, 2026-09-30 — Sales Close no longer sets it):
+// BRA 10850 kg = 217 sacks, SUGAR 1350 kg = 27 poly, PALM 560 pkts = 56 boxes. Sales Close is
+// still passed, with the same totals, to show it no longer decides anything.
+const packSales = { BRA: 10850, SUGAR: 1350, PALM: 560, EMPTY_BAG: 63, EMPTY_BOX: 168 };
 const own = { ss50: { itemName: '50 KG SS', issues: 650 } };
 const expect = { ss50: [739, 217, 956, 650, 306], poly: [36, 27, 63, 63, 0], cbox: [112, 56, 168, 168, 0] };
 
@@ -75,7 +78,7 @@ console.log('\n2. A shop user\'s Save passes the server\'s gunny rule (stockGuar
   const stored = {
     meGunnyStore: { [PREV]: prev, [KEY]: own },
     salesCloseStore: { [KEY]: salesClose },
-    monthlyStore: { [KEY]: { a: { EMPTY_BAG: { sales: 63 }, EMPTY_BOX: { sales: 168 } }, b: {} } },
+    monthlyStore: { [KEY]: { a: { BRA: { sales: 10850 }, SUGAR: { sales: 1350 }, PALM: { sales: 560 }, EMPTY_BAG: { sales: 63 }, EMPTY_BOX: { sales: 168 } }, b: {} } },
   };
   const v = inspectStockWrite(stored, { meGunnyStore: { ...stored.meGunnyStore, [KEY]: saved } }, false);
   check('shop user: the write lands', v.length === 0, describeStock(v));
@@ -99,7 +102,7 @@ check('POLY: automatic Issues not stored (it keeps following the sales)', !('iss
 check('C.BOX: automatic Issues not stored', !('issues' in saved.cbox));
 check('50 KG SS: the keyed Issues 650 stored', saved.ss50.issues === 650);
 {
-  const later = gunnyRowFor('poly', saved, prev, salesClose, {}, { EMPTY_BAG: 70, EMPTY_BOX: 168 });
+  const later = gunnyRowFor('poly', saved, prev, salesClose, {}, { ...packSales, EMPTY_BAG: 70 });
   check('POLY Issues follow a later sale (63 → 70) after the Save', later.issues === 70 && later.issuesAuto);
 }
 
@@ -136,14 +139,18 @@ console.log('\n6. Wiring');
 {
   const page = readFileSync(join(root, 'src/app/(app)/monthly-entry/page.tsx'), 'utf8');
   const table = readFileSync(join(root, 'src/app/(app)/monthly-entry/GunnyTable.tsx'), 'utf8');
-  check('the month-close stores the gunny rows through gunnyMonthRecords', /d\[ctx\.key\] = gunnyMonthRecords\(/.test(page));
+  // Since 2026-09-30 the month-close stores them through refreshGunnyFor → refreshGunnyMonths → gunnyMonthRecords.
+  const libSrc = readFileSync(join(root, 'src/app/(app)/monthly-entry/lib.ts'), 'utf8');
+  check('the month-close stores the gunny rows through the one rule (refreshGunnyFor → gunnyMonthRecords)',
+    /refreshGunnyFor\(ctx\.crsId/.test(page) && /gunnyMonthRecords\(/.test(libSrc.slice(libSrc.indexOf('export function refreshGunnyMonths'))));
   check('…and has no gunny calculation of its own any more', !/gunnyRowFor\(item\.id/.test(page));
   check('the Save button stores through the same function', /d\[ctx\.key\] = gunnyMonthRecords\(/.test(table));
   const save = table.slice(table.indexOf('const save = async'), table.indexOf('const th ='));
   check('the tick waits for the database (saveConfirmed before saveSuccess)', /if \(await crsData\.saveConfirmed\(\)\) \{\s*saveSuccess\(gunnySaved\(/.test(save));
   check('a second tap while saving is ignored', /if \(busy\.current\) return;/.test(save));
   check('validation runs before anything is written', save.indexOf('gunnySaveProblems') < save.indexOf('crsData.update'));
-  check('the inputs\' read-only rules are unchanged', /readOnly=\{!isAdmin\}/.test(table) && /readOnly=\{issuesAuto && !isAdmin\}/.test(table));
+  // Opening and Receipt stay the office's; Issues are typed by the shop too (office, 2026-09-30).
+  check('the inputs\' read-only rules: Opening / Receipt admin-only, Issues typed by everyone', /readOnly=\{!isAdmin\}/.test(table) && !/readOnly=\{issuesAuto && !isAdmin\}/.test(table));
   check('the button is below the notes, never over the table', table.indexOf('gunny-save-bar') > table.indexOf('Closing = Total − Issues'));
   const w = gunnySaved(8, 9, 2026);
   check(`wording: "${w.title}" / "${w.detail}"`, w.title === 'Gunny Stock Saved Successfully' && w.detail === 'Gunny Stock for September 2026 has been saved successfully.' && w.key === 'gunny:8:9:2026');

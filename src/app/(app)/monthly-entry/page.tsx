@@ -62,6 +62,8 @@ import InspectionModal from '../daily-entry/InspectionModal';
 import CardAllot from './CardAllot';
 import { CARD_DETAILS_ID, cardDetailsJumpWanted, clearCardDetailsJump } from './jump';
 import GunnyTable from './GunnyTable';
+import { packTypesFor } from '@/lib/engine/gunnyPack';
+import { refreshGunnyFor } from '@/lib/gunnyRefresh';
 import { printArea, PRINT_AREA_CLASS } from '@/lib/printArea';
 import RemitTable from './RemitTable';
 import { ME_MONTH_NAMES, NO_GUNNY, SALES_ONLY, gunnyMonthRecords, mePrevKey, monthCloseBlock, sectionSaved, type CardRec, type GunnyRec, type RemitMonth, type SalesClose } from './lib';
@@ -285,6 +287,10 @@ export default function MonthlyEntryPage() {
     if (!crsId) return { merged: { a: {}, b: {} } as MonthlyBlock, source: { a: {}, b: {} } as SourceBlock };
     return rebuildMonthlyFromDaily(crsId, month, year, entryStore, inspectionStore, meManualStore[key], lists, receiptStore);
   }, [crsId, month, year, entryStore, inspectionStore, meManualStore, key, lists, receiptStore]);
+
+  // Which pack each commodity's sales empty into this month — the Receipt
+  // page's saved Gunny / Poly switch (engine/gunnyPack.ts, office 2026-09-30).
+  const packTypes = useMemo(() => packTypesFor(receiptStore, crsId ?? 0, month, year), [receiptStore, crsId, month, year]);
 
   // Inspection adjustments summed over the month, per section+commodity.
   const inspMonth = useMemo(() => {
@@ -667,10 +673,9 @@ export default function MonthlyEntryPage() {
      * Receipt, Total and Closing are the derived copies the table has always
      * kept — and exactly what stockGuard rule 5 expects from a shop user.
      */
-    crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
-      // The same function Gunny Stock Management's own Save uses (lib.ts).
-      d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[mePrevKey(ctx.crsId, ctx.month, ctx.year)] ?? {}, ctx, salesCloseStore[ctx.key], gridGunnySales, gridSales);
-    });
+    // The same rule Gunny Stock Management's own Save uses (lib.ts), from the
+    // month just published — and the months after it re-carry its Closing.
+    refreshGunnyFor(ctx.crsId, [`${ctx.year}-${pad2(ctx.month)}-01`]);
     // The tick waits for the write to land — a refused or conflicting save
     // shows nothing. Nothing above this line changed.
     if (await crsData.saveConfirmed()) {
@@ -1220,7 +1225,7 @@ export default function MonthlyEntryPage() {
               </div>
 
               <RemitTable ctx={ctx} remit={meRemitStore} entryStore={entryStore} subtitle={subtitle} />
-              <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} packSales={gridSales} isAdmin={isAdmin} subtitle={subtitle} />
+              <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} packSales={gridSales} lists={lists} packTypes={packTypes} isAdmin={isAdmin} subtitle={subtitle} />
               {/* The Dashboard's "Card Details & Allotment" lands here (jump.ts). */}
               <div id={CARD_DETAILS_ID} tabIndex={-1} className={cardFlash ? 'jump-target flash' : 'jump-target'}>
                 <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} allotConfirmed={meAllotConfirmed} subtitle={subtitle} />
