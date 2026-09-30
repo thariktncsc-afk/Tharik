@@ -1546,6 +1546,14 @@ activity logged, started-record reconciled; a re-run writes nothing
   1084.180, WHEAT 2400). CRS 14 is now "started" (30-09-2026), so that
   Opening is an administrator's correction on Monthly Entry. Backups
   `backups/correct-receipt-crs14-…`, `receipts-crs14-…`, `close-month-crs14-…`.
+- **CRS 14's Opening, the same day** (office's sheet): `close-month.mjs
+  --open=… --gunny-open=…` — what typing into Monthly Entry's Opening box
+  does, Sales / shortages kept as stored. BRA 7917.330, PHH BRA 2000, PHH FRK
+  196, NPHH FRK 0, AAY 200, NPHH FRK RRA 0.010, SUGAR 1084.180, AAY SUGAR 9,
+  WHEAT 2400, T.DHALL 737.914, P.OIL 741, OOTY 250 (not on the POS pages
+  sent; the sheet's figure); Gunny 50 KG SS 492, POLY 0, C.BOX 0. Every
+  Closing now equals the POS (BRA 0.330, PHH FRK 587, NPHH FRK 2953, SUGAR
+  575.180, WHEAT 1990, T.DHALL 142.914, P.OIL 144, the rest 0; OOTY 250).
 
 ## Allotment keyed from the FPS Allocation Report
 
@@ -1584,6 +1592,11 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   are entered once; the four police rows are 0 and have no field; rows 1–5
   were not in the images and nothing was stored for them. Page 1 PDF read
   back; the screen holds them after reload, shop and month changes.
+- **CRS 14, September 2026** (office, 2026-09-30, the POS's இருப்புப் பொருள்
+  ஒதுக்கீடு rows 6–17; FPS code 22CA002PN from `__crsMaster`): BRA 13135.048,
+  AAY 455, PHH_BRA 4429, WHEAT 1241.457, SUGAR 1939.32, AAY_SUGAR 15.5, TOOR
+  1134.964, PALM 1132.2. The four police rows are 0 and have no field; rows
+  1–5 not in the images. Page 1 preview and PDF read back.
 - **CRS 27, September 2026** (office, 2026-09-30, the same POS screen, rows
   6–17; FPS code 22DA004PN from `__crsMaster`): BRA 11207.988, AAY 310,
   PHH_BRA 2809, WHEAT 1253.262, SUGAR 1584.498, AAY_SUGAR 15.5, TOOR

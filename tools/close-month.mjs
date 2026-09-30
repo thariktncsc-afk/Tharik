@@ -8,7 +8,7 @@
  *
  * Only SALES (and the month's Inspection shortages) come from the paper.
  * Everything else is what the screen has: Opening as the month holds it
- * (carried, or the administrator's own — this tool never types one), Receipt
+ * (carried, or the administrator's own), Receipt
  * from the Receipt Register (key receipts with add-receipts.mjs first), Total,
  * Closing and Amount (master rate) worked out as Monthly Entry's rowFor does.
  *
@@ -21,6 +21,14 @@
  *     adjustments carried across (applyProjectedAdjustments) — so the DSS and
  *     the date-wise statements have the month to print, once;
  *   · the month republished, the chain rebuilt from the 1st, Gunny refreshed.
+ *
+ *   --open=ID:qty,…   an administrator's Opening on the month's rows — what
+ *        typing into Monthly Entry's Opening box does (a shop's opening
+ *        stock, read off the POS's ஆரம்ப இருப்பு). Rows not named keep theirs.
+ *        Sales not given on a run keep the month's stored Sales, so an
+ *        Opening can be set on a month already closed.
+ *   --gunny-open=ss50:n,poly:n,cbox:n   the month's Gunny Stock Opening as an
+ *        administrator types it (openingAuto false).
  *
  * Refused, with nothing written: a month that has REAL day sheets (it is
  * keyed by day — use save-day-sheet.mjs), a commodity not on the shop's
@@ -89,15 +97,16 @@ async function main() {
   const pairs = (name) => Object.fromEntries((arg(name) ?? '').split(',').filter(Boolean).map((p) => { const [id, v] = p.split(':'); return [id, Number(v)]; }));
   const write = process.argv.includes('--write');
   const crsId = Number(arg('crs')), month = Number(arg('month')), year = Number(arg('year'));
-  const sales = pairs('sales'), shortage = pairs('shortage'), expect = pairs('expect');
-  if (!Number.isInteger(crsId) || !(month >= 1 && month <= 12) || !(year >= 2020) || !Object.keys(sales).length) {
-    console.error('Usage: node tools/close-month.mjs --crs=N --month=M --year=Y --sales=ID:qty,… [--shortage=ID:qty,…] [--expect=ID:closing,…] [--write]');
+  const sales = pairs('sales'), shortage = pairs('shortage'), expect = pairs('expect'), opens = pairs('open'), gunnyOpen = pairs('gunny-open');
+  if (!Number.isInteger(crsId) || !(month >= 1 && month <= 12) || !(year >= 2020) || !(Object.keys(sales).length || Object.keys(opens).length || Object.keys(gunnyOpen).length)) {
+    console.error('Usage: node tools/close-month.mjs --crs=N --month=M --year=Y [--sales=ID:qty,…] [--open=ID:qty,…] [--gunny-open=ss50:n,…] [--shortage=ID:qty,…] [--expect=ID:closing,…] [--write]');
     return 2;
   }
   if (crsId === 29) { console.error('Refused: CRS 29\'s last-day sheet needs Free / Cost Rice — close it on Monthly Entry.'); return 1; }
-  if ([sales, shortage, expect].some((o) => Object.values(o).some((v) => !Number.isFinite(v))) || [sales, shortage].some((o) => Object.values(o).some((v) => v < 0))) {
+  if ([sales, shortage, expect, opens, gunnyOpen].some((o) => Object.values(o).some((v) => !Number.isFinite(v))) || [sales, shortage, opens, gunnyOpen].some((o) => Object.values(o).some((v) => v < 0))) {
     console.error('Refused: quantities must be numbers, 0 or more.'); return 1;
   }
+  if (Object.keys(gunnyOpen).some((k) => !['ss50', 'poly', 'cbox'].includes(k))) { console.error('Refused: --gunny-open items are ss50 / poly / cbox.'); return 1; }
 
   const { data, error } = await db.from('crs_state').select('store_key,data,version').eq('scope', 'global').in('store_key', STORES);
   if (error) throw error;
@@ -106,7 +115,7 @@ async function main() {
   const lists = commodityListsFor(stored.__commodityMaster ?? null, crsId);
   const all = [...lists.a.map((c) => ['a', c]), ...lists.b.map((c) => ['b', c])];
   const secOf = Object.fromEntries(all.map(([s, c]) => [c.id, s]));
-  const unknown = [...new Set([...Object.keys(sales), ...Object.keys(shortage), ...Object.keys(expect)])].filter((id) => !secOf[id]);
+  const unknown = [...new Set([...Object.keys(sales), ...Object.keys(shortage), ...Object.keys(expect), ...Object.keys(opens)])].filter((id) => !secOf[id]);
   if (unknown.length) { console.error(`Refused: not on CRS ${crsId}'s sales grid: ${unknown.join(', ')}`); return 1; }
   const police = Object.keys(shortage).filter((id) => secOf[id] === 'b');
   if (police.length) { console.error(`Refused: police ration has no shortage: ${police.join(', ')}`); return 1; }
@@ -147,7 +156,7 @@ async function main() {
   for (const [sec, c] of all) {
     const rec = merged[sec][c.id];
     if (source[sec][c.id] === 'daily') { console.error(`Refused: ${c.id} is from Daily`); return 1; }
-    const open = Number(rec?.open) || 0;
+    const open = opens[c.id] ?? (Number(rec?.open) || 0);
     const receipt = Number(rec?.receipt) || 0;
     const s = sales[c.id] ?? (Number(rec?.sales) || 0);
     let adj = inspMonth[`${sec}:${c.id}`] ?? { excess: 0, shortage: 0, transfer: 0 };
@@ -180,6 +189,13 @@ async function main() {
   next.meSourceStore[key] = rebuilt.source;
   const chained = rechainAndRepublish({ ...next, receiptStore: stored.receiptStore }, crsId, `${year}-${String(month).padStart(2, '0')}-01`, lists);
   for (const [k, v] of Object.entries(chained.patch)) if (WRITABLE.includes(k)) next[k] = v;
+  // The Gunny table's Opening, as an administrator types it (openingAuto false).
+  if (Object.keys(gunnyOpen).length) {
+    const own = { ...(next.meGunnyStore[key] ?? {}) };
+    const LABEL = { ss50: '50 KG SS', poly: 'POLY', cbox: 'C.BOX' };
+    for (const [item, n] of Object.entries(gunnyOpen)) own[item] = { itemName: LABEL[item], crsId: String(crsId), month, year, ...(own[item] ?? {}), opening: n, openingAuto: false };
+    next.meGunnyStore = { ...next.meGunnyStore, [key]: own };
+  }
   for (const ym of [...new Set([`${year}-${String(month).padStart(2, '0')}`, ...chained.dates.map((d) => d.slice(0, 7))])].sort()) {
     const [yy, mm] = ym.split('-').map(Number);
     const g = refreshGunnyMonths(next.meGunnyStore, crsId, mm, yy, next.monthlyStore, (mo, yr) => packTypesFor(stored.receiptStore, crsId, mo, yr));
