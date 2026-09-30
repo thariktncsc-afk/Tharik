@@ -770,6 +770,40 @@ Office, 2026-09-29. `npm run verify:gunny-save`.
 - Permissions are the inputs' own and rule 5's; the button changes neither.
   A shop user's Save passes rule 5 because it stores what the rule works out.
 
+### Gunny Save carries POLY / C.BOX into Monthly Sales and the last day
+
+Office, 2026-09-30 (`engine/gunnySync.ts`, `npm run verify:gunny-sync`).
+Keyed once, in Gunny Stock Management: its Save turns POLY / C.BOX **Issues**
+into Empty Polythene Bag / Empty Card+Box **Sales** — the only rows those
+bags have on Monthly and Daily Entry, and where their money reaches
+remittance — before storing the gunny rows. Worked out first; if it cannot
+be placed, nothing is sent.
+- **Monthly Sales**: meManualStore's EMPTY row = the Issues (the grid's own
+  arithmetic; unchanged figures are not rewritten).
+- **The last CALENDAR date** carries what the month's other day sheets have
+  not sold (so the month = the Issues, once; more already sold than the
+  Issues → refused). Keyed by day: the sheet there is updated in place (its
+  remittance and every other row untouched), or — office's choice — CREATED
+  as a Daily Entry save makes it (carried Openings, that day's register
+  receipts and inspection, Sales 0 elsewhere, no remittance; it counts as an
+  entry date and gets a DSS page). Only once the date has come (office's
+  choice): before it, Monthly Sales alone, and the first Gunny Save on or
+  after the date writes the sheet. Keyed by month: the projection is updated
+  if the month was closed; otherwise the month-close projects it. CRS 29: no
+  sheet is made without its Free / Cost Rice.
+- Then the month republishes and the chain rebuilds from the last day, so the
+  next month opens at its Closing (day chain and Gunny Opening alike).
+- **50 KG SS** has no row on either screen: Gunny Stock Management only.
+- No loop: nothing reads a Gunny figure back from these sales except the
+  table's existing rule (POLY / C.BOX Issues = those sales when not keyed).
+- Permissions unchanged; /api/state's guards judge the write as ever. Live
+  dry run 2026-09-30, read only: CRS 20 → 30-09 created (C.Box 108, Poly 72),
+  CRS 5 → 30-09 updated (62 / 22); only those shops' keys; stock guard passes
+  as shop user and admin.
+- On the day chain, C.Box / Poly have no stock (it is kept here), so their
+  hidden Closing on the sheet goes below 0 by the sales — as it always has
+  when those bags are sold on Daily Entry.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1773,6 +1807,7 @@ npm run verify:date-format      dates on screen are DD-MM-YYYY: DateField for ev
 npm run verify:opening-correction  Daily Entry asks an administrator before saving an Opening that differs from the carry
 npm run verify:remit-total       every statement's remittance (Page 2, Cost Com, Sale Tax, CRS 29) = the Remittance sheet TOTAL, never a total
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
+npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

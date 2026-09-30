@@ -18,13 +18,27 @@
  *     read-only for shop staff. Only an administrator may correct them, and
  *     /api/state refuses the write regardless of what this screen allows
  *     (src/lib/stockGuard.ts, rule 5).
+ *
+ * Office, 2026-09-30: the Save also carries POLY / C.BOX Issues into Monthly
+ * Sales and the month's last-day Daily Entry (engine/gunnySync.ts), so they
+ * are keyed once, here.
  */
 import { useRef, useState } from 'react';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { saveSuccess } from '@/components/SaveSuccess';
 import { crsData } from '@/lib/dataStore';
+import { dmy } from '@/lib/dateFormat';
+import type { Commodity } from '@/lib/engine/commodities';
+import { GUNNY_SYNC_IDS, gunnySyncNote, syncGunnyToSales, type GunnySyncId, type GunnySyncStores } from '@/lib/engine/gunnySync';
 import { gunnySaved, monthLabel } from '@/lib/saveSuccess';
-import { ME_GUNNY_ITEMS, gunnyMonthRecords, gunnyRowFor, gunnySaveProblems, type GunnyRec, type MonthCtx, type SalesClose } from './lib';
+import { ME_GUNNY_ITEMS, ME_GUNNY_TO_COMM, gunnyMonthRecords, gunnyRowFor, gunnySaveProblems, type GunnyRec, type MonthCtx, type SalesClose } from './lib';
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+/** Today in the office's own calendar (the browser's), YYYY-MM-DD. */
+const todayIso = () => {
+  const t = new Date();
+  return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(t.getDate())}`;
+};
 
 export default function GunnyTable({
   ctx,
@@ -32,6 +46,7 @@ export default function GunnyTable({
   salesClose,
   gridGunnySales,
   packSales,
+  lists,
   isAdmin,
   subtitle,
 }: {
@@ -41,6 +56,8 @@ export default function GunnyTable({
   gridGunnySales: Record<string, number>;
   /** The month's sales per commodity — EMPTY_BAG / EMPTY_BOX become POLY / C.BOX Issues. */
   packSales: Record<string, number>;
+  /** The shop's commodity lists — the rates the synced sales are priced at. */
+  lists: { a: Commodity[]; b: Commodity[] };
   isAdmin: boolean;
   subtitle: string;
 }) {
@@ -122,13 +139,43 @@ export default function GunnyTable({
           return;
         }
       }
+      // POLY / C.BOX Issues → Monthly Sales and the last-day Daily Entry
+      // (engine/gunnySync.ts), worked out first: if they cannot be placed,
+      // nothing at all is sent.
+      const want: Partial<Record<GunnySyncId, number>> = {};
+      for (const item of ME_GUNNY_ITEMS) {
+        const cid = ME_GUNNY_TO_COMM[item.id] as GunnySyncId | undefined;
+        const r = rowFor(item.id);
+        if (cid && (GUNNY_SYNC_IDS as readonly string[]).includes(cid) && r.issues !== '') want[cid] = Number(r.issues) || 0;
+      }
+      const stores: GunnySyncStores = {
+        entryStore: crsData.get('entryStore') ?? {},
+        inspectionStore: crsData.get('inspectionStore') ?? {},
+        receiptStore: crsData.get('receiptStore') ?? [],
+        meManualStore: crsData.get('meManualStore') ?? {},
+        monthlyStore: crsData.get('monthlyStore') ?? {},
+        meSourceStore: crsData.get('meSourceStore') ?? {},
+      };
+      const sync = syncGunnyToSales(stores, ctx.crsId, ctx.month, ctx.year, want, lists, todayIso());
+      if (!sync.ok) {
+        const why = sync.problems.join(' ');
+        setStatus({ key: ctx.key, msg: `⚠ Not saved — ${why}`, tone: 'warn' });
+        void appAlert({ title: 'Gunny Stock not saved', message: why });
+        return;
+      }
+      if (sync.edited.meManualStore) crsData.markEdited('meManualStore', sync.edited.meManualStore);
+      if (sync.edited.entryStore) crsData.markEdited('entryStore', sync.edited.entryStore);
+      for (const [store, value] of Object.entries(sync.patch)) crsData.set(store as never, value as never);
+      // The gunny rows then store against the sales as they now stand.
+      const soldNow = { ...packSales, ...sync.monthly };
       crsData.markEdited('meGunnyStore', ctx.key);
       crsData.update<Record<string, Record<string, GunnyRec>>>('meGunnyStore', (d) => {
-        d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[prevKey] ?? {}, ctx, salesClose, gridGunnySales, packSales);
+        d[ctx.key] = gunnyMonthRecords(d[ctx.key] ?? {}, d[prevKey] ?? {}, ctx, salesClose, gridGunnySales, soldNow);
       });
       if (await crsData.saveConfirmed()) {
         saveSuccess(gunnySaved(ctx.crsId, ctx.month, ctx.year));
-        setStatus({ key: ctx.key, msg: `✓ Saved for ${monthLabel(ctx.month, ctx.year)}.`, tone: 'ok' });
+        const note = gunnySyncNote(sync, dmy);
+        setStatus({ key: ctx.key, msg: `✓ Saved for ${monthLabel(ctx.month, ctx.year)}.${note ? ` ${note}` : ''}`, tone: 'ok' });
       } else {
         const why = crsData.lastError || 'The server did not confirm the save.';
         setStatus({ key: ctx.key, msg: `⚠ Not saved — ${why}`, tone: 'warn' });
@@ -243,7 +290,7 @@ export default function GunnyTable({
       <div style={{ marginTop: 8, fontSize: 10, color: 'var(--muted)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <span>ⓘ Opening auto-fills from last month&apos;s Closing and locks once carried forward</span>
         <span>ⓘ Receipt is automatic — imported workbook figure, Sales Close totals, or the Monthly Sales gunny/poly/c.box counts</span>
-        <span>ⓘ Issues for POLY and C.BOX are this month&apos;s Empty Polythene Bag / Empty Card+Box sales from the grid above</span>
+        <span>ⓘ Issues for POLY and C.BOX are this month&apos;s Empty Polythene Bag / Empty Card+Box sales from the grid above — Save carries them into Monthly Sales and the month&apos;s last-day Daily Entry</span>
         <span>
           ⓘ Total = Opening + Receipt &nbsp;|&nbsp; Closing = Total − Issues (turns <b style={{ color: '#DC2626' }}>red</b> if Issues exceed Total)
           {isAdmin ? null : <> &nbsp;|&nbsp; these figures are the office&apos;s — an administrator can correct them</>}

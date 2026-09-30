@@ -1220,7 +1220,7 @@ export default function MonthlyEntryPage() {
               </div>
 
               <RemitTable ctx={ctx} remit={meRemitStore} entryStore={entryStore} subtitle={subtitle} />
-              <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} packSales={gridSales} isAdmin={isAdmin} subtitle={subtitle} />
+              <GunnyTable ctx={ctx} gunny={meGunnyStore} salesClose={salesCloseStore[ctx.key]} gridGunnySales={gridGunnySales} packSales={gridSales} lists={lists} isAdmin={isAdmin} subtitle={subtitle} />
               {/* The Dashboard's "Card Details & Allotment" lands here (jump.ts). */}
               <div id={CARD_DETAILS_ID} tabIndex={-1} className={cardFlash ? 'jump-target flash' : 'jump-target'}>
                 <CardAllot ctx={ctx} cards={meCardStore} allot={meAllotStore} advance={meAdvanceStore} confirmed={meCardConfirmed} allotConfirmed={meAllotConfirmed} subtitle={subtitle} />
