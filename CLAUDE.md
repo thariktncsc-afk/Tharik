@@ -930,6 +930,34 @@ read 29 / 59 again). `npm run verify:daily-bags`.
   a refresh, CRS and month changes; Opening only / Receipt only / Sales only;
   typed back to kgs ÷ 50; CRS 19 with all three — each saved and read back.
 
+### A commodity's bags on the statements are Monthly Sales' bags
+
+Office, 2026-09-30 (`src/legacy/45-bag-counts.js`, `npm run
+verify:bag-counts`). CRS 19 September: Palm Oil's Opening bags saved as 53
+on Monthly Sales — stored, published, shown again after navigating away —
+while CRS Page 2 printed 52. Nothing was cached (every Preview / Print / PDF
+re-renders from the database); **Page 2's `bags()` never read a saved
+count** — it divided the kgs every time (525 ÷ 10), so Wheat 40 / Toor Dal
+11 / AAY Sugar 1 printed 39 / 10 / 0 too. Free Com, Cost Com and B6 read
+the stored Opening / Receipt / Sales but took Total and Closing from stored
+copies (kgs Total ÷ pack), not the grid's arithmetic.
+- `stmtBagCounts(d, id)` is Monthly Entry's `rowFor()`, bag for bag:
+  Opening / Receipt / Sales = a count typed on a FROM-DAILY row (dailyBags, a
+  typed 0 included), else a stored count above 0 that differs from kgs ÷
+  pack, else kgs ÷ pack; **Total = Opening + Receipt, Closing = Total −
+  Sales − C.S**. CRS Page 2 (rows and RICE TOTAL), Free Com, Cost Com and B6
+  all print from it; a 0 prints "0" where the figure has kgs, blank where it
+  has none (Page 2's old convention). The kgs, amounts and every other cell
+  are untouched.
+- Golden dump: all four sheets byte-identical for every shop. Live,
+  September 2026: 69 of 120 sheets change, every changed cell a bag count
+  (452 cells) — the saved counts, and Totals / Closings that now add up the
+  grid's way (e.g. CRS 19 B.RICE CB 71 → 72, CRS 5 SUGAR TOT 34 → 33).
+- Browser run on a copy of live data, each write judged by the real guard,
+  the statement built as loadStatementEngine builds it: CRS 19 Palm Oil
+  53 → 54 → 52 → 53 (each saved, page left and reopened, Preview and PDF
+  equal to the screen), Wheat Sales bags, CRS 1 BRA Opening bags.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1381,6 +1409,16 @@ under version; a re-run with the same figures writes nothing.
   மொத்த அட்டைகள் says (LOF AAY and OAP are not on the POS: 0). Page 1
   preview and PDF read back; the screen holds them after reload, shop and
   month changes (backup `backups/card-details-crs27-9-2026-…`).
+- **CRS 10, September 2026** (office, 2026-09-30, POS photos; the month
+  clear of the same evening had removed any earlier record): RICE 805 / LOF
+  RICE 6 / SUGAR 17 / LOF SUGAR 0 / AAY 57 / LOF AAY 0 / OAP 1 / POLICE 10 /
+  "N" CARD 2 → TOTAL 898, as the POS says. Page 1 read back (backup
+  `backups/card-details-crs10-9-2026-…`).
+- **CRS 14, September 2026** (office, 2026-09-30, POS photos): RICE 1190 /
+  LOF RICE 29 / SUGAR 165 / LOF SUGAR 4 / AAY 12 / LOF AAY 0 / OAP 0 /
+  POLICE 0 / "N" CARD (பண்டகமில்லா அட்டை) 34 → TOTAL 1434, as the POS says
+  (Police, LOF AAY and OAP are not on it: 0). Page 1 preview and PDF read
+  back (backup `backups/card-details-crs14-9-2026-…`).
 - **CRS 1, September 2026** (office, 2026-09-30, from a Page 1 sheet headed
   "MONTH : AUG'2026" — saved under September on the office's answer): RICE
   544 / LOF RICE 4 / SUGAR 54 / LOF SUGAR 1 / AAY 19 / LOF AAY 0 / OAP 0 /
@@ -1461,6 +1499,28 @@ types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
   (POLY / C.BOX were blank on the sheet and are left blank). Started-record
   01-09-2026. Read back on the day sheet, the published month, Gunny, and
   CRS Page 2 / CRS Police PDFs. Backup `backups/day-sheet-27_2026-09-01-…`.
+- **CRS 10, from 01-09-2026, re-entered** (office, 2026-09-30): an
+  administrator had cleared CRS 10's whole September that evening (request
+  #16 — every day sheet, the 01-09 Initial Opening included; receipt
+  R/2026/046 of 25-09 stays), leaving it not started. Re-keyed BY DAY, as
+  before (office's answer): `--open` on 01-09, no sales — BRA 4792, PHH BRA
+  2056.020, PHH FRK 1195.982, AAY 1326, OAP 3 (the sheet's "OAP FRK"), APS 10
+  ("ANP FRK"), SUGAR 779, AAY SUGAR 49.5, WHEAT 1825.030, T.DHALL 506, P.OIL
+  505, OOTY 340; police BRA 36.5, SUGAR 2, WHEAT 2, T.DHALL 4, P.OIL 1; Gunny
+  50 KG SS 1751, POLY 0, C.BOX 0. Started-record 01-09-2026. Backup
+  `backups/day-sheet-10_2026-09-01-…`.
+- **CRS 10, September 2026 movement** (office, 2026-09-30, POS summary 01-09
+  → 30-09): one sheet dated 30-09 with the month's Sales; RRA 600 (on no
+  receipt) added as `POS/10/09/2026` dated 30-09; the register's
+  R/2026/046 police lines corrected 18 / 18 / 36 → 16 / 16 / 32 (Sugar,
+  Wheat, T.DHALL P — `correct-receipt.mjs --set`, office's answer: the POS);
+  PHH FRK's −20 as a SHORTAGE of 20 on 30-09; the POS's OAP FRK ("BR OAP",
+  2 / 2) added into OAP (sales 5) and P FRK BR (143 / 112.5) into Police BRA
+  (sales 142.5, closing 37 = the POS's 6.5 + 30.5). All 20 closings equal the
+  POS (BRA 0, RRA 50, NPHH FRK 1438, PHH BRA 959.02, PHH FRK 0.982, AAY FRK
+  267, SUGAR 214.91, WHEAT 1486.03, T.DHALL 71, P.OIL 71, …). No remittance.
+  DSS pages: 01-09, the receipt-only 25-09, 30-09. Backup
+  `backups/day-sheet-10_2026-09-30-…`.
 - **CRS 27, September 2026 movement** (office, 2026-09-30, POS summary 01-09
   → 30-09): one sheet dated 30-09 — Receipt `POS/27/09/2026` (14
   commodities), the month's Sales, and NPHH FRK's −19 in the POS's
@@ -1505,6 +1565,76 @@ never replaces.
   28-09 as for CRS 26, so September's Receipts / Closings rose by those
   quantities (NPHH FRK 2633.062 → 7633.062, PHH FRK 501.062 → 2001.062, …).
   CRS 27 is not a COLL shop. Backup `backups/receipts-crs27-…`.
+- **CRS 14, advance for October 2026** (office, 2026-09-30, same POS screen,
+  received 28-09-2026, TN60A6777): three ADVANCE receipts dated 28-09 —
+  S184607300 BRA 2000, WHEAT 100, SUGAR 1000, T.DHALL 650, AAY SUGAR 9;
+  S184607301 NPHH FRK 3000; S184607302 AAY FRK 250, PHH FRK 2000. Wheat 100
+  was in two overlapping screenshots of S184607300 and is entered once
+  (office's answer). CRS 14 is keyed by month and already closed: the
+  receipt path updated its manual rows and the 30-09 projection as well, so
+  September's Receipts / Closings rose by exactly those quantities (BRA
+  0.330 → 2000.330, NPHH FRK 2953 → 5953, PHH FRK 587 → 2587, …) and no
+  longer equal the POS summary. Not a COLL shop. Backup
+  `backups/receipts-crs14-…`.
+- **CRS 10, advance for October 2026** (office, 2026-09-30, POS challans
+  dated 25-09-2026, TN46E1127): S180602898 NPHH FRK 2500, P.OIL 300, AAY
+  SUGAR 30, SUGAR 500, WHEAT 100; S180602899 AAY FRK 950, PHH FRK 2000;
+  S180602924 T.DHALL 400 — dated 25-09 as the challans say. AAY SUGAR 30 was
+  in two overlapping screenshots of S180602898 and is entered once. The
+  30-09 sheet re-carried them, so September's Closings rose by exactly those
+  quantities (NPHH FRK 1438 → 3938, PHH FRK 0.982 → 2000.982, …) and no
+  longer equal the POS summary. CRS 10 IS a COLL shop: COLL lists all
+  eight under ADVANCE FOR THE MONTH OF OCT'2026 and keeps them out of its
+  closing balance. Backup `backups/receipts-crs10-…`.
+
+**Correcting a saved receipt line** — `node tools/correct-receipt.mjs --crs=N
+--receipt-no=NO --move=FROM:TO,…` (dry run), then `--write`: moves a line's
+quantity to the commodity it belongs to on ONE receipt (date, number, type
+and every other line kept), then republishes as the Receipt page's save
+does. Refuses a FROM the receipt lacks, a TO it already carries or that is
+not on the shop's list, another shop's keys, or the stock guard.
+
+## A month keyed BY MONTH, closed from a POS stock summary
+
+`node tools/close-month.mjs --crs=N --month=M --year=Y --sales=ID:qty,…
+[--shortage=ID:qty,…] [--expect=ID:closing,…]` (dry run), then `--write`:
+Monthly Entry's month-close as an administrator, for a month with NO real
+day sheets (refused otherwise — use save-day-sheet.mjs). Only Sales and the
+month's Inspection shortages come from the paper; Opening is what the month
+holds (never typed by the tool), Receipt the register's (refused if a Receipt
+is not a register total — add it with add-receipts.mjs first), Total /
+Closing / Amount worked out as rowFor does. Then what the save does:
+meManualStore rows, the shortages as Monthly Inspection's record on the last
+calendar day, ONE projected sheet on that day (`__projection`; one DSS page),
+republish, rechain from the 1st, Gunny refresh. Backed up, under version,
+activity logged, started-record reconciled; a re-run writes nothing
+(timestamps are not figures).
+- **CRS 14, September 2026** (office, 2026-09-30, POS summary 01-09 → 30-09):
+  Receipt and Sales only. The register's S184606559 (10-09) held PHH BRA 2429
+  and AAY 255 where the POS has them under PHH FRK and AAY FRK — moved
+  (correct-receipt); Wheat 1217 was on no receipt — added as
+  `POS/14/09/2026` dated 30-09. Sales: BRA 10892, NPHH FRK 2182, PHH BRA 2000,
+  PHH FRK 2038, AAY 200, AAY FRK 255, T.DHALL 1129, P.OIL 1129, SUGAR 1941,
+  AAY SUGAR 15.5, WHEAT 1627; shortages BRA 25, SUGAR 7 (the POS's red
+  −25 / −7). The office's typed list had Sugar at 532 / 1129 (the Palm Oil
+  row) and Wheat sales 1627.060 — the screenshots' figures were used on the
+  office's answer (Sugar 1439 / 1941, Palm Oil 532 / 1129, Wheat 1627, which
+  the POS's own OB + Receipt − Sales = CB confirms). **No Opening was
+  entered (office's choice)**: CRS 14 had never been started, so every
+  Closing is the POS's CB less its OB — BRA −7917, PHH BRA −2000, WHEAT
+  −410, SUGAR −509, … — until the Opening is keyed (POS OB: BRA 7917.330,
+  PHH BRA 2000, PHH FRK 196, AAY 200, T.DHALL 737.914, P.OIL 741, SUGAR
+  1084.180, WHEAT 2400). CRS 14 is now "started" (30-09-2026), so that
+  Opening is an administrator's correction on Monthly Entry. Backups
+  `backups/correct-receipt-crs14-…`, `receipts-crs14-…`, `close-month-crs14-…`.
+- **CRS 14's Opening, the same day** (office's sheet): `close-month.mjs
+  --open=… --gunny-open=…` — what typing into Monthly Entry's Opening box
+  does, Sales / shortages kept as stored. BRA 7917.330, PHH BRA 2000, PHH FRK
+  196, NPHH FRK 0, AAY 200, NPHH FRK RRA 0.010, SUGAR 1084.180, AAY SUGAR 9,
+  WHEAT 2400, T.DHALL 737.914, P.OIL 741, OOTY 250 (not on the POS pages
+  sent; the sheet's figure); Gunny 50 KG SS 492, POLY 0, C.BOX 0. Every
+  Closing now equals the POS (BRA 0.330, PHH FRK 587, NPHH FRK 2953, SUGAR
+  575.180, WHEAT 1990, T.DHALL 142.914, P.OIL 144, the rest 0; OOTY 250).
 
 ## Allotment keyed from the FPS Allocation Report
 
@@ -1543,6 +1673,16 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   are entered once; the four police rows are 0 and have no field; rows 1–5
   were not in the images and nothing was stored for them. Page 1 PDF read
   back; the screen holds them after reload, shop and month changes.
+- **CRS 10, September 2026, re-entered** (office, 2026-09-30, the POS's
+  rows 6–17; FPS code 22EA003PN): the evening's month clear had removed the
+  TSO-report entry above. BRA 6623.026, AAY 1619, PHH_BRA 4637, WHEAT
+  892.876, SUGAR 1028.5, AAY_SUGAR 64.5, TOOR 703.792, PALM 704.7; police
+  rows have no field. Page 1 and the screen read back.
+- **CRS 14, September 2026** (office, 2026-09-30, the POS's இருப்புப் பொருள்
+  ஒதுக்கீடு rows 6–17; FPS code 22CA002PN from `__crsMaster`): BRA 13135.048,
+  AAY 455, PHH_BRA 4429, WHEAT 1241.457, SUGAR 1939.32, AAY_SUGAR 15.5, TOOR
+  1134.964, PALM 1132.2. The four police rows are 0 and have no field; rows
+  1–5 not in the images. Page 1 preview and PDF read back.
 - **CRS 27, September 2026** (office, 2026-09-30, the same POS screen, rows
   6–17; FPS code 22DA004PN from `__crsMaster`): BRA 11207.988, AAY 310,
   PHH_BRA 2809, WHEAT 1253.262, SUGAR 1584.498, AAY_SUGAR 15.5, TOOR
@@ -1963,6 +2103,20 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   must open at the previous Closing, and each month must add up, or Generate is
   refused listing every difference. Gunny carries the same way. Opening +
   Receipt + Transfer + Excess − Sales − Shortage = Balance.
+- **Empty Polythene Bag / Empty Card+Box in the current month are the Gunny
+  rows** (office, 2026-09-30). Since 2026-09-26/27 those two are SALES ONLY on
+  the grid — their stock is Gunny Stock Management's POLY / C.BOX — so the
+  grid row opens at 0 and closes at −sales. The chain compared the uploaded
+  PAGE2's P.GUNNY Closing with that empty row: CRS 1, "Empty Polythene Bag:
+  August 2026 closes at 15, but September 2026 opens at 0" while the Gunny
+  screen opened POLY at 15 — not stale data, the wrong row.
+  `systemQuarterMonth` now gives EMPTY_BAG / EMPTY_BOX the Gunny row's
+  Opening, Receipt, Issues (= those sales unless typed) and Closing; uploaded
+  months and every other commodity are unchanged. A genuine break still
+  refuses (September POLY opening 0 → both the commodity and the Gunny line).
+  Localhost, CRS 1 with the office's July + latest August PAGE2 (`… (2).pdf`)
+  and September from a live copy: the PV generates, P.GUNNY Balance 31 =
+  POLYTHENE 31, C.BOX 36 = C.BOX 36.
 - **Gunny notes** ("WHEAT CONSIDER AS GUNNY") are lines containing CONSIDER
   below the Gunny table, printed as written under the PV's Gunny rows — this PV
   only; they change no figure.
@@ -2044,6 +2198,7 @@ npm run verify:remit-total       every statement's remittance (Page 2, Cost Com,
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
 npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, kept by every republish and by Gunny Save, logged
+npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF

@@ -146,6 +146,19 @@ export function systemQuarterMonth(
     const g = gunnyRowFor(k, stores.meGunnyStore[key] ?? {}, stores.meGunnyStore[prevKey] ?? {}, stores.salesCloseStore[key], gridGunnySales, packSales, packTypesFor(stores.receiptStore as never, crsId, month, year));
     gunny[k] = { opening: g.opening, receipt: g.rc.val, total: g.total, issues: Number(g.issues) || 0, closing: g.closing };
   }
+  // Empty Polythene Bag and Empty Card+Box are keyed as SALES ONLY on the
+  // grid (office, 2026-09-26/27): their stock is kept in Gunny Stock
+  // Management, as POLY and C.BOX. The grid row therefore opens at 0 and
+  // closes at −sales, and the chain compared the office's P.GUNNY / C.BOX
+  // closing (the uploaded PAGE2) with that empty row — CRS 1: "August closes
+  // at 15, but September opens at 0" while Gunny's POLY opened at 15. The
+  // current month's row is the Gunny row: its Opening, Receipt, Issues and
+  // Closing (Issues are those same sales unless the office typed them).
+  for (const [id, k] of [['EMPTY_BAG', 'poly'], ['EMPTY_BOX', 'cbox']] as const) {
+    const g = gunny[k];
+    if (!rows[id] && !g.opening && !g.receipt && !g.issues && !g.closing) continue;
+    rows[id] = { open: g.opening, receipt: g.receipt, excess: 0, shortage: 0, transfer: 0, total: g.total, sales: g.issues, closing: g.closing };
+  }
   return { label: monthLabel(month, year), source: 'system', rows, gunny, police, notes: [] };
 }
 

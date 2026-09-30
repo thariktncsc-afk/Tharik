@@ -633,7 +633,10 @@ function buildCrsPage2(d){
   // formatters
   function nk(v){ if(!v) return ''; v=Number(v); return Number.isInteger(v)?String(v):v.toFixed(3); }
   function n2(v){ return v?Number(v).toFixed(2):''; }
-  function bags(kgs,id){ return kgs>0?String(Math.floor(kgs/bagDiv(id))):''; }
+  // Bag counts are Monthly Sales' own (45-bag-counts.js): a saved count wins,
+  // Total = Opening + Receipt, Closing = Total − Sales. A 0 prints as it
+  // always has: "0" when the figure has kgs, blank when it has none.
+  function bz(v, kg){ return v ? String(v) : (kg > 0 ? '0' : ''); }
 
   // cell helpers (scoped to this table)
   function C(x){ return '<td>'+(x==null||x===''?'':x)+'</td>'; }
@@ -680,8 +683,8 @@ function buildCrsPage2(d){
       r.of.forEach(function(id){
         var o=gOpen(id),rc=gRec(id),t=gTot(id),s=gSal(id),c=gClose(id);
         ob+=o; rec+=rc; tot+=t; sal+=s; cb+=c;
-        obB+=Math.floor(o/bagDiv(id)); recB+=Math.floor(rc/bagDiv(id));
-        totB+=Math.floor(t/bagDiv(id)); salB+=Math.floor(s/bagDiv(id)); cbB+=Math.floor(c/bagDiv(id));
+        var B=stmtBagCounts(d,id);
+        obB+=B.open; recB+=B.receipt; totB+=B.total; salB+=B.sales; cbB+=B.close;
       });
       bodyRows += '<tr class="sub">'+ C('') + L(r.subtotal) +
         C(obB||'')+C(nk(ob)) + C(recB||'')+C(nk(rec)) +
@@ -693,12 +696,13 @@ function buildCrsPage2(d){
     var ob=gOpen(r.id),rec=gRec(r.id),tot=gTot(r.id),sal=gSal(r.id),cb=gClose(r.id);
     var free=isFree(r.id), rt=rateOf(r.id), amt=gAmt(r.id);
     if(!free) salesAmountMain += amt;
+    var B=stmtBagCounts(d,r.id);
     bodyRows += '<tr>'+ C(r.sl) + L(r.label) +
-      C(bags(ob,r.id))+C(nk(ob)) + C(bags(rec,r.id))+C(nk(rec)) +
+      C(bz(B.open,ob))+C(nk(ob)) + C(bz(B.receipt,rec))+C(nk(rec)) +
       C(iv(r.id,'excess'))+C(iv(r.id,'shortage'))+C(iv(r.id,'transfer')) +
-      C(bags(tot,r.id))+C(nk(tot)) + C(bags(sal,r.id))+C(nk(sal)) +
+      C(bz(B.total,tot))+C(nk(tot)) + C(bz(B.sales,sal))+C(nk(sal)) +
       C(free?'':n2(rt)) + R(free?'':n2(amt)) +
-      C(bags(cb,r.id))+C(nk(cb)) + '</tr>';
+      C(bz(B.close,cb))+C(nk(cb)) + '</tr>';
   });
 
   // ── Special rows (19–22). Empties are counted in NOS, shown in the KGS cols ──
@@ -954,10 +958,11 @@ function buildFreeCom(d){
     var sal=d.getVal(id,'sales');
     var cb=d.hasVal(id,'close')?d.getVal(id,'close'):Math.max(0,tot-sal);   // [C3]
     // gunny (bag) counts: use the value entered in Monthly Entry; else kgs/50
-    function gb(which,kg){ return d.hasVal(id,'g_'+which) ? Math.round(d.getVal(id,'g_'+which)) : bagsOf(kg,id); }   // [C3][S1]
+    // gunny (bag) counts: Monthly Sales' own (45-bag-counts.js)
+    var B=stmtBagCounts(d,id);
     var tr=d.getInsp(id,'transfer');
     return {ob:ob,rec:rec,tot:tot,sal:sal,cb:cb,tr:tr,
-            gob:gb('open',ob),grec:gb('receipt',rec),gtot:gb('total',tot),gsal:gb('sales',sal),gcb:gb('close',cb),
+            gob:B.open,grec:B.receipt,gtot:B.total,gsal:B.sales,gcb:B.close,
             gtr:bagsOf(tr,id)};   // [S1]
   }
   // commodity row (free -> rate '-', amount blank, transfer 0)
@@ -1062,7 +1067,7 @@ function buildCostCom(d){
   // ── Exact reproduction of the COST COM Excel format ───────────────────────
   function commOf(id){ return (DSS_A||[]).find(function(x){return x.id===id;})||{rate:0}; }
   function rateOf(id){ return commOf(id).rate||0; }
-  function gb(id,which,kg){ return d.hasVal(id,'g_'+which) ? Math.round(d.getVal(id,'g_'+which)) : bagsOf(kg,id); }   // [C3][S1]
+  function gb(id,which){ return stmtBagCounts(d,id)[which]; }   // Monthly Sales' own bag counts (45-bag-counts.js)
   function nz(x){ if(x===''||x==null) return ''; var n=Number(x)||0; return String(+(n.toFixed(3))); }
   function amt2(x){ if(x===''||x==null) return ''; return String(+(Number(x).toFixed(2))); }
   function C(x){ return '<td>'+(x==null?'':x)+'</td>'; }
@@ -1523,7 +1528,7 @@ function buildCrsPolice(d){
 // ── B6 ─────────────────────────────────────────────────────────────────────
 function buildB6(d){
   // ── Exact reproduction of the B6 Excel format (quantities, no rate/amount) ─
-  function gb(id,which,kg){ return d.hasVal(id,'g_'+which) ? Math.round(d.getVal(id,'g_'+which)) : bagsOf(kg,id); }   // [C3][S1]
+  function gb(id,which){ return stmtBagCounts(d,id)[which]; }   // Monthly Sales' own bag counts (45-bag-counts.js)
   function nz(v){ if(v===''||v==null) return ''; var n=Number(v)||0; return String(+(n.toFixed(3))); }
   function C(x){ return '<td>'+(x==null?'':x)+'</td>'; }
   function L(x){ return '<td class="l">'+(x==null?'':x)+'</td>'; }
