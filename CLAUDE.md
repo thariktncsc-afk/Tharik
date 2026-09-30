@@ -639,6 +639,32 @@ it — do not add a formula anywhere else.
 
 `npm run verify:initial-opening` has the office's scenarios A–H.
 
+### An Opening correction is asked about before it is saved
+
+Office, 2026-09-30 (`npm run verify:opening-correction`). A correction on a
+LATER day is stock the month cannot see: the month opens at its first
+sheet's Opening and closes at Opening + Receipt ± adjustments − Sales, so
+the corrected day — and next month — no longer agree with it ("previous
+month CB → next month OB" breaks). CRS 5, 30-09-2026: Police BRA carried 0,
+12 was typed on Daily Entry; September closed at 0 while October would have
+opened at 12. It looked like "Police OB not syncing to Monthly Entry"; the
+roll-up was right.
+- Daily Entry's save now asks an administrator first (`newOpeningCorrections`
+  in `daily-entry/openingCorrections.ts`): every Opening about to be saved
+  fixed that differs from its carry, each with carried / typed / difference.
+  "Go back" is the default and saves nothing. Not asked: the start of the
+  chain (the Initial Opening), a figure typed back to the carry, a correction
+  already saved at that figure. The rule, the permission and the calculation
+  are unchanged.
+- The office decided the 12 was right, so CRS 5's 01-09 Police BRA Opening
+  was put back to 12 (it had been set to 0 from the POS on 2026-09-29):
+  01-09 12 → September 12 + 18 − 18 = 12 → 30-09 carries 12 (no longer a
+  correction) → October 12. Done with `node tools/correct-opening.mjs
+  --crs=N --date=YYYY-MM-DD --id=ID --open=V [--write]` — Daily Entry's admin
+  correction on a saved sheet; a later fixed Opening that then equals its
+  carry loses the mark; month republished, chain rebuilt, backed up, under
+  version.
+
 ## Gunny figures: the screen's rule is the only rule
 
 `src/legacy/42-gunny-live.js` wraps `stmtGetData` and rebuilds `d.gunny`, so
@@ -1619,6 +1645,7 @@ npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny 
 npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
 npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database
 npm run verify:date-format      dates on screen are DD-MM-YYYY: DateField for every date box, day-first parsing, stored dates untouched
+npm run verify:opening-correction  Daily Entry asks an administrator before saving an Opening that differs from the carry
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
 npm run verify:print-pdf       prints the real document with headless Chrome and reads the PAGE SIZES out of the PDF
 npm run verify:sign-in         an accepted sign-in opens the app or says why (cookie not kept); --base=… runs it in Chrome

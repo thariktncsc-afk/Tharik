@@ -50,6 +50,7 @@ import { withReceiptOnlyDays } from '@/lib/engine/dssDays';
 import { saveSuccess } from '@/components/SaveSuccess';
 import { dailySaved, monthlySaved } from '@/lib/saveSuccess';
 import { dateNav, dmy } from './dateNav';
+import { newOpeningCorrections, openingCorrectionMessage } from './openingCorrections';
 import DateField from '@/components/DateField';
 
 type ShopRec = { name: string };
@@ -735,6 +736,31 @@ export default function DailyEntryPage() {
             },
       );
       if (!ok) return false;
+    }
+
+    // An administrator's Opening that differs from the carry is a correction
+    // the month does not account for — asked about before it is saved
+    // (openingCorrections.ts; office, 2026-09-30).
+    if (isAdmin) {
+      const corrections = newOpeningCorrections(
+        (['a', 'b'] as const).flatMap((sec) =>
+          (sec === 'a' ? lists.a : lists.b).map((c) => {
+            const d = derive(sec, c);
+            return { label: c.en, unit: c.unit, carry: d.carry, open: d.open, fixed: d.openFixed, saved: saved?.[sec]?.[c.id] ?? null };
+          }),
+        ),
+      );
+      if (corrections.length) {
+        const ok = await appConfirm({
+          title: 'Opening differs from the carried balance',
+          tone: 'warning',
+          confirmLabel: 'Save correction',
+          cancelLabel: 'Go back',
+          defaultCancel: true,
+          message: openingCorrectionMessage(corrections, dmy(date)),
+        });
+        if (!ok) return false;
+      }
     }
 
     const snap: SavedSheet = { a: {}, b: {} };
