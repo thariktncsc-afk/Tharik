@@ -1381,6 +1381,11 @@ under version; a re-run with the same figures writes nothing.
   மொத்த அட்டைகள் says (LOF AAY and OAP are not on the POS: 0). Page 1
   preview and PDF read back; the screen holds them after reload, shop and
   month changes (backup `backups/card-details-crs27-9-2026-…`).
+- **CRS 14, September 2026** (office, 2026-09-30, POS photos): RICE 1190 /
+  LOF RICE 29 / SUGAR 165 / LOF SUGAR 4 / AAY 12 / LOF AAY 0 / OAP 0 /
+  POLICE 0 / "N" CARD (பண்டகமில்லா அட்டை) 34 → TOTAL 1434, as the POS says
+  (Police, LOF AAY and OAP are not on it: 0). Page 1 preview and PDF read
+  back (backup `backups/card-details-crs14-9-2026-…`).
 - **CRS 1, September 2026** (office, 2026-09-30, from a Page 1 sheet headed
   "MONTH : AUG'2026" — saved under September on the office's answer): RICE
   544 / LOF RICE 4 / SUGAR 54 / LOF SUGAR 1 / AAY 19 / LOF AAY 0 / OAP 0 /
