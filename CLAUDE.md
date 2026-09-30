@@ -2103,6 +2103,20 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   must open at the previous Closing, and each month must add up, or Generate is
   refused listing every difference. Gunny carries the same way. Opening +
   Receipt + Transfer + Excess − Sales − Shortage = Balance.
+- **Empty Polythene Bag / Empty Card+Box in the current month are the Gunny
+  rows** (office, 2026-09-30). Since 2026-09-26/27 those two are SALES ONLY on
+  the grid — their stock is Gunny Stock Management's POLY / C.BOX — so the
+  grid row opens at 0 and closes at −sales. The chain compared the uploaded
+  PAGE2's P.GUNNY Closing with that empty row: CRS 1, "Empty Polythene Bag:
+  August 2026 closes at 15, but September 2026 opens at 0" while the Gunny
+  screen opened POLY at 15 — not stale data, the wrong row.
+  `systemQuarterMonth` now gives EMPTY_BAG / EMPTY_BOX the Gunny row's
+  Opening, Receipt, Issues (= those sales unless typed) and Closing; uploaded
+  months and every other commodity are unchanged. A genuine break still
+  refuses (September POLY opening 0 → both the commodity and the Gunny line).
+  Localhost, CRS 1 with the office's July + latest August PAGE2 (`… (2).pdf`)
+  and September from a live copy: the PV generates, P.GUNNY Balance 31 =
+  POLYTHENE 31, C.BOX 36 = C.BOX 36.
 - **Gunny notes** ("WHEAT CONSIDER AS GUNNY") are lines containing CONSIDER
   below the Gunny table, printed as written under the PV's Gunny rows — this PV
   only; they change no figure.
