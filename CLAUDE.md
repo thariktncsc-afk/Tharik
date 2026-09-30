@@ -1345,6 +1345,11 @@ under version; a re-run with the same figures writes nothing.
   மொத்த அட்டைகள் says (LOF AAY and OAP are not on the POS: 0). Page 1
   preview and PDF read back; the screen holds them after reload, shop and
   month changes (backup `backups/card-details-crs27-9-2026-…`).
+- **CRS 1, September 2026** (office, 2026-09-30, from a Page 1 sheet headed
+  "MONTH : AUG'2026" — saved under September on the office's answer): RICE
+  544 / LOF RICE 4 / SUGAR 54 / LOF SUGAR 1 / AAY 19 / LOF AAY 0 / OAP 0 /
+  POLICE 1 / "N" CARD 12 → TOTAL 635, as the sheet says (backup
+  `backups/card-details-crs1-9-2026-…`).
 
 ## A day sheet keyed from a paper statement
 
@@ -1509,6 +1514,12 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   Sugar 6, Toor Dal 12, Palm Oil 3) but still have no Allotment field, so
   they are not stored — and never added into the Section A lines. Rows 1–5
   not in the images, nothing stored. Page 1 PDF and screen read back.
+- **CRS 1, September 2026** (office, 2026-09-30, the same AUG'2026-headed
+  Page 1 sheet as its Card Details; FPS code 22BA003PN from `__crsMaster`):
+  BRA 5286, AAY 665, SUGAR 783, AAY_SUGAR 24, WHEAT 692, TOOR 547, PALM 547,
+  PHH_BRA 2981. The sheet's "5.PHH BRA&FRK : 2981" is one figure: stored as
+  PHH_BRA only, PHH_FRK not stored (office's answer), so Page 1 prints
+  "2981 & 0". Page 1 PDF and screen read back.
 
 ## Monthly Sales Close needs both sections SAVED
 
