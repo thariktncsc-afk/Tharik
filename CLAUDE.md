@@ -1400,6 +1400,21 @@ every Closing equals the paper's).
   (September EXCESS reads −88810.25 until deposits are keyed). Backup
   `backups/day-sheet-26_2026-09-30-…`.
 
+**A shop's Initial Opening, from an office sheet** (same tool, office
+2026-09-30): `--open=ID:qty,…` types the Openings on the shop's CHAIN START
+(refused if any earlier day sheet exists), saved fixed (`openFixed`) as Daily
+Entry saves an Initial Opening, every other commodity at 0; `--gunny-open=
+ss50:n,poly:n,cbox:n` sets the month's Gunny Opening as an administrator
+types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
+- **CRS 27, from 01-09-2026** (office, 2026-09-30; CRS 27 held no stock data
+  and was not started): BRA 3908, PHH BRA 850, PHH FRK 1500.062, NPHH FRK
+  5000.062, AAY 105, AAY FRK 154.010, RRA 1000, NPHH RRA 0.030, SUGAR
+  1348.002, AAY SUGAR 9, WHEAT 1525, T.DHALL 677.020, P.OIL 679, OOTY 304;
+  police BRA 26, SUGAR 2, WHEAT 2, T.DHALL 4, P.OIL 1; Gunny 50 KG SS 1496
+  (POLY / C.BOX were blank on the sheet and are left blank). Started-record
+  01-09-2026. Read back on the day sheet, the published month, Gunny, and
+  CRS Page 2 / CRS Police PDFs. Backup `backups/day-sheet-27_2026-09-01-…`.
+
 ## Receipts keyed from a shop's POS challans
 
 `node tools/add-receipts.mjs --data=<file.json>` (dry run), then `--write`:
