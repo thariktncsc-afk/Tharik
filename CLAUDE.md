@@ -1383,6 +1383,18 @@ every Closing equals the paper's).
   01-09 and 29-09 only. Monthly Remittance untouched (the 29th's ₹848 stays
   there, so the 29-09 DSS C A/C line reads 0.00). Backup
   `backups/day-sheet-5_2026-09-29-…`.
+- **CRS 26, September 2026** (office, 2026-09-30; POS "பொருட்கள் இருப்பு
+  நிலவரச் சுருக்கம்" 01-09 → 30-09): Receipt and Sales only, on one sheet
+  dated 30-09 — Receipt `POS/26/09/2026` (11 commodities) and the month's
+  sales; Opening carried from the 01-09 Initial Opening, which already equals
+  the POS. All 14 closings equal the POS (BRA 333, RRA 294, PHH BRA 773,
+  PHH FRK 1443.126, AAY 3, AAY FRK 0.010, NPHH FRK 2384.014, NPHH RRA 0.026,
+  OAP 0, T.DHALL 189.010, P.OIL 190, SUGAR 422.502, AAY SUGAR 1.500, WHEAT
+  508.990). Sugar / AAY Sugar / Wheat were on the POS but not in the typed
+  list — included on the office's answer. The police "P" rows, PHH பச்சை
+  அரிசி and the Pongal lines are 0 or have no field. No remittance added
+  (September EXCESS reads −88810.25 until deposits are keyed). Backup
+  `backups/day-sheet-26_2026-09-30-…`.
 
 ## Allotment keyed from the FPS Allocation Report
 
