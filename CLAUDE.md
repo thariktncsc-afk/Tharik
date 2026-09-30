@@ -1207,6 +1207,10 @@ under version; a re-run with the same figures writes nothing.
   0 / 4 / 1 → TOTAL 777 (backup `backups/card-details-crs30-9-2026-…`). Read
   back through the server statement engine: CRS Page 1's PDF prints each card
   and TOTAL CARD DETAILS 777; Monthly Entry shows them "✓ saved".
+- **CRS 20, September 2026** (office, 2026-09-30, POS photos): RICE 1048 /
+  LOF RICE 254 / SUGAR 19 / LOF SUGAR 7 / AAY 38 / LOF AAY 5 / OAP 0 /
+  POLICE 1 / "N" CARD (பண்டகமில்லா அட்டை) 1 → TOTAL 1373 (backup
+  `backups/card-details-crs20-9-2026-…`).
 
 ## A day sheet keyed from a paper statement
 
@@ -1276,6 +1280,13 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   entry replaced by the report's exact figures; CRS 6, 19 and every other
   shop untouched. Every shop's Page 1 PDF read back line for line against
   the report. Backup `backups/allotment-9-2026-…`.
+- **CRS 20, September 2026** (office, 2026-09-30, the POS's இருப்புப் பொருள்
+  ஒதுக்கீடு screens; FPS code taken from `__crsMaster`, 22DA001PN — the
+  photos do not show it): BRA 10130.886, AAY 1085, PHH_BRA 7047, WHEAT
+  **1517.974**, SUGAR 1565.918, AAY_SUGAR 44.57, TOOR 1061.997, PALM 1062,
+  OAP 0, APS 0 (the POS's "ANP Rice"). The POS lists Wheat twice; the
+  office named the 6th row (1517.974) and the 2nd (1610.565) is ignored,
+  never added. Police lines left out as before. Page 1 PDF read back.
 
 ## Monthly Sales Close needs both sections SAVED
 
