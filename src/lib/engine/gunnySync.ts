@@ -119,7 +119,9 @@ export function syncGunnyToSales(
   const meManualStore = clone(stores.meManualStore) ?? {};
 
   // ── Monthly Sales: the hand-keyed row, as the grid keys it ────────────────
-  const manual = (meManualStore[key] = { a: { ...(meManualStore[key]?.a ?? {}) }, b: { ...(meManualStore[key]?.b ?? {}) } });
+  // Spread first: the month's other parts (a daily row's typed bag counts,
+  // dailyBags) are not this sync's to drop.
+  const manual = (meManualStore[key] = { ...meManualStore[key], a: { ...(meManualStore[key]?.a ?? {}) }, b: { ...(meManualStore[key]?.b ?? {}) } });
   for (const id of ids) {
     const w = r3(num(want[id]));
     const cur = manual.a![id] as Row | undefined;
