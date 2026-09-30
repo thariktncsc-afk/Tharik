@@ -1550,7 +1550,9 @@ never replaces.
   in two overlapping screenshots of S180602898 and is entered once. The
   30-09 sheet re-carried them, so September's Closings rose by exactly those
   quantities (NPHH FRK 1438 → 3938, PHH FRK 0.982 → 2000.982, …) and no
-  longer equal the POS summary. Backup `backups/receipts-crs10-…`.
+  longer equal the POS summary. CRS 10 IS a COLL shop: COLL lists all
+  eight under ADVANCE FOR THE MONTH OF OCT'2026 and keeps them out of its
+  closing balance. Backup `backups/receipts-crs10-…`.
 
 **Correcting a saved receipt line** — `node tools/correct-receipt.mjs --crs=N
 --receipt-no=NO --move=FROM:TO,…` (dry run), then `--write`: moves a line's
