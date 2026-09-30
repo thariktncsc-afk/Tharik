@@ -20,7 +20,7 @@ import { useAuth } from '@/lib/authClient';
 import { crsData, useDataStatus, useStore } from '@/lib/dataStore';
 import { bagsOf, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { useCommodityLists, useShops } from '@/lib/masters';
-import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec, type SourceBlock } from '@/lib/engine/monthlyRollup';
+import { rebuildMonthlyFromDaily, type DailyBags, type DailyBagField, type ManualMonth, type MonthlyBlock, type MonthlyRec, type SourceBlock } from '@/lib/engine/monthlyRollup';
 import {
   applyProjectedAdjustments,
   buildProjectedSheet,
@@ -369,10 +369,18 @@ export default function MonthlyEntryPage() {
 
     const kgs = { open, receipt, total, sales, close };
     const g = {} as Row['g'];
+    // A daily row's bag counts typed and saved on this page (engine/
+    // monthlyRollup.ts DailyBags) — the kgs stay the day sheets'.
+    const typedBags = derived ? (meManualStore[key] as ManualMonth | undefined)?.dailyBags?.[sec]?.[c.id] : undefined;
     for (const f of ['open', 'receipt', 'total', 'sales', 'close'] as const) {
       const edited = e.g?.[f];
       if (edited !== undefined) {
         g[f] = Number(edited) || 0;
+        continue;
+      }
+      const typedBag = typedBags?.[`g_${f}` as DailyBagField];
+      if (typeof typedBag === 'number') {
+        g[f] = typedBag;
         continue;
       }
       const auto = bagsOf(kgs[f], c.id);
@@ -404,7 +412,7 @@ export default function MonthlyEntryPage() {
     const b = lists.b.map((c) => rowFor('b', c));
     return { a, b };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lists, merged, source, inspMonth, edits, shopStarted, chain]);
+  }, [lists, merged, source, inspMonth, edits, shopStarted, chain, meManualStore, key]);
 
   const showAdj = {
     excess: [...rows.a, ...rows.b].some((r) => r.adj.excess !== 0),
@@ -521,7 +529,8 @@ export default function MonthlyEntryPage() {
       }
       rice = chk.rice;
     }
-    const manual: Partial<MonthlyBlock> = { a: {}, b: {} };
+    const manual: ManualMonth = { a: {}, b: {} };
+    const dailyBags: DailyBags = {};
     const whole: ProjectedMonth = { a: {}, b: {} };
     for (const [sec, list] of [['a', rows.a], ['b', rows.b]] as const) {
       for (const r of list) {
@@ -529,7 +538,20 @@ export default function MonthlyEntryPage() {
           open: r.open, receipt: r.receipt, total: r.total, sales: r.sales, close: r.close, amount: r.amount,
           excess: r.adj.excess, shortage: r.adj.shortage, transfer: r.adj.transfer,
         };
-        if (r.derived) continue;
+        if (r.derived) {
+          // The kgs are the day sheets'; the bag counts are keyable here and
+          // are saved as typed (they used to be skipped with the row, and the
+          // roll-up re-derived them — CRS 1 Sept BRA 30 → back to 29). Only a
+          // count that differs from kgs ÷ pack size is kept; one typed back
+          // to that figure follows the kgs again.
+          if (NO_GUNNY.has(r.c.id)) continue;
+          const typed: Partial<Record<DailyBagField, number>> = {};
+          for (const [f, kg] of [['open', r.open], ['receipt', r.receipt], ['sales', r.sales]] as const) {
+            if (r.g[f] !== bagsOf(kg, r.c.id)) typed[`g_${f}`] = r.g[f];
+          }
+          if (Object.keys(typed).length) (dailyBags[sec] ??= {})[r.c.id] = typed;
+          continue;
+        }
         const rec: MonthlyRec = {
           open: r.open, receipt: r.receipt, total: r.total, sales: r.sales, close: r.close, amount: r.amount,
           excess: r.adj.excess, shortage: r.adj.shortage, transfer: r.adj.transfer,
@@ -542,6 +564,7 @@ export default function MonthlyEntryPage() {
     }
     // The month-close, as the activity log names it (activityLog/core.ts).
     crsData.markEdited('meManualStore', ctx.key, 'closed');
+    if (dailyBags.a || dailyBags.b) manual.dailyBags = dailyBags;
     crsData.update<Record<string, Partial<MonthlyBlock>>>('meManualStore', (d) => {
       d[ctx.key] = manual;
     });

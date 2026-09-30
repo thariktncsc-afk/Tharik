@@ -428,6 +428,21 @@ function manualDraft(key: string, before: unknown, after: unknown, hint: 'edited
         if (!MONTH_CARRIED.has(f)) keyed = true;
       }
     }
+    // A daily row's bag counts typed on Monthly Entry (monthlyRollup.ts
+    // DailyBags): kept beside the rows, so compared on their own. Blank = the
+    // count follows its kgs.
+    const bb = obj(obj(obj(before).dailyBags)[sec]);
+    const ba = obj(obj(obj(after).dailyBags)[sec]);
+    for (const id of new Set([...Object.keys(ba), ...Object.keys(bb)])) {
+      const x = obj(bb[id]);
+      const y = obj(ba[id]);
+      for (const [f, label] of MONTH_FIELDS) {
+        if (!f.startsWith('g_') || !(f in x || f in y) || x[f] === y[f]) continue;
+        const shown = (v: unknown) => (typeof v === 'number' ? String(v) : 'from kgs');
+        changes.push({ label: `${commodityName(id)} · ${label} (bags)`, before: shown(x[f]), after: shown(y[f]) });
+        keyed = true;
+      }
+    }
   }
   if (!changes.length && before !== undefined && after !== undefined) return null;
   const base = { ...e, recordKey: key, module: 'Monthly Entry', changes: changes.slice(0, MAX_CHANGES) };
