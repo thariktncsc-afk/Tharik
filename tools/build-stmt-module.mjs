@@ -68,6 +68,9 @@ const PRELUDE = `
 
   // ── Masters and constants from excluded engine parts ─────────────────────
   var CRS_LIST = ctx.CRS_LIST || [];
+  // The saved Commodity Master (__commodityMaster): stmtRateOf prices the
+  // Daily Sale sheet and the reconciliation at its rates (44-remit-total.js).
+  var STMT_COMMODITY_MASTER = ctx.commodityMaster || null;
 __DSS_LISTS__
   var STAFF_NAME_BLANK  = '________________';                       // 01-core.js
   var STAFF_PHONE_BLANK = '__________';

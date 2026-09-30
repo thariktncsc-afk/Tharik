@@ -15,7 +15,9 @@
  *   2. where C.Box / Poly comes from; Police included; nothing banked;
  *   3. the same Excess on Page 2, Cost Com and Sale Tax, TOTAL = Expected;
  *   4. the popup's wording and its reasons, worked out from the figures;
- *   5. the wiring: the route, the popup on both screens, refreshed on a save.
+ *   5. the wiring: the route, the popup on both screens, refreshed on a save;
+ *   6. the Daily Sale sheet: sales priced at the saved rate, Police once, no
+ *      inspection kilos in the EXCESS column, TOTAL = Page 2, EXCESS = paid − TOTAL.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -112,6 +114,54 @@ const note = readFileSync(join(root, 'src/components/ReconcileNotice.tsx'), 'utf
 check('the popup opens only when short, once per shop-month-figure', /if \(next && next\.excess < 0\)/.test(note) && /shown\.has\(key\)/.test(note));
 check('refreshed when a save of the figures lands (the SAVED stores)', /useSavedStore\('meRemitStore'\)/.test(note) && /useSavedStore\('entryStore'\)/.test(note) && /useSavedStore\('monthlyStore'\)/.test(note));
 check('on the Statements page and on Monthly Remittance', /<ReconcileNotice crsId=\{crsId\} month=\{month\} year=\{year\} \/>/.test(readFileSync(join(root, 'src/app/(app)/statements/page.tsx'), 'utf8')) && /<ReconcileNotice crsId=\{ctx\.crsId\} month=\{ctx\.month\} year=\{ctx\.year\} \/>/.test(readFileSync(join(root, 'src/app/(app)/monthly-entry/RemitTable.tsx'), 'utf8')));
+
+console.log('\n6. The Daily Sale sheet (office, 2026-09-30: CRS 5 September)');
+// One day sheet on 29-09 as CRS 5 keyed it, a 13 kg shortage (SUGAR 9 + PALM 4)
+// on that date, the Poly & C.Box row 90 and the month banked 62,472.
+const MASTER = [
+  { id: 'SUGAR', rate: 25 }, { id: 'AAY_SUGAR', rate: 13.5 }, { id: 'TOOR', rate: 30 }, { id: 'PALM', rate: 25 },
+  { id: 'SALT_CIS', rate: 10 }, { id: 'PB_TOOR', rate: 15 }, { id: 'PB_SUGAR', rate: 12.5 }, { id: 'PB_PALM', rate: 12.5 },
+  { id: 'EMPTY_BOX', rate: 0.6 }, { id: 'EMPTY_BAG', rate: 2.5 },
+];
+function dailySale(master) {
+  const K = '5_9_2026', DAY = '5_2026-09-29';
+  const A = { BRA: 5814, SUGAR: 1031.5, AAY_SUGAR: 27, TOOR: 616, PALM: 616, SALT_CIS: 225 }, B = { PB_BRA: 18, PB_TOOR: 4, PB_SUGAR: 2, PB_PALM: 1 };
+  // The sheet's stored amounts are deliberately WRONG: the sheet must price sales at the saved rate, not read them.
+  const sec = (o) => Object.fromEntries(Object.entries(o).map(([id, s]) => [id, { open: 0, receipt: 0, total: 0, sales: s, close: 0, amount: 1 }]));
+  const e = createStatementEngine({
+    stores: {
+      entryStore: { [DAY]: { a: sec(A), b: sec(B), remits: [] } },
+      inspectionStore: { [DAY]: { a: { SUGAR: { shortage: 9 }, PALM: { shortage: 4 } } } },
+      monthlyStore: { [K]: { a: sec(A), b: sec(B) } }, meManualStore: {}, meSourceStore: {},
+      meRemitStore: { [K]: { 29: { nonCereal: 62382, remitDate: '2026-09-29' }, extra: { e1nc: 90, e1date: '2026-09-29' } } },
+      meGunnyStore: {}, meCardStore: {}, salesCloseStore: {}, receiptStore: [], meAllotStore: {}, meCardConfirmed: {}, meAdvanceStore: {},
+    },
+    users: [], CRS_LIST: Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `CRS ${i + 1}` })), CRS_MASTER: [], APP_CONFIG: {}, CRS_ACCOUNTS: {}, currentUser: null,
+    commodityMaster: master,
+  });
+  const d = e.getData(5, 9, 2026);
+  const html = e.buildSection('crs_daily_sale', d);
+  const tx = txt(html);
+  const cells = (tr) => tr.match(/<td[^>]*>(.*?)<\/td>/g).map((c) => c.replace(/<[^>]+>/g, ''));
+  const day29 = cells(html.split('<tr>').find((r) => r.includes('29/09/2026')));
+  const total = cells(html.match(/<tr class="total-row">([\s\S]*?)<\/tr>/)[0]);
+  return {
+    r: e.reconcile(d), html, page2: num(/TOTAL ([\d.-]+) EXCESS/, txt(e.buildSection('crs_page2', d))),
+    daySales: Number(day29[18]), dayExcessCell: day29[20], totalExcess: Number(total[total.length - 2]), paid: Number(total[total.length - 1]),
+    sales: num(/TOTAL AMOUNT OF DAILY SALES ([\d.]+)/, tx), police: num(/CRS POLICE \+ JAGGERY ([\d.]+)/, tx),
+    cbox: num(/C\.BOX \+ P\.GUNNY \+ EXCESS ([\d.]+)/, tx), grand: num(/C\.BOX \+ P\.GUNNY \+ EXCESS [\d.]+ TOTAL ([\d.]+)/, tx),
+  };
+}
+const ds = dailySale(MASTER);
+check(`29-09's TOTAL AMOUNT = chargeable Section A sales × saved rate: 1031.5×25 + 27×13.5 + 616×30 + 616×25 + SALT CIS 225×10 = ${ds.daySales} (not the stored amounts, not Police)`, ds.daySales === 62282);
+check(`the 13 kg shortage (SUGAR 9 + PALM 4) is not printed: 29-09's EXCESS cell "${ds.dayExcessCell}", no "-13" anywhere`, ds.dayExcessCell === '' && !/>-13</.test(ds.html));
+check(`footer: DAILY SALES ${ds.sales} + POLICE ${ds.police} (once) + C.BOX/P.GUNNY ${ds.cbox} = TOTAL ${ds.grand}`, ds.sales === 62282 && ds.police === 97.5 && ds.cbox === 90 && ds.grand === 62469.5);
+check(`TOTAL = CRS Page 2 TOTAL ${ds.page2} = Expected ${ds.r.expected}`, ds.grand === ds.page2 && ds.grand === ds.r.expected);
+check(`TOTAL row EXCESS ${ds.totalExcess} = paid in bank ${ds.paid} − TOTAL, = the reconciliation's Excess ${ds.r.excess}; remittance untouched`, ds.paid === 62472 && ds.totalExcess === 2.5 && ds.r.excess === 2.5);
+const dsRate = dailySale(MASTER.map((m) => (m.id === 'SUGAR' ? { ...m, rate: 26 } : m)));
+check(`a rate changed on the Commodities screen (SUGAR 25 → 26) follows on its own: sales ${dsRate.sales} (+1031.50), Page 2 TOTAL ${dsRate.page2}, Excess ${dsRate.totalExcess}`, dsRate.sales === 63313.5 && dsRate.page2 === dsRate.grand && dsRate.totalExcess === dsRate.r.excess && dsRate.totalExcess === -1029);
+const dsNoMaster = dailySale([]);
+check(`no saved master: the engine's compiled rates (SALT CIS 12) — sales ${dsNoMaster.sales}`, dsNoMaster.sales === 62282 + 225 * 2);
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll reconcile checks passed.');
 process.exitCode = failures ? 1 : 0;

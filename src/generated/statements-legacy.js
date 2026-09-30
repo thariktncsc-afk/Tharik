@@ -32,6 +32,9 @@ export function createStatementEngine(ctx) {
 
   // ── Masters and constants from excluded engine parts ─────────────────────
   var CRS_LIST = ctx.CRS_LIST || [];
+  // The saved Commodity Master (__commodityMaster): stmtRateOf prices the
+  // Daily Sale sheet and the reconciliation at its rates (44-remit-total.js).
+  var STMT_COMMODITY_MASTER = ctx.commodityMaster || null;
   var DSS_A = [
   {id:'BRA',       ta:'புழுங்கல் அரிசி',        en:'BRA Rice',             unit:'KG',  rate:0,     free:true},
   {id:'NPHH_FRK',  ta:'NPHH FRK அரிசி',       en:'NPHH FRK Rice',        unit:'KG',  rate:0,     free:true},
@@ -1690,8 +1693,6 @@ function buildCrsDailySale(d){
   COLS.forEach(function(c){ colTotals[c.id] = 0; });
   var grandTotalSales = 0;
   var grandTotalRemit = 0;
-  var totalExcess     = 0;
-  var totalShort      = 0;
 
   // Helper: format date as d.m.yy
   function fmtRemitDate(iso){
@@ -1712,11 +1713,10 @@ function buildCrsDailySale(d){
     var rmDay     = (d.remitByDay && d.remitByDay[day]) ? d.remitByDay[day] : null;
     var remitDate = fmtRemitDate(rmDay ? rmDay.remitDate : '');
     var remitAmt  = rmDay ? (rmDay.amount || 0) : 0;
-    // Excess: from the Inspection module for this date
-    var dayExcess = (d.inspByDay && d.inspByDay[day]) ? d.inspByDay[day].excess : 0;
-    var dayShort  = (d.inspByDay && d.inspByDay[day]) ? d.inspByDay[day].shortage : 0;
-    totalExcess  += dayExcess;
-    totalShort   += dayShort;
+    // The EXCESS column is money (under REMITTANCE). The day's inspection
+    // excess / shortage is KILOS of stock — SUGAR 9 + PALM 4 printed as "-13"
+    // on CRS 5's 29-09-2026 row — so it is not printed here (office,
+    // 2026-09-30). The month's money Excess prints in the TOTAL row.
 
     // Commodity sales values
     var cellVals = {};
@@ -1731,8 +1731,16 @@ function buildCrsDailySale(d){
           if(s > 0){ cellVals[c.id] = s; colTotals[c.id] += s; }
         }
       });
-      DSS_A.forEach(function(c){ dayTotal += entry.a&&entry.a[c.id] ? (parseFloat(entry.a[c.id].amount)||0):0; });
-      DSS_B.forEach(function(c){ dayTotal += entry.b&&entry.b[c.id] ? (parseFloat(entry.b[c.id].amount)||0):0; });
+      // The day's SALES amount: every chargeable Section A commodity's sales ×
+      // its saved Commodity Master rate (stmtPriced, 44-remit-total.js) —
+      // worked out, never the sheet's stored amount. Police (Section B) and
+      // C.Box / Poly are the footer's own lines, so they are not in this
+      // column: it used to add Police here AND in the footer (office,
+      // 2026-09-30: CRS 5 September 62379.50 = 62282 + Police 97.50).
+      DSS_A.forEach(function(c){
+        if (STMT_PACK_IDS[c.id] || !(entry.a && entry.a[c.id])) return;
+        dayTotal += stmtPriced(c.id, entry.a[c.id].sales);
+      });
     }
 
     grandTotalSales += dayTotal;
@@ -1746,7 +1754,7 @@ function buildCrsDailySale(d){
       }).join('') +
       '<td>' + (dayTotal > 0 ? dayTotal.toFixed(2) : '0.00') + '</td>' +
       '<td>' + remitDate + '</td>' +
-      '<td>' + (dayExcess ? (+dayExcess.toFixed(3)) : (dayShort ? '-'+(+dayShort.toFixed(3)) : '')) + '</td>' +
+      '<td></td>' +
       '<td>' + (remitAmt > 0 ? remitAmt.toFixed(2) : '') + '</td>' +
     '</tr>';
   }
@@ -1771,6 +1779,18 @@ function buildCrsDailySale(d){
     grandTotalRemit += xAmt;
   }
 
+  // Footer: each amount once, from the same rules as CRS Page 2's TOTAL and
+  // the reconciliation (44-remit-total.js) — Police = Section B sales × saved
+  // rate; C.Box / P.Gunny = the grid's Empty Card+Box / Polythene Bag sales,
+  // else the Monthly Remittance "Poly Gunny & C.Box" row. (It used to add
+  // Police a second time, and all three extra remittance rows.)
+  var policeTotal = stmtPoliceAmount(d);
+  var cboxExtra   = stmtPackAmount(d).pack;
+  var grandFinal  = grandTotalSales + policeTotal + cboxExtra;
+  // The month's Excess: amount paid in bank − the TOTAL below. Negative is a
+  // shortfall and prints as it is.
+  var monthExcess = Math.round((grandTotalRemit - grandFinal) * 100) / 100;
+
   // TOTAL row
   rows += '<tr class="total-row">' +
     '<td class="date-col">TOTAL</td>' +
@@ -1780,18 +1800,9 @@ function buildCrsDailySale(d){
     }).join('') +
     '<td>' + grandTotalSales.toFixed(2) + '</td>' +
     '<td></td>' +
-    '<td>' + (totalExcess ? (+totalExcess.toFixed(3)) : '0') + '</td>' +
+    '<td>' + monthExcess.toFixed(2) + '</td>' +
     '<td>' + grandTotalRemit.toFixed(2) + '</td>' +
   '</tr>';
-
-  // Police + c.box totals for footer
-  var policeTotal = 0;
-  var monthData = (typeof monthlyStore!=='undefined') ? (monthlyStore[moKey]||null) : null;
-  if(monthData && monthData.b){
-    DSS_B.forEach(function(c){ policeTotal += parseFloat((monthData.b[c.id]||{}).amount||0)||0; });
-  }
-  var cboxExtra = parseFloat(extraStore.e1nc||0)+parseFloat(extraStore.e2nc||0)+parseFloat(extraStore.e3nc||0);
-  var grandFinal = grandTotalSales + policeTotal + cboxExtra;
 
   return '<style>' + css + '</style>' +
   '<div class="dcs-wrap">' +
@@ -5434,11 +5445,51 @@ function stmtRemitTotal(d){
 //   Remittance = stmtRemitTotal(d)  (the actual deposits)
 //   Excess     = Remittance − Expected   (negative = a shortfall; never forced to 0)
 //
-// Every figure is Page 2's own arithmetic (gAmt, the POLICE reduce, sales ×
-// rate for the empties), so TOTAL and the reconciliation cannot differ.
+// Every amount is sales × the saved Commodity Master rate (stmtPriced), the
+// same pricing the Daily Sale sheet uses; CRS Page 2's TOTAL is Expected, so
+// TOTAL, the Daily Sale footer and the reconciliation cannot differ.
 // `days` gives each day sheet's sales amount beside what was banked for that
 // sales date, for the popup's "why". CRS 29 has its own sheets: null.
 // ═══════════════════════════════════════════════════════════════════════════
+// ── Pricing: sales × the SAVED Commodity Master rate (office, 2026-09-30) ──
+// The rate is the one the office keeps on the Commodities screen
+// (__commodityMaster, handed in as ctx.commodityMaster), so a rate change
+// follows on its own; a commodity the master does not price keeps the
+// engine's compiled rate. Which commodities are free stays the engine's (as
+// in the DSS). Used by the Daily Sale sheet and the reconciliation — NOT by
+// the other builders' own RATE / AMOUNT columns, which are unchanged.
+// Live, 2026-09-30: all 2,131 stored day-sheet amounts equal sales × this rate.
+var STMT_PACK_IDS = { EMPTY_BOX: 1, EMPTY_BAG: 1 };
+var __stmtRateMap = null;
+function stmtRateOf(id){
+  if (!__stmtRateMap) {
+    __stmtRateMap = {};
+    var m = (typeof STMT_COMMODITY_MASTER !== 'undefined' && STMT_COMMODITY_MASTER) || [];
+    var list = Array.isArray(m) ? m : Object.keys(m).map(function(k){ return m[k]; });
+    list.forEach(function(row){
+      if (!row || !row.id || row.rate === undefined || row.rate === null || row.rate === '') return;
+      var v = parseFloat(row.rate);
+      if (isFinite(v)) __stmtRateMap[row.id] = v;
+    });
+  }
+  var c = (DSS_A || []).concat(DSS_B || []).find(function(x){ return x.id === id; });
+  if (!c || c.free) return 0;
+  return Object.prototype.hasOwnProperty.call(__stmtRateMap, id) ? __stmtRateMap[id] : (c.rate || 0);
+}
+function stmtPriced(id, sales){ return (parseFloat(sales) || 0) * stmtRateOf(id); }
+/** Police (Section B) sales for the month, priced. */
+function stmtPoliceAmount(d){
+  return (DSS_B || []).reduce(function(s, c){ return s + stmtPriced(c.id, d.getVal(c.id, 'sales')); }, 0);
+}
+/** C.Box / Poly: sold on the grid, else the Monthly Remittance "Poly Gunny & C.Box" row. */
+function stmtPackAmount(d){
+  var grid = stmtPriced('EMPTY_BOX', d.getVal('EMPTY_BOX', 'sales')) + stmtPriced('EMPTY_BAG', d.getVal('EMPTY_BAG', 'sales'));
+  var moKey = d.crsId + '_' + d.month + '_' + d.year;
+  var ex = (typeof meRemitStore !== 'undefined' && meRemitStore[moKey] && meRemitStore[moKey]['extra']) ? meRemitStore[moKey]['extra'] : {};
+  var remit = (parseFloat(ex.e1nc) || 0) + (parseFloat(ex.e1ce) || 0);
+  return { grid: grid, remit: remit, pack: grid > 0 ? grid : remit, source: grid > 0 ? 'grid' : remit > 0 ? 'remittance' : 'none' };
+}
+
 var STMT_TEA_SALT = { OOTY: 'OOTY (tea)', TAN: 'TAN (tea)', SALT_CIS: 'Salt (CIS)', SALT_RFFS: 'Salt (RFFS)' };
 var STMT_PAGE2_IDS = ['BRA','AAY','RRA','SUGAR','AAY_SUGAR','WHEAT','TOOR','PALM','OOTY','TAN','SALT_CIS','SALT_RFFS','OAP','APS','PHH_BRA','PHH_FRK','AAY_FRK','NPHH_FRK','NPHH_RRA'];
 function stmtReconcile(d){
@@ -5449,19 +5500,15 @@ function stmtReconcile(d){
   STMT_PAGE2_IDS.forEach(function(id){
     var c = commOf(id);
     if (c.free) return;
-    var a = d.getVal(id, 'amount') || (d.getVal(id, 'sales') * (c.rate || 0));
+    var a = stmtPriced(id, d.getVal(id, 'sales'));
     if (!a) return;
     if (STMT_TEA_SALT[id]) { manual += a; manualItems.push({ id: id, label: STMT_TEA_SALT[id], amount: r2(a) }); }
     else { pos += a; posItems.push({ id: id, label: c.en || id, amount: r2(a) }); }
   });
-  var police = (DSS_B || []).reduce(function(s, c){
-    var a = d.getVal(c.id, 'amount'); if (!a && !c.free) a = d.getVal(c.id, 'sales') * (c.rate || 0); return s + (a || 0);
-  }, 0);
-  var packGrid = d.getVal('EMPTY_BOX', 'sales') * (commOf('EMPTY_BOX').rate || 0) + d.getVal('EMPTY_BAG', 'sales') * (commOf('EMPTY_BAG').rate || 0);
+  var police = stmtPoliceAmount(d);
+  var pk = stmtPackAmount(d);
   var moKey = d.crsId + '_' + d.month + '_' + d.year;
-  var ex = (typeof meRemitStore !== 'undefined' && meRemitStore[moKey] && meRemitStore[moKey]['extra']) ? meRemitStore[moKey]['extra'] : {};
-  var packRemit = (parseFloat(ex.e1nc) || 0) + (parseFloat(ex.e1ce) || 0);
-  var pack = packGrid > 0 ? packGrid : packRemit;
+  var packGrid = pk.grid, packRemit = pk.remit, pack = pk.pack;
   var expected = pos + manual + police + pack;
   var remit = stmtRemitTotal(d);
   // Day by day: a sheet's own sales amount beside what was banked for that sales date.

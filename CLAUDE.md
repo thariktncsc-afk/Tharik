@@ -1386,6 +1386,33 @@ Office, 2026-09-30 (`npm run verify:reconcile`). `stmtReconcile(d)`
   TOTAL = Expected, one Excess on the three sheets); only **CRS 5 is short,
   −97.50 — exactly its Police sales** (60032 + 2250 + 97.50 + 90 = 62469.50
   against 62372 banked).
+- **Priced at the SAVED rate**: every amount is sales × the Commodity Master
+  rate (`stmtRateOf` / `stmtPriced`; the engine gets `__commodityMaster` as
+  `ctx.commodityMaster`, else its compiled rate; free stays the engine's), so
+  a rate changed on the Commodities screen follows on its own. The other
+  builders' own RATE / AMOUNT columns still use the compiled rates. Live
+  2026-09-30: all 2,131 stored day-sheet amounts equal sales × saved rate.
+
+### The Daily Sale sheet's money
+
+`buildCrsDailySale` (office, 2026-09-30, CRS 5 September). It printed TOTAL
+AMOUNT OF DAILY SALES 62379.50 = Section A 62282 **+ Police 97.50**, then added
+"CRS POLICE + JAGGERY 97.50" again (TOTAL 62567.00), and put the day's
+inspection shortage — SUGAR 9 + PALM 4 **kg** — in the money EXCESS column
+as "-13".
+- Each day's TOTAL AMOUNT = chargeable **Section A** sales × saved rate
+  (tea / salt included; Empty Card+Box / Polythene Bag and Police are the
+  footer's own lines). Worked out from the sales, never the stored amount.
+- Footer: DAILY SALES (the column's sum) + POLICE (`stmtPoliceAmount`) +
+  C.BOX / P.GUNNY (`stmtPackAmount`: grid, else the e1 row — no longer e2/e3)
+  = TOTAL = CRS Page 2's TOTAL = Expected.
+- The EXCESS column prints no inspection figure; its TOTAL cell is the
+  month's Excess = AMT PAID IN BANK − TOTAL (= the reconciliation's).
+  Remittance figures are unchanged.
+- Live, September 2026: all 16 shops' TOTAL = Page 2 TOTAL and EXCESS = the
+  reconciliation's; CRS 5 = 62282 + 97.50 + 92.20 (C.Box 62 / Poly 22 keyed
+  on Monthly Entry 2026-09-30) = 62471.70 against 62472 → +0.30. Golden
+  dump: only `*_crs_daily_sale.html` changes (its TOTAL-row EXCESS cell).
 
 ## Remittance — who may change what
 
