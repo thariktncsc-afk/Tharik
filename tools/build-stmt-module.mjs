@@ -72,6 +72,10 @@ const PRELUDE = `
   // The saved Commodity Master (__commodityMaster): stmtRateOf prices the
   // Daily Sale sheet and the reconciliation at its rates (44-remit-total.js).
   var STMT_COMMODITY_MASTER = ctx.commodityMaster || null;
+  // A month's Opening BAG counts carried from last month's Closing bags
+  // (src/lib/engine/bagChain.ts, handed in by the server): (key, sec, id) →
+  // a number, or null where nothing carries (45-bag-counts.js).
+  var STMT_BAG_OPENING = typeof ctx.bagOpening === 'function' ? ctx.bagOpening : null;
 __DSS_LISTS__
   var STAFF_NAME_BLANK  = '________________';                       // 01-core.js
   var STAFF_PHONE_BLANK = '__________';

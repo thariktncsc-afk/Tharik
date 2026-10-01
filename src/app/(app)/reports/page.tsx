@@ -20,11 +20,11 @@ import { useAuth } from '@/lib/authClient';
 import { useStore } from '@/lib/dataStore';
 import { appAlert } from '@/components/dialog';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
-import { useCommodityMaster, useShops } from '@/lib/masters';
+import { commodityListsFor, useCommodityMaster, useShops } from '@/lib/masters';
 import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow } from '@/lib/engine/pvStatement';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
-import { quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
+import { pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 import OapStatement from './OapStatement';
@@ -218,8 +218,18 @@ export default function ReportsPage() {
       });
     }
     const agg = pvAggregatePeriod([crsId], pvPeriod.months, { entryStore, receiptStore, monthlyStore }, pvCommodityScope(crsId));
-    const first = pvPeriod.months[0];
-    const gunny = meGunnyStore[`${crsId}_${first.month}_${first.year}`] ?? {};
+    // Gunny exactly as Gunny Stock Management shows it, month by month, put
+    // together like the commodity rows: Opening from the period's first month
+    // with data, Receipt and Issues added up (pvQuarter.ts pvPeriodGunny). It
+    // used to print the raw stored record of the period's FIRST month only —
+    // a quarter starting on a month with no record printed every Gunny 0.
+    const gunny = pvPeriodGunny(
+      crsId,
+      pvPeriod.months,
+      { entryStore, inspectionStore, meManualStore, receiptStore: receiptStore as unknown[], meGunnyStore: meGunnyStore as never, salesCloseStore },
+      (m) => !!monthlyStore[`${crsId}_${m.month}_${m.year}`] || !!meGunnyStore[`${crsId}_${m.month}_${m.year}`],
+      commodityListsFor(commodityMaster, crsId),
+    );
     return buildPVTable({
       commMap: agg.commMap,
       periodLabel: pvPeriod.rangeLabel,
@@ -231,7 +241,7 @@ export default function ReportsPage() {
         pvDate: pvOfficer.date,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, entryStore, receiptStore, monthlyStore, meGunnyStore, generated]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated]);
 
   /**
    * The current month of a manual 3-month PV, worked out from the stores as

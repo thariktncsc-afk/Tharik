@@ -101,8 +101,12 @@ console.log('\nPDF — Remittance, Sale Tax and COLL fill their page');
       /class="stmt-fill"[^>]*data-fill-stretch="1"/.test(doc) && doc.includes(s.html));
     check(`${id}: …and the print window runs the fill before printing`, /<script>\(function fillSheets[\s\S]*data-fill-stretch/.test(doc));
   }
+  // B6 was the example here until the office named it to fill its page
+  // (2026-10-01, pageSetup.ts growsToPage); Cost Com is still left as it is.
+  const costCom = P.buildPrintDocument('T', '', [{ ...sectionOf('crs19_cost_com.html'), id: 'cost_com' }]);
+  check('a fit-to-page statement the office did not name is left at its own size', !/class="stmt-fill"/.test(costCom));
   const b6 = P.buildPrintDocument('T', '', [{ ...sectionOf('crs19_b6.html'), id: 'b6' }]);
-  check('a fit-to-page statement the office did not name is left at its own size', !/stmt-fill/.test(b6));
+  check('B6 (named by the office) grows and stretches to fill its page', /class="stmt-fill"[^>]*data-fill-stretch="1" data-fill-grow="1"/.test(b6) && b6.includes(sectionOf('crs19_b6.html').html));
 }
 
 console.log('\nPDF — A4, not A3');

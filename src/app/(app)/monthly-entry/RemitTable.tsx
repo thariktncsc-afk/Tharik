@@ -28,7 +28,7 @@
  * with Daily Entry, the DSS or the statements. It saves immediately; nothing
  * waits for the month-close. Shop users see the table exactly as before.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { crsData } from '@/lib/dataStore';
 import { useAuth } from '@/lib/authClient';
 import { appAlert, appConfirm } from '@/components/dialog';
@@ -53,6 +53,7 @@ import { remitMonthProblems, type MonthCtx, type RemitDay, type RemitExtra, type
 import DateField from '@/components/DateField';
 import { dmy } from '@/lib/dateFormat';
 import ReconcileNotice from '@/components/ReconcileNotice';
+import { AMT_ATTR, remitFocus, remitInput, remitKeyDown } from './remitNav';
 
 const inr = (n: number) => '₹' + n.toFixed(2);
 
@@ -340,7 +341,7 @@ export default function RemitTable({
           <span style={{ fontWeight: 600 }}>{salesLabel}</span>
           <span style={{ color: 'var(--muted)', fontSize: 10, marginLeft: 6 }}>{dow}</span>
         </td>
-        <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF', textAlign: 'center' }}>
+        <td data-remit-cell="date" style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF', textAlign: 'center' }}>
           <DateField value={d.remitDate ?? ''} onChange={(v) => writeDay(day, 'remitDate', v)} style={{ border: '1px solid #BAE6FD', borderRadius: 6, padding: '4px 7px', fontSize: 11, color: '#0369A1', background: '#F0F9FF', width: 130 }} />
         </td>
         <td style={{ padding: '4px 6px', borderBottom: '1px solid #EFF6FF' }}>
@@ -350,6 +351,8 @@ export default function RemitTable({
             step={0.01}
             placeholder="0.00"
             defaultValue={nonCereal !== '' ? Number(nonCereal).toFixed(2) : ''}
+            {...{ [AMT_ATTR]: '' }}
+            enterKeyHint="next"
             onChange={(e) => writeDay(day, 'nonCereal', e.target.value)}
             style={{ width: '100%', border: '1px solid #BAE6FD', borderRadius: 6, padding: '5px 8px', fontSize: 12, textAlign: 'right', fontWeight: 700, color: '#0369A1', background: '#F0F9FF' }}
           />
@@ -400,7 +403,7 @@ export default function RemitTable({
             />
           )}
         </td>
-        <td style={{ padding: '4px 6px', borderBottom: bd, textAlign: 'center' }}>
+        <td data-remit-cell="date" style={{ padding: '4px 6px', borderBottom: bd, textAlign: 'center' }}>
           <DateField value={dt} onChange={(v) => writeExtra(`e${n}date`, v)} style={{ border: `1px solid ${inputBd}`, borderRadius: 6, padding: '4px 7px', fontSize: 11, color: inputCol, background: inputBg, width: 130 }} />
         </td>
         <td style={{ padding: '4px 6px', borderBottom: bd }}>
@@ -410,6 +413,8 @@ export default function RemitTable({
             step={0.01}
             placeholder="0.00"
             defaultValue={nc !== undefined && nc !== '' ? Number(nc).toFixed(2) : ''}
+            {...{ [AMT_ATTR]: '' }}
+            enterKeyHint="next"
             onChange={(e) => writeExtra(`e${n}nc`, e.target.value)}
             style={{ width: '100%', border: `1px solid ${inputBd}`, borderRadius: 6, padding: '5px 8px', fontSize: 12, textAlign: 'right', fontWeight: 700, color: inputCol, background: inputBg }}
           />
@@ -437,6 +442,30 @@ export default function RemitTable({
   const [status, setStatus] = useState<{ key: string; msg: string; tone: 'ok' | 'warn' } | null>(null);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
+
+  // A wheel turn over a focused amount box scrolls the page; it never steps
+  // the figure (a number input's own behaviour). Non-passive, so the
+  // browser's stepping can be cancelled.
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const onWheel = (e: WheelEvent) => {
+      const t = e.target as HTMLElement;
+      if (!(t instanceof HTMLInputElement) || !t.hasAttribute(AMT_ATTR) || document.activeElement !== t) return;
+      e.preventDefault();
+      for (let p = t.parentElement; p; p = p.parentElement) {
+        const oy = getComputedStyle(p).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) {
+          p.scrollBy({ top: e.deltaY, left: e.deltaX });
+          return;
+        }
+      }
+      window.scrollBy({ top: e.deltaY, left: e.deltaX });
+    };
+    body.addEventListener('wheel', onWheel, { passive: false });
+    return () => body.removeEventListener('wheel', onWheel);
+  }, []);
   const shownStatus = status?.key === ctx.key ? status : null;
   const saveMonth = async () => {
     if (busy.current) return; // a second tap while the first is being sent
@@ -491,7 +520,8 @@ export default function RemitTable({
               {isAdmin ? <th style={{ ...th, textAlign: 'right' }} title="Administrator: correct, remove or add a deposit">Edit</th> : null}
             </tr>
           </thead>
-          <tbody>
+          {/* Enter / ↑ / ↓ down the amounts, ← → between a row's date and amount (remitNav.ts). */}
+          <tbody ref={bodyRef} onKeyDown={remitKeyDown} onFocus={remitFocus} onInput={remitInput}>
             {dayRows}
             {extraRows}
           </tbody>

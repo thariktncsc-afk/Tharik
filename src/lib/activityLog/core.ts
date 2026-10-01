@@ -438,7 +438,7 @@ function manualDraft(key: string, before: unknown, after: unknown, hint: 'edited
       const y = obj(ba[id]);
       for (const [f, label] of MONTH_FIELDS) {
         if (!f.startsWith('g_') || !(f in x || f in y) || x[f] === y[f]) continue;
-        const shown = (v: unknown) => (typeof v === 'number' ? String(v) : 'from kgs');
+        const shown = (v: unknown) => (typeof v === 'number' ? String(v) : f === 'g_open' ? 'carried / from kgs' : 'from kgs');
         changes.push({ label: `${commodityName(id)} · ${label} (bags)`, before: shown(x[f]), after: shown(y[f]) });
         keyed = true;
       }
@@ -539,6 +539,26 @@ function receiptDrafts(before: unknown, after: unknown): ActivityDraft[] {
     const date = String(row.date ?? '');
     const view = (r: Loose) => ({ 'Receipt no': r.receiptNo, Type: r.type === 'advance' ? 'Advance' : 'Regular', Date: dmy(String(r.date ?? '')), ...obj(r.items) });
     const changes = genericChanges(x ? view(x) : undefined, y ? view(y) : undefined);
+    // An administrator's date correction (engine/receiptDate.ts): the same
+    // receipt moved to another date — named so, with its number and both dates.
+    if (x && y && String(x.date ?? '') !== String(y.date ?? '')) {
+      const rest = changes.filter((c) => c.label !== 'Date');
+      out.push({
+        crsId: Number(row.crsId) || null,
+        entryDate: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
+        recordKey: id,
+        module: 'Receipt',
+        action: 'updated',
+        source: 'user',
+        summary: `Receipt Date Changed — ${String(row.receiptNo ?? id)}: ${dmy(String(x.date ?? ''))} → ${dmy(String(y.date ?? ''))}`,
+        changes: [
+          { label: 'Receipt no', before: String(x.receiptNo ?? id), after: String(y.receiptNo ?? id) },
+          { label: 'Receipt date', before: dmy(String(x.date ?? '')), after: dmy(String(y.date ?? '')) },
+          ...rest,
+        ],
+      });
+      continue;
+    }
     out.push({
       crsId: Number(row.crsId) || null,
       entryDate: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
