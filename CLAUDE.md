@@ -607,6 +607,34 @@ from `engine/entryDates.ts`:
 - Checked at 320 / 375 / 390 / 414 / 430: no sideways scroll, header fits, bell
   12px from the edge (the badge sticks out 6px), panel on screen.
 
+### Last month's Closing is this month's Opening — for administrators too
+
+Office, 2026-10-01 (`npm run verify:carry-forward`). CRS 5 October 2026, an
+administrator on Monthly Entry: every Opening box 0.000 although September
+had closed. `rowFor` worked the carry out only for a shop user's LOCKED
+Opening; an administrator's box showed a typed or saved figure, and a month
+nobody had saved has neither — a month-close would have saved the zeros.
+- Where the month holds **no saved row** for the commodity, the Opening is
+  the carry for everyone: the stock chain's balance on the 1st, else last
+  month's published Closing (`prevMerged` — a month keyed by month and not
+  yet closed has no sheet for the chain: CRS 23, September BRA 1000). A
+  typed or saved Opening still wins; the box shows the figure that will be
+  saved; the sales-only bag rows (Empty Card+Box / Polythene Bag) keep the
+  chain's 0 — their stock is Gunny's. The rule for shop staff is unchanged.
+- **Gunny**: October opens at September's STORED Closing (`gunnyRowFor`),
+  and 20 shops' September copies lagged their sales (CRS 11 50 KG SS 870 vs
+  1291; CRS 7 none vs 311). `refresh-gunny --month=9 --year=2026 --write`
+  was run on 2026-10-01 (office's go-ahead; derived copies only, backed up
+  `backups/refresh-gunny-9-2026-…`); it now compares figures, not
+  `updatedAt`, so a re-run writes nothing.
+- Localhost, live copy: CRS 5, 1, 11, 23, 29, 14, 7 October — every
+  commodity Opening and SS / Poly / C.Box = September's Closing, as admin
+  and as CRS 1's Bill Clerk; after a refresh, leave-and-return, a shop
+  change, and a month-close (CRS 5 BRA saved 2173) reopened.
+- Not changed: CRS 10's September Salt rows are a hand-keyed month row
+  (Opening / Closing 100) beside its day sheets; the chain does not see it,
+  so October carries 0 there — the office's to settle.
+
 ## Holidays — one engine
 
 `src/lib/engine/holidays.ts` decides every date: a **government holiday on
@@ -2263,6 +2291,7 @@ npm run verify:remit-total       every statement's remittance (Page 2, Cost Com,
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
 npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, kept by every republish and by Gunny Save, logged
+npm run verify:carry-forward    previous month Closing → this month Opening on Monthly Entry, for administrators too; chain, then last month published
 npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
 npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
