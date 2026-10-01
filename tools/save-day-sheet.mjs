@@ -38,6 +38,11 @@
  *        (openFixed), as Daily Entry saves an Initial Opening, so a day keyed
  *        before it later cannot carry it away. Every commodity not named opens
  *        at 0.
+ *   --open-bags=ID:n,…   the Opening BAG counts as Monthly Sales keys them on
+ *        a from-Daily row (meManualStore[key].dailyBags, monthlyRollup.ts
+ *        DailyBags) — Monthly Entry's own save of those boxes: only a count
+ *        that differs from kgs ÷ pack size is kept, one equal to it follows
+ *        the kgs as before. Statements read the same record (45-bag-counts.js).
  *   --gunny-open=ss50:n,poly:n,cbox:n   the month's Gunny Stock Opening, as an
  *        administrator types it on the Gunny table (openingAuto false); an
  *        item not named keeps what it has (blank → carried / 0).
@@ -103,9 +108,10 @@ const { recordActivity } = await imp('lib/activityLog/server.ts');
 const { reconcileShops } = await imp('lib/stockInitServer.ts');
 const { refreshGunnyMonths } = await imp('app/(app)/monthly-entry/lib.ts');
 const { packTypesFor } = await imp('lib/engine/gunnyPack.ts');
+const { bagsOf } = await imp('lib/engine/commodities.ts');
 
 const STORES = ['entryStore', 'inspectionStore', 'receiptStore', 'meManualStore', 'meSourceStore', 'monthlyStore', 'meGunnyStore', 'salesCloseStore', '__counters', '__commodityMaster', '__stockInit'];
-const WRITABLE = ['entryStore', 'inspectionStore', 'receiptStore', 'meSourceStore', 'monthlyStore', 'meGunnyStore', '__counters'];
+const WRITABLE = ['entryStore', 'inspectionStore', 'receiptStore', 'meManualStore', 'meSourceStore', 'monthlyStore', 'meGunnyStore', '__counters'];
 const EMPTY = { receiptStore: [], __counters: {} };
 const canon = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -136,6 +142,11 @@ async function main() {
   const expect = pairs('expect');
   const opens = pairs('open');
   const gunnyOpen = pairs('gunny-open');
+  const openBags = pairs('open-bags');
+  if (Object.values(openBags).some((v) => !Number.isInteger(v) || v < 0)) {
+    console.error('Refused: --open-bags takes ID:n with n a whole number of bags, 0 or more.');
+    return 2;
+  }
   if (Object.values(opens).some((v) => !Number.isFinite(v) || v < 0) || Object.values(gunnyOpen).some((v) => !Number.isFinite(v) || v < 0) || Object.keys(gunnyOpen).some((k) => !['ss50', 'poly', 'cbox'].includes(k))) {
     console.error('Refused: --open / --gunny-open take ID:qty with qty 0 or more; --gunny-open items are ss50 / poly / cbox.');
     return 2;
@@ -178,7 +189,7 @@ async function main() {
     }
   }
   const lists = commodityListsFor(stored.__commodityMaster ?? null, crsId);
-  const unknown = [...new Set([...Object.keys(sales), ...Object.keys(receipt), ...Object.keys(shortage), ...Object.keys(expect), ...Object.keys(opens)])].filter((id) => ![...lists.a, ...lists.b].some((c) => c.id === id));
+  const unknown = [...new Set([...Object.keys(sales), ...Object.keys(receipt), ...Object.keys(shortage), ...Object.keys(expect), ...Object.keys(opens), ...Object.keys(openBags)])].filter((id) => ![...lists.a, ...lists.b].some((c) => c.id === id));
   const policeShort = Object.keys(shortage).filter((id) => lists.b.some((c) => c.id === id));
   if (policeShort.length) {
     console.error(`Refused: police ration has no shortage: ${policeShort.join(', ')}`);
@@ -257,15 +268,35 @@ async function main() {
 
   // ── What the save then does to the stores ────────────────────────────────
   next.entryStore[key] = snap;
+  // Monthly Sales' Opening bag counts for the month (its save of a from-Daily
+  // row's bag boxes): kept only where they differ from kgs ÷ pack size.
+  const typedBags = [];
+  if (Object.keys(openBags).length) {
+    const mk = `${crsId}_${m}_${y}`;
+    const rec = clone(next.meManualStore[mk] ?? { a: {}, b: {} });
+    for (const [cid, n] of Object.entries(openBags)) {
+      const sec = lists.a.some((c) => c.id === cid) ? 'a' : 'b';
+      const auto = bagsOf(snap[sec][cid].open, cid);
+      const bags = { ...(rec.dailyBags?.[sec]?.[cid] ?? {}) };
+      if (n !== auto) bags.g_open = n; else delete bags.g_open;
+      typedBags.push(`${cid} ${n}${n !== auto ? ` (kgs ÷ pack = ${auto}; kept as typed)` : ''}`);
+      rec.dailyBags = { ...(rec.dailyBags ?? {}) };
+      rec.dailyBags[sec] = { ...(rec.dailyBags[sec] ?? {}) };
+      if (Object.keys(bags).length) rec.dailyBags[sec][cid] = bags; else delete rec.dailyBags[sec][cid];
+      if (!Object.keys(rec.dailyBags[sec]).length) delete rec.dailyBags[sec];
+    }
+    if (rec.dailyBags && !Object.keys(rec.dailyBags).length) delete rec.dailyBags;
+    next.meManualStore[mk] = rec;
+  }
   const tookOver = dropProjectedSheet(next.entryStore, crsId, m, y);
   dropProjectedAdjustments(next.inspectionStore, crsId, m, y);
   const drop = dropMonthlyReceipt(next.receiptStore, crsId, m, y);
   if (drop.dropped) next.receiptStore = drop.rows;
-  const month = rebuildMonthlyFromDaily(crsId, m, y, next.entryStore, next.inspectionStore, stored.meManualStore?.[`${crsId}_${m}_${y}`], lists, next.receiptStore);
+  const month = rebuildMonthlyFromDaily(crsId, m, y, next.entryStore, next.inspectionStore, next.meManualStore?.[`${crsId}_${m}_${y}`], lists, next.receiptStore);
   next.monthlyStore[`${crsId}_${m}_${y}`] = month.merged;
   next.meSourceStore[`${crsId}_${m}_${y}`] = month.source;
   const from = corrections.reduce((d, c) => (c.date < d ? c.date : d), date);
-  const chained = rechainAndRepublish({ ...next, meManualStore: stored.meManualStore }, crsId, from, lists);
+  const chained = rechainAndRepublish(next, crsId, from, lists);
   for (const [k, v] of Object.entries(chained.patch)) next[k] = v;
   // Gunny Stock follows the saved sales, as after Daily Entry's own save
   // (lib/gunnyRefresh.ts): every month the save moved, and the carried
@@ -288,6 +319,7 @@ async function main() {
   for (const r of shown) console.log(`  ${r.en.padEnd(18)} OB ${r.open}  + Rcp ${r.receipt}  = Total ${r.total}  − Sales ${r.sales}  = CB ${+r.close.toFixed(3)}   ${r.rate === 'free' ? 'free' : `@ ${r.rate} = ₹${r.amount.toFixed(2)}`}`);
   const amt = Object.values(snap.a).concat(Object.values(snap.b)).reduce((t, r) => t + (r.amount || 0), 0);
   console.log(`  Sales amount ₹${amt.toFixed(2)} · deposit ${remits.length ? `₹${remit.toFixed(2)} dated ${remitDate} (Non-Cereal)` : 'none'}`);
+  if (typedBags.length) console.log(`  Opening bags (Monthly Sales): ${typedBags.join(', ')}`);
   if (Object.keys(shortage).length) console.log(`  shortage (inspection ${date}): ${Object.entries(shortage).map(([cid, q]) => `${cid} ${q}`).join(', ')}`);
   if (Object.keys(receipt).length) console.log(`  Receipt Register: ${receiptNo} dated ${date}, ${Object.keys(receipt).filter((cid) => receipt[cid] > 0).length} commodities`);
   {

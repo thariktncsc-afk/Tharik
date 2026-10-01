@@ -62,6 +62,7 @@
     "verify:bag-counts": "node tools/verify-bag-counts.mjs",
     "verify:commodity-scope": "node tools/verify-commodity-scope.mjs",
     "verify:carry-forward": "node tools/verify-carry-forward.mjs",
+    "verify:oap-statement": "node tools/verify-oap-statement.mjs",
     "verify:print-layout": "node tools/verify-print-layout.mjs",
     "verify:print-pdf": "node tools/verify-print-pdf.mjs"
   },
