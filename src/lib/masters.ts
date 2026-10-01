@@ -19,9 +19,15 @@ import { useMemo } from 'react';
 import { useStore } from '@/lib/dataStore';
 import { CRS29_ENTRY_A, CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity } from '@/lib/engine/commodities';
 import { SHOPS, type Shop } from '@/lib/engine/shops';
+import { inScope } from '@/lib/engine/commodityScope';
 
 export type ShopRow = { code?: string; name: string; cards?: number; taluk?: string; district?: string; active?: boolean };
-export type CommodityRow = Commodity & { section: 'a' | 'b'; order: number; active: boolean; crs29Only?: boolean };
+/**
+ * scope / shopId (office, 2026-10-01): a row is for every shop unless it says
+ * `scope: 'shop', shopId: N` — then CRS N alone sees it, at its Order.
+ * Rows without a scope are All Shops (engine/commodityScope.ts).
+ */
+export type CommodityRow = Commodity & { section: 'a' | 'b'; order: number; active: boolean; crs29Only?: boolean; scope?: 'all' | 'shop'; shopId?: number };
 
 /** All 30 shops in CRS order — names from the database, falling back to the compiled list. */
 export function useShops(): Shop[] {
@@ -38,11 +44,31 @@ export function useCommodityMaster(): CommodityRow[] | null {
   return rows && rows.length ? rows : null;
 }
 
-const bySection = (rows: CommodityRow[], sec: 'a' | 'b'): Commodity[] =>
+const plain = ({ id, ta, en, unit, rate, free }: CommodityRow): Commodity => ({ id, ta, en, unit, rate: Number(rate) || 0, free: !!free });
+
+/** One section for one shop: the global rows + this shop's own, in Order. */
+const bySection = (rows: CommodityRow[], sec: 'a' | 'b', crsId: number | null | undefined): Commodity[] =>
   rows
-    .filter((c) => c.section === sec && c.active !== false && !c.crs29Only)
+    .filter((c) => c.section === sec && c.active !== false && !c.crs29Only && inScope(c, crsId))
     .sort((a, b) => a.order - b.order)
-    .map(({ id, ta, en, unit, rate, free }) => ({ id, ta, en, unit, rate: Number(rate) || 0, free: !!free }));
+    .map(plain);
+
+/**
+ * The camp's fixed list, with any commodity assigned to CRS 29 itself put in
+ * at its Order — before the first camp line whose Order is higher.
+ */
+const withOwn = (base: Commodity[], rows: CommodityRow[], crsId: number): Commodity[] => {
+  const own = rows.filter((c) => c.scope === 'shop' && Number(c.shopId) === crsId && c.active !== false && c.section === 'a').sort((a, b) => a.order - b.order);
+  if (!own.length) return base;
+  const orderOf = (id: string) => rows.find((c) => c.id === id)?.order ?? Number.MAX_SAFE_INTEGER;
+  const out = [...base];
+  for (const c of own) {
+    if (out.some((x) => x.id === c.id)) continue;
+    const at = out.findIndex((x) => orderOf(x.id) > c.order);
+    out.splice(at === -1 ? out.length : at, 0, plain(c));
+  }
+  return out;
+};
 
 const pickIds = (rows: CommodityRow[], ids: string[]): Commodity[] =>
   ids
@@ -58,8 +84,8 @@ const pickIds = (rows: CommodityRow[], ids: string[]): Commodity[] =>
  */
 export function commodityListsFor(master: CommodityRow[] | null, crsId: number | null | undefined): { a: Commodity[]; b: Commodity[] } {
   if (!master) return isCrs29(crsId) ? { a: CRS29_ENTRY_A, b: [] } : { a: DSS_A, b: DSS_B };
-  if (isCrs29(crsId)) return { a: pickIds(master, CRS29_ENTRY_A.map((c) => c.id)), b: [] };
-  return { a: bySection(master, 'a'), b: bySection(master, 'b') };
+  if (isCrs29(crsId)) return { a: withOwn(pickIds(master, CRS29_ENTRY_A.map((c) => c.id)), master, 29), b: [] };
+  return { a: bySection(master, 'a', crsId), b: bySection(master, 'b', crsId) };
 }
 
 /** Entry-screen lists (Daily/Monthly): the camp keys its own list, no police. */
@@ -73,8 +99,8 @@ export function useStockLists(crsId: number | null | undefined): { a: Commodity[
   const master = useCommodityMaster();
   return useMemo(() => {
     if (!master) return isCrs29(crsId) ? { a: CRS29_STOCK, b: [] } : { a: DSS_A, b: DSS_B };
-    if (isCrs29(crsId)) return { a: pickIds(master, CRS29_STOCK.map((c) => c.id)), b: [] };
-    return { a: bySection(master, 'a'), b: bySection(master, 'b') };
+    if (isCrs29(crsId)) return { a: withOwn(pickIds(master, CRS29_STOCK.map((c) => c.id)), master, 29), b: [] };
+    return { a: bySection(master, 'a', crsId), b: bySection(master, 'b', crsId) };
   }, [master, crsId]);
 }
 

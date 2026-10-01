@@ -4402,11 +4402,18 @@ function c29StockGrid(d, withMoney){
 
   CRS29_ROWS.forEach(function(row, i){
     var v = c29row(d, row);
+    // Bags are the ones Monthly Sales shows (45-bag-counts.js, office 2026-10-01):
+    // a saved count wins, Total = Opening + Receipt, Closing = Total − Sales.
+    // They used to be the kgs ÷ pack every time, so a saved RRA Opening of 3
+    // printed 2 and every Closing was the kgs Closing ÷ pack. CYL, which the
+    // app does not stock, stays the kgs ÷ pack (0).
+    var B = row.id ? stmtBagCounts(d, row.id)
+      : {open: c29bags(v.open, row.div), receipt: c29bags(v.receipt, row.div), total: c29bags(v.total, row.div), sales: c29bags(v.sales, row.div), close: c29bags(v.close, row.div)};
     var cells =
-      '<td>' + c29n(c29bags(v.open, row.div))    + '</td><td>' + c29n(v.open)    + '</td>' +
-      '<td>' + c29n(c29bags(v.receipt, row.div)) + '</td><td>' + c29n(v.receipt) + '</td>' +
-      '<td>' + c29n(c29bags(v.total, row.div))   + '</td><td>' + c29n(v.total)   + '</td>' +
-      '<td>' + c29n(c29bags(v.sales, row.div))   + '</td><td>' + c29n(v.sales)   + '</td>';
+      '<td>' + c29n(B.open)    + '</td><td>' + c29n(v.open)    + '</td>' +
+      '<td>' + c29n(B.receipt) + '</td><td>' + c29n(v.receipt) + '</td>' +
+      '<td>' + c29n(B.total)   + '</td><td>' + c29n(v.total)   + '</td>' +
+      '<td>' + c29n(B.sales)   + '</td><td>' + c29n(v.sales)   + '</td>';
     var amt = row.rate ? v.sales * row.rate : 0;
     amtTotal += amt;
     if(money){
@@ -4415,17 +4422,17 @@ function c29StockGrid(d, withMoney){
     } else {
       cells += '<td></td>';
     }
-    cells += '<td>' + c29n(c29bags(v.close, row.div)) + '</td><td>' + c29n(v.close) + '</td>';
+    cells += '<td>' + c29n(B.close) + '</td><td>' + c29n(v.close) + '</td>';
     n++;
     body += '<tr><td>' + n + '</td><td class="l">' + row.label + '</td>' + cells + '</tr>';
 
     // The sheet totals the two rice lines together, directly under them.
     if(row.id === 'BRA' || row.id === 'RRA'){
-      riceTot.ob += c29bags(v.open, row.div);  riceTot.obk += v.open;
-      riceTot.rc += c29bags(v.receipt, row.div); riceTot.rck += v.receipt;
-      riceTot.to += c29bags(v.total, row.div); riceTot.tok += v.total;
-      riceTot.sa += c29bags(v.sales, row.div); riceTot.sak += v.sales;
-      riceTot.cb += c29bags(v.close, row.div); riceTot.cbk += v.close;
+      riceTot.ob += B.open;    riceTot.obk += v.open;
+      riceTot.rc += B.receipt; riceTot.rck += v.receipt;
+      riceTot.to += B.total;   riceTot.tok += v.total;
+      riceTot.sa += B.sales;   riceTot.sak += v.sales;
+      riceTot.cb += B.close;   riceTot.cbk += v.close;
     }
     if(row.id === 'RRA'){
       body += '<tr class="sub"><td></td><td class="l">RICE TOTAL</td>' +
