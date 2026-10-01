@@ -1073,6 +1073,62 @@ copies (kgs Total ÷ pack), not the grid's arithmetic.
   Preview = PDF on all five bag columns; a preview left open went 53 → 54
   when another tab saved.
 
+### Bag counts carry: last month's Closing bags are this month's Opening
+
+Office, 2026-10-01 (`src/lib/engine/bagChain.ts`, `npm run verify:bag-carry`).
+CRS 23: September's BRA Opening bags were saved as 47 (2316.998 kg ÷ 50 =
+46) and closed at 47, and October opened at **46**. Every Opening bag count
+nobody had typed was worked out again from the kgs. A bag count is a stock
+figure of its own:
+
+    Opening bags + Receipt bags = Total bags
+    Total bags − Sales bags (− C.S bags) = Closing bags
+    last month's Closing bags = this month's Opening bags
+
+- **Opening = last month's Closing bags**, worked out month by month from
+  the shop's first month (`carriedBagsFor`; a month holding nothing passes
+  it through). Never from the kgs.
+- **A typed Opening wins**: on a "from Daily" row it is `dailyBags.g_open`,
+  kept only where it differs from the carry. On a hand-keyed row the
+  month-close marks it `g_openFixed`. A hand-keyed row saved WITHOUT the
+  mark follows the carry: its stored `g_open` is a copy, not read. So a
+  September change reaches October, and nothing stored goes stale.
+- **Only in a shop's FIRST month** (nothing earlier to carry from) is the
+  Opening what it always was: typed or imported, else kgs ÷ pack. Live
+  2026-10-01: September is every shop's first month, so September is
+  unchanged everywhere.
+- **Receipt and Sales bags are unchanged**: typed, else the office's stored
+  count, else kgs ÷ pack. They are movements keyed with their kgs, and the
+  Gunny Receipt adds up the Sales bags.
+- **Rows that carry nothing**: Empty Card+Box / Polythene Bag, whose stock
+  is Gunny's, and the police rows with no bag boxes (`NO_GUNNY`).
+- **One rule everywhere it shows.** Monthly Sales' `rowFor` and its save
+  both use `bagRowFor`. The statements get each month's Opening from the
+  server: `loadStatementEngine` hands the engine `ctx.bagOpening` =
+  `bagOpeningLookup(stores)`, and `stmtBagCounts` (45-bag-counts.js) takes
+  it over its own rule. That covers Page 2, Free Com, Cost Com, B6 and CRS
+  29's sheets. With no lookup (the goldens), or where it says nothing, the
+  builders' rule stands, so `verify:statements` is unchanged.
+- **No stored data needed fixing**: live holds September only (every
+  shop), and nothing is stored for October; the carry is worked out when
+  read. October Openings that move from kgs ÷ pack to September's Closing
+  bags (read only, 2026-10-01): **80 rows in 24 shops**, by ±1 mostly
+  (CRS 19 BRA 71 → 72, CRS 23 BRA 46 → 47 / SUGAR 13 → 14 / WHEAT 10 → 11).
+  Two September Closings are **−1** (CRS 20 AAY SUGAR, CRS 30 PHH FRK):
+  more bags sold than held by count. They carry as −1, which is what
+  Monthly Sales already shows as September's Closing, and are the office's
+  to correct.
+- All 615 shop-commodity rows: October Opening = September Closing. All 1,584
+  September + October rows add up (OB + RC = TOT, TOT − SAL − C.S = CB).
+- Localhost, live copy, each write judged by the real guard:
+  - CRS 23 October opened 47.
+  - September Sales bags 46 → Save → September CB 1 → October OB 1, on
+    Monthly Sales, Page 2 Preview and the PDF. Gunny Receipt 46.
+  - Same after Dashboard and back, a refresh, and CRS / month changes.
+  - October Opening +1 / Receipt +1 / Sales +1 moved Total and Closing at
+    once. Saved as `g_openFixed` 2, reopened 2, Preview 2.
+  - CRS 19 October opens at September's 72.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1629,9 +1685,9 @@ record (`45-bag-counts.js`).
   Read back: the day sheet, Monthly Sales (kgs and bags, after leaving and
   returning), Gunny, and the CRS Page 2 / B6 / Gunny / CRS Police PDFs. Only
   CRS 23's keys changed. Backup `backups/day-sheet-23_2026-09-01-…`.
-  **Not carried into October:** October's Opening bags are worked out from
-  the kgs again (BRA 46, not September's Closing 47). That is the existing
-  rule for typed bag counts; it is left for the office to decide.
+  **Carried into October since the same day** (see "Bag counts carry"):
+  October opens at September's Closing bags, BRA 47. It was worked out from
+  the kgs again (46), which was then the existing rule for typed bag counts.
 - **CRS 27, from 01-09-2026** (office, 2026-09-30; CRS 27 held no stock data
   and was not started): BRA 3908, PHH BRA 850, PHH FRK 1500.062, NPHH FRK
   5000.062, AAY 105, AAY FRK 154.010, RRA 1000, NPHH RRA 0.030, SUGAR
@@ -2353,6 +2409,7 @@ npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, ke
 npm run verify:oap-statement    Reports OAP / APS / ANP: shops with an entry only, Monthly Sales figures, family from the master, one A4 landscape page per shop
 npm run verify:carry-forward    previous month Closing → this month Opening on Monthly Entry, for administrators too; chain, then last month published
 npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
+npm run verify:bag-carry        bags carry: last month's Closing bags = this month's Opening, typed Opening wins, first month unchanged, statements via ctx.bagOpening
 npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page

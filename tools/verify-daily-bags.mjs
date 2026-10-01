@@ -113,14 +113,15 @@ check(`Gunny Receipt counts the typed Sales: BRA ${monthSalesBags(after.merged).
 console.log('\n6. The activity log records it');
 const drafts = diffStateWrite({ meManualStore: { [KEY]: { a: {}, b: {} } } }, { meManualStore: { [KEY]: typed } }, { meManualStore: { [KEY]: 'closed' } });
 const lines = drafts.flatMap((d) => d.changes ?? []).map((c) => `${c.label}: ${c.before} → ${c.after}`);
-check(`a Monthly Entry row names both counts (${lines.join('; ')})`, lines.some((l) => /Gunny Opening \(bags\): from kgs → 30/.test(l)) && lines.some((l) => /Gunny Sales \(bags\): from kgs → 60/.test(l)));
+check(`a Monthly Entry row names both counts (${lines.join('; ')})`, lines.some((l) => /Gunny Opening \(bags\): carried \/ from kgs → 30/.test(l)) && lines.some((l) => /Gunny Sales \(bags\): from kgs → 60/.test(l)));
 check('a save that changes nothing logs nothing', diffStateWrite({ meManualStore: { [KEY]: typed } }, { meManualStore: { [KEY]: structuredClone(typed) } }).length === 0);
 
 console.log('\n7. Wiring');
 const page = readFileSync(join(root, 'src/app/(app)/monthly-entry/page.tsx'), 'utf8');
-check('the month-close no longer drops a daily row\'s bag boxes', /if \(r\.derived\) \{[\s\S]{0,900}dailyBags\[sec\][\s\S]{0,80}continue;/.test(page) && /manual\.dailyBags = dailyBags/.test(page));
-check('only a count that differs from kgs ÷ pack size is stored', /r\.g\[f\] !== bagsOf\(kg, r\.c\.id\)/.test(page));
-check('the grid shows a saved daily count', /typedBags = derived \?/.test(page) && /typeof typedBag === 'number'/.test(page));
+check('the month-close no longer drops a daily row\'s bag boxes', /if \(r\.derived\) \{[\s\S]{0,1400}dailyBags\[sec\][\s\S]{0,80}continue;/.test(page) && /manual\.dailyBags = dailyBags/.test(page));
+check('only a count that differs from its default is stored (Opening: last month\'s Closing bags; Receipt / Sales: kgs ÷ pack)', /r\.g\.open !== r\.gOpenDefault/.test(page) && /r\.g\[f\] !== bagsOf\(kg, r\.c\.id\)/.test(page));
+const chainSrc = readFileSync(join(root, 'src/lib/engine/bagChain.ts'), 'utf8');
+check('the grid shows a saved daily count (bagRowFor reads dailyBags)', /bagRowFor\(sec, c\.id, rec, src, meManualStore\[key\]/.test(page) && /typed = derived \? manual\?\.dailyBags/.test(chainSrc));
 const sync2 = readFileSync(join(root, 'src/lib/engine/gunnySync.ts'), 'utf8');
 check('Gunny Save\'s sync spreads the month record before rewriting a / b', /meManualStore\[key\] = \{ \.\.\.meManualStore\[key\], a:/.test(sync2));
 

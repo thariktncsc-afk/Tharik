@@ -438,7 +438,7 @@ function manualDraft(key: string, before: unknown, after: unknown, hint: 'edited
       const y = obj(ba[id]);
       for (const [f, label] of MONTH_FIELDS) {
         if (!f.startsWith('g_') || !(f in x || f in y) || x[f] === y[f]) continue;
-        const shown = (v: unknown) => (typeof v === 'number' ? String(v) : 'from kgs');
+        const shown = (v: unknown) => (typeof v === 'number' ? String(v) : f === 'g_open' ? 'carried / from kgs' : 'from kgs');
         changes.push({ label: `${commodityName(id)} · ${label} (bags)`, before: shown(x[f]), after: shown(y[f]) });
         keyed = true;
       }

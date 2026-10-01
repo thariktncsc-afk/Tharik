@@ -16,6 +16,7 @@ import { rebuildMonthlyFromDaily } from '@/lib/engine/monthlyRollup';
 import { DEFAULT_SETTINGS, type PaymentSettings } from './pricing';
 import { GATE_KEY, gateRequired, readGate, type GateKind, type PaymentGate } from './gate';
 import { createStatementEngine } from '@/generated/statements-legacy';
+import { bagOpeningLookup } from '@/lib/engine/bagChain';
 
 export type Section = {
   id: string;
@@ -228,8 +229,12 @@ export async function loadStatementEngine(currentUser: unknown): Promise<Stateme
     name: CRS_NAMES[i + 1],
   }));
 
+  // Each month's Opening bags as Monthly Sales shows them (engine/bagChain.ts).
+  const bagOpening = bagOpeningLookup(stores as never);
+
   return createStatementEngine({
     stores,
+    bagOpening,
     users,
     CRS_LIST,
     CRS_MASTER: raw.get('__crsMaster') ?? [],

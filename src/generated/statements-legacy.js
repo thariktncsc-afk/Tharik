@@ -35,6 +35,10 @@ export function createStatementEngine(ctx) {
   // The saved Commodity Master (__commodityMaster): stmtRateOf prices the
   // Daily Sale sheet and the reconciliation at its rates (44-remit-total.js).
   var STMT_COMMODITY_MASTER = ctx.commodityMaster || null;
+  // A month's Opening BAG counts carried from last month's Closing bags
+  // (src/lib/engine/bagChain.ts, handed in by the server): (key, sec, id) →
+  // a number, or null where nothing carries (45-bag-counts.js).
+  var STMT_BAG_OPENING = typeof ctx.bagOpening === 'function' ? ctx.bagOpening : null;
   var DSS_A = [
   {id:'BRA',       ta:'புழுங்கல் அரிசி',        en:'BRA Rice',             unit:'KG',  rate:0,     free:true},
   {id:'NPHH_FRK',  ta:'NPHH FRK அரிசி',       en:'NPHH FRK Rice',        unit:'KG',  rate:0,     free:true},
@@ -5614,6 +5618,10 @@ function stmtReconcile(d){
 //     else kgs ÷ pack size (bagsOf);
 //   Total   = Opening + Receipt
 //   Closing = Total − Sales − C.S bags
+// The OPENING carries from last month's Closing bags (office, 2026-10-01;
+// src/lib/engine/bagChain.ts): the server works it out with the rule Monthly
+// Sales uses and hands it in as STMT_BAG_OPENING; where it says nothing (the
+// shop's first month, a row that carries nothing, no server) the rule above.
 // Every statement that prints a commodity's bags reads it, so the sheet and
 // the screen cannot disagree. The kgs are untouched.
 // ════════════════════════════════════════════════════════════════════════════
@@ -5629,7 +5637,8 @@ function stmtBagCounts(d, id){
     var stored = Math.round(parseFloat(d.getVal(id, 'g_' + f)) || 0);
     return stored > 0 && stored !== auto ? stored : auto;
   }
-  var open = one('open'), receipt = one('receipt'), sales = one('sales');
+  var carried = (typeof STMT_BAG_OPENING === 'function' && STMT_BAG_OPENING && d && d.key) ? STMT_BAG_OPENING(d.key, sec, id) : null;
+  var open = (typeof carried === 'number' && isFinite(carried)) ? carried : one('open'), receipt = one('receipt'), sales = one('sales');
   var cs = Math.round(parseFloat(d.getVal(id, 'g_cs')) || 0);
   var total = open + receipt;
   return { open: open, receipt: receipt, total: total, sales: sales, close: total - sales - cs };
