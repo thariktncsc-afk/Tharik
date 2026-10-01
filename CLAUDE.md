@@ -1602,6 +1602,17 @@ types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
   505, OOTY 340; police BRA 36.5, SUGAR 2, WHEAT 2, T.DHALL 4, P.OIL 1; Gunny
   50 KG SS 1751, POLY 0, C.BOX 0. Started-record 01-09-2026. Backup
   `backups/day-sheet-10_2026-09-01-…`.
+- **CRS 17, September 2026 movement** (office, 2026-10-01, POS summary 01-09 →
+  30-09): RECEIPT AND SALES ONLY (office's instruction) on one sheet dated
+  30-09 — Receipt `POS/17/09/2026` (15 commodities) and the month's Sales.
+  The POS's Openings, its BRA −23 adjustment and its Closings were NOT
+  entered: CRS 17 keeps its own 01-09 Initial Opening, so Closings differ
+  from the POS by exactly the Opening differences (BRA 2592.698 vs the
+  POS's 569.698 = 2000 + the 23 not entered; PHH BRA +2500, NPHH FRK
+  +2126, SUGAR +600, WHEAT +400, T.DHALL +400, AAY +200, AAY SUGAR +8;
+  police BRA +3.454 = the POS's separate P FRK BR line). RRA, PHH FRK, AAY
+  FRK, P.OIL and the other police lines equal the POS. No remittance.
+  Backup `backups/day-sheet-17_2026-09-30-…`.
 - **CRS 10, September 2026 movement** (office, 2026-09-30, POS summary 01-09
   → 30-09): one sheet dated 30-09 with the month's Sales; RRA 600 (on no
   receipt) added as `POS/10/09/2026` dated 30-09; the register's
