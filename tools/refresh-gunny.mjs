@@ -92,7 +92,9 @@ async function main() {
     const merged = rebuildMonthlyFromDaily(crsId, month, year, stored.entryStore ?? {}, stored.inspectionStore ?? {}, stored.meManualStore?.[key], commodityListsFor(stored.__commodityMaster ?? null, crsId), stored.receiptStore ?? []).merged;
     const next = refreshGunnyMonths(gunny, crsId, month, year, { ...(stored.monthlyStore ?? {}), [key]: merged }, (m, y) => packTypesFor(stored.receiptStore ?? [], crsId, m, y));
     if (!next) continue;
-    const keys = Object.keys(next).filter((k) => canon(next[k]) !== canon(gunny[k]));
+    // Figures only: a record re-worked to the same figures differs from the stored one by its updatedAt alone.
+    const figures = (v) => canon(v).replace(/"updatedAt":"[^"]*",?/g, '');
+    const keys = Object.keys(next).filter((k) => figures(next[k]) !== figures(gunny[k]));
     for (const k of keys) {
       const a = gunny[k] ?? {}, b = next[k];
       const line = ITEMS.map((i) => `${i} ${a[i]?.opening ?? '·'}+${a[i]?.receipt ?? '·'}=${a[i]?.total ?? '·'}→${a[i]?.closing ?? '·'}  ⇒  ${b[i]?.opening ?? '·'}+${b[i]?.receipt}=${b[i]?.total}→${b[i]?.closing}`).join(' | ');
