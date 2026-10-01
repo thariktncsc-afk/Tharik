@@ -1795,6 +1795,56 @@ never replaces.
   eight under ADVANCE FOR THE MONTH OF OCT'2026 and keeps them out of its
   closing balance. Backup `backups/receipts-crs10-…`.
 
+### An administrator may change a saved receipt's DATE
+
+Office, 2026-10-01 (`src/lib/engine/receiptDate.ts`, `npm run
+verify:receipt-date`). Example: CRS 23's R/2026/082 was saved under
+23-09-2026. Receipt Register → **📅 Edit Date** (administrators only)
+opens the date box in the row's Date cell, with Save and Cancel.
+- **In place**: same id, Receipt No., type and quantities; only `date`
+  changes (`moveReceiptDate`). No delete-and-add, no duplicate, nothing
+  to approve.
+- **Both dates are republished**, exactly as a save and a delete do on
+  their own date: `republishMonth` for the OLD date, then the NEW, both from
+  the register before the move. That runs `resyncReceiptMonth` (the day
+  sheets, a hand-keyed month's copy, the projection), rebuilds the chain
+  from each date, then Gunny. The DSS, COLL and the statements read the
+  register by date, so they follow on their own.
+- **Validation**: a real date, not after today (the date box keeps a later
+  one out too), not the same date. Monthly Entry's own month row
+  (`source: 'monthly-entry'`) has no button; it is changed on Monthly
+  Entry. The tick only after `saveConfirmed()`; a refusal shows the
+  server's reason. The register's month filter follows the receipt.
+- **Shop staff**: no button, and `/api/state` refuses their write when a
+  saved receipt's date differs (`receiptDateMoves`, 403, an activity row
+  "Refused: …").
+- **Activity Log**: "Receipt Date Changed — R/2026/082: 23-09-2026 →
+  30-09-2026". The row carries the CRS, Receipt no and Receipt date (old →
+  new) as changes, plus who and when. Its entry date is the new date.
+- **A receipt the month's sales relied on can leave a Closing below 0.**
+  Moving it out of the month does not stop for that, for an administrator
+  or for a delete. Localhost, live copy: CRS 23 R/2026/082 30-09 → 01-10
+  took September's BRA Closing 2104 → −1390, because the 30-09 sheet sold
+  5706.998 against both receipts. October opens at −1390 and its Receipt
+  3494 brings it back to 2104.
+- Localhost, live copy, every write judged by the route's own guards (the
+  date rule included):
+  - CRS 23's Bill Clerk sees no Edit Date, and a forged move is refused.
+  - Administrator, R/2026/082 23-09 → 30-09: still one row.
+    - 23-09 no longer counts it; 30-09's sheet Receipt is 5494 (with
+      R/2026/083).
+    - September's Receipt and Closing are unchanged.
+    - DSS September 3 → 2 pages; the log row is written.
+    - Daily Entry for both dates shows it.
+  - It persisted after leaving the page and a refresh.
+  - 30-09 → 01-10: September BRA Receipt 5494 → 2000; October 3494,
+    opening at September's Closing.
+    - DSS October +1 page.
+    - Monthly and Daily Entry agree.
+    - The Receipt statement Preview and PDF list it under October, not
+      September.
+  - A date after today: nothing written. **No live receipt was moved.**
+
 **Correcting a saved receipt line** — `node tools/correct-receipt.mjs --crs=N
 --receipt-no=NO --move=FROM:TO,…` (dry run), then `--write`: moves a line's
 quantity to the commodity it belongs to on ONE receipt (date, number, type
@@ -2409,6 +2459,7 @@ npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, ke
 npm run verify:oap-statement    Reports OAP / APS / ANP: shops with an entry only, Monthly Sales figures, family from the master, one A4 landscape page per shop
 npm run verify:carry-forward    previous month Closing → this month Opening on Monthly Entry, for administrators too; chain, then last month published
 npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
+npm run verify:receipt-date     Receipt Register Edit Date (admin): in place, both dates republished, chain / months / DSS / statements follow, activity row, shop staff refused
 npm run verify:bag-carry        bags carry: last month's Closing bags = this month's Opening, typed Opening wins, first month unchanged, statements via ctx.bagOpening
 npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity

@@ -61,6 +61,7 @@
     "verify:daily-bags": "node tools/verify-daily-bags.mjs",
     "verify:bag-counts": "node tools/verify-bag-counts.mjs",
     "verify:bag-carry": "node tools/verify-bag-carry.mjs",
+    "verify:receipt-date": "node tools/verify-receipt-date.mjs",
     "verify:commodity-scope": "node tools/verify-commodity-scope.mjs",
     "verify:carry-forward": "node tools/verify-carry-forward.mjs",
     "verify:oap-statement": "node tools/verify-oap-statement.mjs",
