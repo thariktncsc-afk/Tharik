@@ -47,14 +47,15 @@ export function fillSheets(root: ParentNode): void {
     // measured as the statement's own size.
     box.style.zoom = '1';
     content.style.width = '';
-    // A GROWING sheet (pageSetup.ts growsToPage — CRS Page 2) is as wide as
-    // the paper already, so zooming alone could not enlarge it. Lay it out
-    // narrower — at the width that, zoomed back out to the page's width, fills
-    // about nine-tenths of the page's height (the rest goes into its rows) —
-    // and back off while any cell would clip its text at that width.
+    // A GROWING sheet (pageSetup.ts growsToPage — CRS Page 2, B6) cannot be
+    // enlarged by zooming alone (Page 2 is already as wide as the paper). Lay
+    // it out narrower — at the width that, zoomed back out to the page's
+    // width, fills the page's height; the zoom makes rows and padding taller
+    // with the type, and any height left goes into its rows — and back off
+    // while any cell would clip its text at that width.
     if (box.getAttribute('data-fill-grow')) {
       const h0 = content.offsetHeight;
-      let g = h0 ? Math.min(1.8, Math.max(1, (h * 0.9) / h0)) : 1;
+      let g = h0 ? Math.min(1.8, Math.max(1, (h * 0.97) / h0)) : 1;
       for (let i = 0; i < 40 && g > 1; i++) {
         content.style.width = Math.floor(w / g) + 'px';
         let clipped = false;
