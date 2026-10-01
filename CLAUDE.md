@@ -472,6 +472,45 @@ version. It first proves that rebuilding the untouched month reproduces the
 stored one. Used for CRS 10 on 2026-09-22: PHH BRA 2056.02 ↔ PHH FRK 1195.982
 on 01-09-2026 (backup `backups/swap-opening-crs10-…`).
 
+## Commodity scope — All Shops or one Particular Shop
+
+Office, 2026-10-01 (`src/lib/engine/commodityScope.ts`, `npm run
+verify:commodity-scope`). Commodity Master's Add / Edit takes an **Order**,
+a **Scope** (All Shops / Particular Shop) and, for a particular shop, the
+CRS.
+- **One record, never a copy per shop**: `{ scope: 'shop', shopId: 14 }` on
+  the master row. No scope = All Shops, so every row that existed before is
+  exactly as it was.
+- **Every entry list is "global + this shop's own", in Order** —
+  `commodityListsFor` / `useStockLists` (masters.ts), i.e. Daily Entry,
+  Monthly Entry, Inspection, Receipt, Allotment, the Dashboard stock lists.
+  CRS 29's fixed camp list takes its own scoped rows at their Order too.
+  An all-shops view (no shop chosen) sees every row.
+- **Order is the position on every list.** A free number moves nothing; a
+  taken one moves only the run of rows from it up to the first free number
+  (`placeAtOrder`), never the rest. Order is one numbering across both
+  sections (Main 1–22, Police 23–27, then additions).
+- **The server holds the line** (`/api/state`): a shop user's read of the
+  master is `masterForShop` (global + own — never another shop's); only an
+  administrator may write `__commodityMaster` (a shop user's filtered copy
+  written back would drop every other shop's rows — and nothing in the shop
+  screens writes it); `inspectScopeWrite` refuses a figure KEYED into a
+  commodity that belongs to another shop (day sheet Sales / Receipt, a
+  month's Opening / Receipt / Sales, a receipt line), administrators
+  included. Figures saved before a re-scope, re-carried by the chain, pass.
+- **Editing**: names, unit, rate, Order and Scope always; code and section
+  only while no shop holds a saved figure for it (every record is keyed by
+  both). Narrowing to one shop when others hold figures asks first; their
+  figures stay in the database, the commodity leaves their screens.
+- **Not covered — statements, the DSS and the PV.** They print the
+  statutory forms' fixed rows from the compiled engine (CLAUDE.md above),
+  so NO added commodity — All Shops or Particular — appears on them; the
+  master only feeds them rates. Unchanged here; a decision for the office.
+- Localhost, admin, live copy: Special Rice CRS 14 / Order 23 → CRS 14's
+  Daily and Monthly Entry between Empty Polythene Bag and OAP FRK, absent on
+  CRS 1 / 5 / 10; Order 23 → 5 → between PHH BRA and AAY FRK; → All Shops →
+  on CRS 1 and 30; existing rows untouched; 390 px phone, no sideways scroll.
+
 ## Dates on screen are DD-MM-YYYY
 
 Office, 2026-09-29 (`npm run verify:date-format`). A phone's Chrome in US
@@ -2198,6 +2237,7 @@ npm run verify:remit-total       every statement's remittance (Page 2, Cost Com,
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
 npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, kept by every republish and by Gunny Save, logged
+npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
 npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
