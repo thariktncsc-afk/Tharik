@@ -25,7 +25,7 @@ import { useMemo, useRef, useState } from 'react';
 import { crsData, useStore } from '@/lib/dataStore';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { saveSuccess } from '@/components/SaveSuccess';
-import { receiptSaved } from '@/lib/saveSuccess';
+import { receiptDateChanged, receiptSaved } from '@/lib/saveSuccess';
 import { commodityListsFor, useCommodityLists, useCommodityMaster, useShops } from '@/lib/masters';
 import { useAuth } from '@/lib/authClient';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity, type DayEntry } from '@/lib/engine/commodities';
@@ -37,6 +37,7 @@ import DateField from '@/components/DateField';
 import { PACK_SWITCHABLE } from '@/lib/engine/gunnyPack';
 import { refreshGunnyFor } from '@/lib/gunnyRefresh';
 import { dmy, dmyFromLocale } from '@/lib/dateFormat';
+import { moveReceiptDate, receiptDateProblem } from '@/lib/engine/receiptDate';
 
 type ShopRec = { name: string };
 type ReceiptRec = {
@@ -47,6 +48,8 @@ type ReceiptRec = {
   items: Record<string, { qty: number; pack?: 'GUNNY' | 'POLY' }>;
   savedAt: string;
   type?: 'regular' | 'advance';
+  /** 'monthly-entry' on the row Monthly Entry writes for a whole month. */
+  source?: string;
 };
 
 type PackType = 'GUNNY' | 'CBOX' | 'POLY';
@@ -102,6 +105,7 @@ export default function ReceiptPage() {
   const counters = useStore<Record<string, number>>('__counters') ?? {};
 
   const isCrsUser = !!user?.crsId && user.role !== 'ADMIN';
+  const isAdmin = user?.role === 'ADMIN';
   const shopIds = isCrsUser ? [user!.crsId as number] : shops.map((_, i) => i + 1);
   const shopLabel = (id: number) => `CRS ${id} — ${shops[id - 1]?.name ?? ''}`;
 
@@ -114,6 +118,9 @@ export default function ReceiptPage() {
   const [banner, setBanner] = useState('');
   const [filterCrs, setFilterCrs] = useState(isCrsUser ? String(user!.crsId) : '');
   const [filterMonth, setFilterMonth] = useState(() => todayIso().slice(0, 7));
+  /** The receipt whose date an administrator is changing, and the date typed so far. */
+  const [dateEdit, setDateEdit] = useState<{ id: number; value: string } | null>(null);
+  const dateSaving = useRef(false);
 
   const formCrsId = crsVal ? Number(crsVal) : null;
   const formLists = useCommodityLists(formCrsId);
@@ -384,6 +391,61 @@ export default function ReceiptPage() {
       return;
     }
     setTimeout(() => setBanner(''), 4000);
+  };
+
+  /**
+   * An administrator moves a saved receipt to another date (engine/
+   * receiptDate.ts): the same row — id, Receipt No., type, quantities — with
+   * only its date changed, so nothing is duplicated. Both months are then
+   * republished and the chain rebuilt from both dates, exactly as a save and a
+   * delete each do on their own date: the old date stops counting the receipt
+   * and the new one starts. The tick appears only once the database has it.
+   */
+  const changeReceiptDate = async (rec: ReceiptRec, to: string) => {
+    if (!isAdmin || dateSaving.current) return;
+    const problem = receiptDateProblem(rec, to, todayIso());
+    if (problem) {
+      void appAlert({ title: 'Receipt date not changed', tone: 'warning', message: problem });
+      return;
+    }
+    const from = rec.date;
+    const ok = await appConfirm({
+      title: 'Change receipt date',
+      confirmLabel: 'Change date',
+      message:
+        `Move receipt ${rec.receiptNo} (CRS ${rec.crsId}) from ${dmy(from)} to ${dmy(to)}?
+
+` +
+        'Receipt No. and quantities stay as they are. Daily Entry, Monthly Entry, the DSS, Gunny Stock and the statements of both dates are recalculated.',
+    });
+    if (!ok) return;
+    // Re-read after the dialog: the receipt may have changed (or gone) meanwhile.
+    const beforeMove = crsData.get<ReceiptRec[]>('receiptStore') ?? [];
+    const fresh = beforeMove.find((x) => x.id === rec.id);
+    const again = receiptDateProblem(fresh, to, todayIso());
+    if (!fresh || again || fresh.date !== from) {
+      setBanner(`⚠ Receipt ${rec.receiptNo} changed while confirming — its date was not changed. Check the list and retry.`);
+      return;
+    }
+    dateSaving.current = true;
+    try {
+      crsData.set('receiptStore', moveReceiptDate(beforeMove, rec.id, to));
+      // The month it leaves, then the month it joins (one call when they are the same month — the day sheets of both dates still move).
+      republishMonth(Number(rec.crsId), from, beforeMove);
+      republishMonth(Number(rec.crsId), to, beforeMove);
+      if (!(await crsData.saveConfirmed())) {
+        setBanner(refusal(`The date of receipt ${rec.receiptNo} was NOT changed`));
+        return;
+      }
+      setDateEdit(null);
+      // Show the receipt where it now is.
+      setFilterMonth(to.slice(0, 7));
+      setBanner(`✓ Receipt ${rec.receiptNo} moved from ${dmy(from)} to ${dmy(to)} — Daily and Monthly Entry updated.`);
+      setTimeout(() => setBanner(''), 5000);
+      saveSuccess(receiptDateChanged(rec.id, rec.receiptNo, from, to));
+    } finally {
+      dateSaving.current = false;
+    }
   };
 
   /** Delete a saved receipt from the register. */
@@ -683,7 +745,23 @@ export default function ReceiptPage() {
             <tbody>
               {logs.map((r) => (
                 <tr key={r.id}>
-                  <td style={{ padding: '11px 14px', borderBottom: '1px solid #F0F9FF', fontWeight: 700, fontSize: 13 }}>{r.date}</td>
+                  <td style={{ padding: '11px 14px', borderBottom: '1px solid #F0F9FF', fontWeight: 700, fontSize: 13 }}>
+                    {dateEdit?.id === r.id ? (
+                      <div data-receipt-date-edit style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 150 }}>
+                        <DateField value={dateEdit.value} max={todayIso()} onChange={(v) => setDateEdit({ id: r.id, value: v })} aria-label="New receipt date" style={{ border: '1px solid #93C5FD', borderRadius: 6, padding: '5px 8px', fontSize: 12, width: '100%' }} />
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button type="button" onClick={() => void changeReceiptDate(r, dateEdit.value)} style={{ background: '#0369A1', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                            💾 Save
+                          </button>
+                          <button type="button" onClick={() => setDateEdit(null)} style={{ background: '#fff', border: '1px solid var(--border)', color: 'var(--muted)', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      r.date
+                    )}
+                  </td>
                   <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', fontSize: 12 }}>
                     <strong>CRS {r.crsId}</strong> — {shops[r.crsId - 1]?.name ?? ''}
                   </td>
@@ -716,6 +794,16 @@ export default function ReceiptPage() {
                   </td>
                   <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', textAlign: 'center', fontSize: 11, color: 'var(--muted)' }}>{dmyFromLocale(r.savedAt)}</td>
                   <td style={{ padding: '11px 10px', borderBottom: '1px solid #F0F9FF', textAlign: 'center' }}>
+                    {/* Administrators only (the server refuses anyone else): a receipt saved under the wrong date. */}
+                    {isAdmin && r.source !== 'monthly-entry' && dateEdit?.id !== r.id ? (
+                      <button
+                        onClick={() => setDateEdit({ id: r.id, value: r.date })}
+                        title="Change this receipt's date (administrators only)"
+                        style={{ background: '#fff', border: '1px solid #93C5FD', color: '#0369A1', padding: '5px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontWeight: 600, marginBottom: 6, whiteSpace: 'nowrap' }}
+                      >
+                        📅 Edit Date
+                      </button>
+                    ) : null}
                     <button
                       onClick={() => void deleteReceipt(r)}
                       title="Delete this receipt"

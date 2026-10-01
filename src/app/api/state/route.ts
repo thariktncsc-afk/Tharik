@@ -20,6 +20,7 @@ import { describeScope, inspectScopeWrite, masterForShop, type ScopedRow } from 
 import { logEvent } from '@/lib/clearServer';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 import { diffStateWrite, readHints, refusedDraft } from '@/lib/activityLog/core';
+import { receiptDateMoves } from '@/lib/engine/receiptDate';
 import { recordActivity } from '@/lib/activityLog/server';
 import { STOCK_INIT_KEY, shopsTouchedBy } from '@/lib/engine/stockInit';
 import { reconcileShops } from '@/lib/stockInitServer';
@@ -252,6 +253,20 @@ export async function POST(req: Request) {
           },
           { status: 403 },
         );
+      }
+
+      // A saved receipt's DATE is an administrator's to change (Receipt
+      // Register → Edit Date; engine/receiptDate.ts). Moving it moves its
+      // stock between days and months, so shop staff are refused here, not
+      // merely shown no button.
+      if ('receiptStore' in stores) {
+        const moved = receiptDateMoves(stored.receiptStore, stores.receiptStore);
+        if (moved.length) {
+          const m = moved[0];
+          await logEvent(null, 'blocked', session, `Receipt date change refused: ${m.receiptNo} ${m.from} → ${m.to}`);
+          await refuse('Receipt', m.crsId, `Refused: only an administrator may change a saved receipt's date (${m.receiptNo})`);
+          return NextResponse.json({ error: 'Only an administrator may change a saved receipt’s date.' }, { status: 403 });
+        }
       }
     }
 

@@ -105,7 +105,7 @@ export const mm = (inches: number): number => Math.round(inches * MM_PER_INCH * 
  */
 export function fillsPage(sectionId: string): boolean {
   const p = TEMPLATE_PRINT[sectionId];
-  return (!!p && !p.fitToPage && p.scale > 100) || stretchesToPage(sectionId);
+  return (!!p && !p.fitToPage && p.scale > 100) || stretchesToPage(sectionId) || growsToPage(sectionId);
 }
 
 /**
@@ -122,8 +122,25 @@ export function fillsPage(sectionId: string): boolean {
  * COLL joined them the same day (a short report on a portrait page, its
  * signature line taken off).
  */
-const STRETCH_TO_PAGE = new Set(['remittance', 'sale_tax', 'coll']);
+const STRETCH_TO_PAGE = new Set(['remittance', 'sale_tax', 'coll', 'crs_page2', 'b6']);
 export const stretchesToPage = (sectionId: string): boolean => STRETCH_TO_PAGE.has(sectionId);
+
+/**
+ * Statements that GROW to fill their page, type and all (office,
+ * 2026-10-01: CRS Page 2, then B6 — 6 pt in the top three-quarters of its
+ * sheet). CRS Page 2 is already as wide as the paper — its table is
+ * `width:100%` — so a plain fill could not enlarge it, and it printed at
+ * 5.6 pt in the top two-thirds of an A4 landscape sheet with 65 mm of blank
+ * paper under it. A growing sheet is laid out NARROWER and then zoomed back
+ * out to the full printable width, so every size in it — type, padding,
+ * row height, borders, the summary box, the signature line — grows by the
+ * same factor until the page's height is used; whatever height is left goes
+ * into its table's rows (it stretches, too). No cell may clip its text at the size
+ * chosen: `fillSheets` backs off until none does. The builder's markup and
+ * figures are untouched.
+ */
+const GROW_TO_PAGE = new Set(['crs_page2', 'b6']);
+export const growsToPage = (sectionId: string): boolean => GROW_TO_PAGE.has(sectionId);
 
 const PX_PER_MM = 96 / 25.4;
 /** The preview draws every sheet with 8 mm of paper around it. */

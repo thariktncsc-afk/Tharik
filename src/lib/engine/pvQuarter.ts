@@ -108,6 +108,75 @@ function flowOf(r: MonthlyRec | undefined): Flow {
 }
 
 /**
+ * One month's Gunny exactly as the Gunny Stock Management screen shows it
+ * (gunnyRowFor): Opening (keyed, else last month's stored Closing carried),
+ * Receipt (Monthly Sales' bag counts, or an administrator's typed one),
+ * Total, Issues (typed, else POLY / C.BOX's EMPTY sales), Closing. `merged`
+ * is the month as Monthly Sales publishes it.
+ */
+function gunnyOfMonth(crsId: number, month: number, year: number, stores: Stores, merged: { a: Record<string, MonthlyRec>; b: Record<string, MonthlyRec> }): Record<GunnyKey, GunnyFlow> {
+  const key = `${crsId}_${month}_${year}`;
+  const prevKey = `${crsId}_${month === 1 ? 12 : month - 1}_${month === 1 ? year - 1 : year}`;
+  const gridGunnySales: Record<string, number> = {};
+  // …and the month's own sales, from which POLY and C.BOX take their Issues,
+  // exactly as the Gunny Stock screen does (office, 2026-09-26).
+  const packSales: Record<string, number> = {};
+  for (const sec of ['a', 'b'] as const) for (const [id, r] of Object.entries(merged[sec])) {
+    gridGunnySales[id] = salesBags(r, id); // the count Monthly Sales shows
+    packSales[id] = Number(r.sales) || 0;
+  }
+  const gunny = {} as Record<GunnyKey, GunnyFlow>;
+  for (const k of ['ss50', 'poly', 'cbox'] as const) {
+    const g = gunnyRowFor(k, stores.meGunnyStore[key] ?? {}, stores.meGunnyStore[prevKey] ?? {}, stores.salesCloseStore[key], gridGunnySales, packSales, packTypesFor(stores.receiptStore as never, crsId, month, year));
+    gunny[k] = { opening: g.opening, receipt: g.rc.val, total: g.total, issues: Number(g.issues) || 0, closing: g.closing };
+  }
+  return gunny;
+}
+
+/**
+ * The Gunny section of an automatic (Quarterly / Yearly) PV — office,
+ * 2026-10-01. It printed the RAW stored record of the period's first month,
+ * so a July–September quarter (no July record) printed every Gunny figure as
+ * 0 while Gunny Stock Management showed September's.
+ *
+ * Now each month of the period is the Gunny Stock screen's own figure
+ * (gunnyOfMonth, worked out from the stores now — no stored copy is read
+ * as such), and the period is put together the way the PV's commodity rows
+ * are (pvStatement.ts pvAggregatePeriod): Opening = the first month that has
+ * data, Receipt and Issues added over the months, Total = Opening + Receipt,
+ * Closing = Total − Issues. For one month that is exactly the screen's row.
+ */
+export function pvPeriodGunny(
+  crsId: number,
+  months: { month: number; year: number }[],
+  stores: Stores,
+  /** A month the shop has data for (its commodity rows count it too). */
+  hasData: (m: { month: number; year: number }) => boolean,
+  lists?: { a: Commodity[]; b: Commodity[] },
+): Record<GunnyKey, GunnyFlow> {
+  const out = {} as Record<GunnyKey, GunnyFlow>;
+  for (const k of ['ss50', 'poly', 'cbox'] as const) out[k] = { opening: 0, receipt: 0, total: 0, issues: 0, closing: 0 };
+  let opened = false;
+  for (const m of months) {
+    if (!hasData(m)) continue;
+    const key = `${crsId}_${m.month}_${m.year}`;
+    const { merged } = rebuildMonthlyFromDaily(crsId, m.month, m.year, stores.entryStore as never, stores.inspectionStore as never, stores.meManualStore[key], lists, stores.receiptStore as never);
+    const g = gunnyOfMonth(crsId, m.month, m.year, stores, merged);
+    for (const k of ['ss50', 'poly', 'cbox'] as const) {
+      if (!opened) out[k].opening = g[k].opening;
+      out[k].receipt += g[k].receipt;
+      out[k].issues += g[k].issues;
+    }
+    opened = true;
+  }
+  for (const k of ['ss50', 'poly', 'cbox'] as const) {
+    out[k].total = out[k].opening + out[k].receipt;
+    out[k].closing = out[k].total - out[k].issues;
+  }
+  return out;
+}
+
+/**
  * The current month from this system, worked out now from the stores —
  * exactly what Monthly Entry and the Gunny Stock screen show for it.
  */
@@ -132,20 +201,7 @@ export function systemQuarterMonth(
   const police: Record<string, Flow> | null = hasPolice && bIds.length ? Object.fromEntries(bIds.map((id) => [id, flowOf(merged.b[id])])) : null;
 
   // Gunny: the Gunny Stock screen's own rule, on this month's own sales bags.
-  const prevKey = `${crsId}_${month === 1 ? 12 : month - 1}_${month === 1 ? year - 1 : year}`;
-  const gridGunnySales: Record<string, number> = {};
-  // …and the month's own sales, from which POLY and C.BOX take their Issues,
-  // exactly as the Gunny Stock screen does (office, 2026-09-26).
-  const packSales: Record<string, number> = {};
-  for (const sec of ['a', 'b'] as const) for (const [id, r] of Object.entries(merged[sec])) {
-    gridGunnySales[id] = salesBags(r, id); // the count Monthly Sales shows
-    packSales[id] = Number(r.sales) || 0;
-  }
-  const gunny = {} as Record<GunnyKey, GunnyFlow>;
-  for (const k of ['ss50', 'poly', 'cbox'] as const) {
-    const g = gunnyRowFor(k, stores.meGunnyStore[key] ?? {}, stores.meGunnyStore[prevKey] ?? {}, stores.salesCloseStore[key], gridGunnySales, packSales, packTypesFor(stores.receiptStore as never, crsId, month, year));
-    gunny[k] = { opening: g.opening, receipt: g.rc.val, total: g.total, issues: Number(g.issues) || 0, closing: g.closing };
-  }
+  const gunny = gunnyOfMonth(crsId, month, year, stores, merged);
   // Empty Polythene Bag and Empty Card+Box are keyed as SALES ONLY on the
   // grid (office, 2026-09-26/27): their stock is kept in Gunny Stock
   // Management, as POLY and C.BOX. The grid row therefore opens at 0 and

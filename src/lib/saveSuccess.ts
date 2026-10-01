@@ -104,6 +104,15 @@ export function remittanceSaved(crsId: number | string, salesDate: string, ref =
 }
 
 /** A receipt written to the Receipt Register. */
+/** An administrator moved a saved receipt to another date (engine/receiptDate.ts). */
+export function receiptDateChanged(receiptId: number, receiptNo: string, from: string, to: string): SaveSuccessRequest {
+  return {
+    title: 'Receipt Saved Successfully',
+    detail: `Receipt ${receiptNo} moved from ${fmtSavedDate(from)} to ${fmtSavedDate(to)} and saved.`,
+    key: `receipt-date:${receiptId}:${to}`,
+  };
+}
+
 export function receiptSaved(receiptId: number, date: string): SaveSuccessRequest {
   return {
     title: 'Receipt Saved Successfully',

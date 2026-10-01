@@ -45,6 +45,7 @@ import { openingLocked } from '@/lib/stockGuard';
 import { columnKeyDown } from '@/lib/gridNav';
 import { confirmMonthlySalesClose } from '@/lib/monthCloseConfirm';
 import { rechainAndRepublish } from '@/lib/engine/rechain';
+import { bagRowFor, carriedBagsFor } from '@/lib/engine/bagChain';
 import {
   RICE_INVALID,
   RICE_MONTHLY_REQUIRED,
@@ -297,6 +298,13 @@ export default function MonthlyEntryPage() {
     return rebuildMonthlyFromDaily(crsId, pm, py, entryStore, inspectionStore, meManualStore[`${crsId}_${pm}_${py}`], lists, receiptStore).merged;
   }, [crsId, month, year, entryStore, inspectionStore, meManualStore, lists, receiptStore]);
 
+  // Last month's Closing BAG counts — this month's Opening bags (office,
+  // 2026-10-01; engine/bagChain.ts). null in the shop's first month.
+  const carriedBags = useMemo(() => {
+    if (!crsId) return null;
+    return carriedBagsFor({ entryStore, inspectionStore, meManualStore, receiptStore: receiptStore as unknown[] }, crsId, month, year, lists);
+  }, [crsId, month, year, entryStore, inspectionStore, meManualStore, lists, receiptStore]);
+
   // Which pack each commodity's sales empty into this month — the Receipt
   // page's saved Gunny / Poly switch (engine/gunnyPack.ts, office 2026-09-30).
   const packTypes = useMemo(() => packTypesFor(receiptStore, crsId ?? 0, month, year), [receiptStore, crsId, month, year]);
@@ -341,6 +349,8 @@ export default function MonthlyEntryPage() {
     cs: number;
     gCs: number;
     g: Record<'open' | 'receipt' | 'total' | 'sales' | 'close', number>;
+    /** What the Opening bags are when nothing is typed: last month's Closing bags (else kgs ÷ pack). */
+    gOpenDefault: number;
   };
 
   const rowFor = (sec: 'a' | 'b', c: Commodity): Row => {
@@ -400,29 +410,15 @@ export default function MonthlyEntryPage() {
 
     const kgs = { open, receipt, total, sales, close };
     const g = {} as Row['g'];
-    // A daily row's bag counts typed and saved on this page (engine/
-    // monthlyRollup.ts DailyBags) — the kgs stay the day sheets'.
-    const typedBags = derived ? (meManualStore[key] as ManualMonth | undefined)?.dailyBags?.[sec]?.[c.id] : undefined;
-    for (const f of ['open', 'receipt', 'total', 'sales', 'close'] as const) {
+    // The row's bag counts (engine/bagChain.ts): Opening = last month's
+    // Closing bags unless one is typed for this month (the shop's first month
+    // keeps the typed / imported figure, else kgs ÷ pack); Receipt and Sales
+    // typed, else the office's stored count, else kgs ÷ pack. A box typed on
+    // screen wins until saved.
+    const base = bagRowFor(sec, c.id, rec, src, meManualStore[key] as ManualMonth | undefined, { open, receipt, sales }, carriedBags ? carriedBags[sec][c.id] ?? 0 : null);
+    for (const f of ['open', 'receipt', 'sales'] as const) {
       const edited = e.g?.[f];
-      if (edited !== undefined) {
-        g[f] = Number(edited) || 0;
-        continue;
-      }
-      const typedBag = typedBags?.[`g_${f}` as DailyBagField];
-      if (typeof typedBag === 'number') {
-        g[f] = typedBag;
-        continue;
-      }
-      const auto = bagsOf(kgs[f], c.id);
-      const storedG = Number(rec?.[`g_${f}` as keyof MonthlyRec]) || 0;
-      // A stored bag count that differs from the kgs-derived one is the
-      // office's own figure (imported workbook) — it wins (40-cs-column.js
-      // era fix in 05-monthly-entry.js). The three counts that move with the
-      // Receipt are the exception on a 'receipt' row: the stored ones describe
-      // the figure the register just replaced, so they are re-derived.
-      const staleG = src === 'receipt' && (f === 'receipt' || f === 'total' || f === 'close');
-      g[f] = !derived && !staleG && storedG > 0 && storedG !== auto ? storedG : auto;
+      g[f] = edited !== undefined ? Number(edited) || 0 : base[f];
     }
     // The bag columns are their own arithmetic (office, 2026-09-30):
     //   Total bags   = Opening bags + Receipt bags
@@ -435,7 +431,7 @@ export default function MonthlyEntryPage() {
     // Both are read-only, so nothing typed is replaced.
     g.total = g.open + g.receipt;
     g.close = g.total - g.sales - gCs;
-    return { c, sec, derived, rcpLocked, rcpHeld, openHeld, open, receipt, sales, total, close, amount, adj, cs, gCs, g };
+    return { c, sec, derived, rcpLocked, rcpHeld, openHeld, open, receipt, sales, total, close, amount, adj, cs, gCs, g, gOpenDefault: base.openDefault };
   };
 
   const rows = useMemo(() => {
@@ -443,7 +439,7 @@ export default function MonthlyEntryPage() {
     const b = lists.b.map((c) => rowFor('b', c));
     return { a, b };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lists, merged, source, inspMonth, edits, shopStarted, chain, meManualStore, key, prevMerged]);
+  }, [lists, merged, source, inspMonth, edits, shopStarted, chain, meManualStore, key, prevMerged, carriedBags]);
 
   const showAdj = {
     excess: [...rows.a, ...rows.b].some((r) => r.adj.excess !== 0),
@@ -577,7 +573,10 @@ export default function MonthlyEntryPage() {
           // to that figure follows the kgs again.
           if (NO_GUNNY.has(r.c.id)) continue;
           const typed: Partial<Record<DailyBagField, number>> = {};
-          for (const [f, kg] of [['open', r.open], ['receipt', r.receipt], ['sales', r.sales]] as const) {
+          // The Opening against what it falls back to — last month's Closing
+          // bags (engine/bagChain.ts) — Receipt and Sales against kgs ÷ pack.
+          if (r.g.open !== r.gOpenDefault) typed.g_open = r.g.open;
+          for (const [f, kg] of [['receipt', r.receipt], ['sales', r.sales]] as const) {
             if (r.g[f] !== bagsOf(kg, r.c.id)) typed[`g_${f}`] = r.g[f];
           }
           if (Object.keys(typed).length) (dailyBags[sec] ??= {})[r.c.id] = typed;
@@ -589,6 +588,9 @@ export default function MonthlyEntryPage() {
           cs: r.cs, g_cs: r.gCs,
           g_open: r.g.open, g_receipt: r.g.receipt, g_total: r.g.total, g_sales: r.g.sales, g_close: r.g.close,
         };
+        // An Opening bag count typed over last month's Closing bags is kept as
+        // typed (engine/bagChain.ts); one left at the carry follows it.
+        if (carriedBags && !NO_GUNNY.has(r.c.id) && r.g.open !== r.gOpenDefault) (rec as MonthlyRec & { g_openFixed?: boolean }).g_openFixed = true;
         const empty = !rec.open && !rec.receipt && !rec.sales && !rec.close && !rec.amount && !rec.cs;
         if (!empty) manual[sec]![r.c.id] = rec;
       }

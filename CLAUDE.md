@@ -535,6 +535,16 @@ SHORTAGE · TOTAL · SALES · C.B).
 - **Print / PDF**: a document of its own printed from a hidden frame
   (`lib/printHtmlFrame.ts`) — `@page A4 landscape`, one page per shop, no
   app on it; "Save as PDF" in the dialog gives the PDF.
+- **Also on the Statements page** (office, the same evening: "not showing"
+  — they looked for it there): an OAP / APS / ANP card under the Statement
+  Sections (`statements/OapCard.tsx`), for the shop and month chosen.
+  - It shows a one-line summary, 👁 Preview and 🖨️ Print / PDF: the same
+    sheet and the same print as Reports.
+  - It is not a section: no checkbox, not in select-all / Excel / PDF /
+    Print of the sections, no payment.
+  - With no entry it says so ("No OAP / APS / ANP entry for CRS 23 in
+    September 2026"), and its buttons are disabled.
+  - It resets on a change of shop or month.
 - Localhost, live copy, September 2026: CRS 10 (OAP 3+2−5=0, APS 10), 19
   (OAP 5), 26 (OAP 0+5−5=0) — the 27 others left out; APS alone → CRS 10;
   the printed document → 3 pages, each 297 × 210 mm; CRS 19's Packer sees
@@ -1073,6 +1083,62 @@ copies (kgs Total ÷ pack), not the grid's arithmetic.
   Preview = PDF on all five bag columns; a preview left open went 53 → 54
   when another tab saved.
 
+### Bag counts carry: last month's Closing bags are this month's Opening
+
+Office, 2026-10-01 (`src/lib/engine/bagChain.ts`, `npm run verify:bag-carry`).
+CRS 23: September's BRA Opening bags were saved as 47 (2316.998 kg ÷ 50 =
+46) and closed at 47, and October opened at **46**. Every Opening bag count
+nobody had typed was worked out again from the kgs. A bag count is a stock
+figure of its own:
+
+    Opening bags + Receipt bags = Total bags
+    Total bags − Sales bags (− C.S bags) = Closing bags
+    last month's Closing bags = this month's Opening bags
+
+- **Opening = last month's Closing bags**, worked out month by month from
+  the shop's first month (`carriedBagsFor`; a month holding nothing passes
+  it through). Never from the kgs.
+- **A typed Opening wins**: on a "from Daily" row it is `dailyBags.g_open`,
+  kept only where it differs from the carry. On a hand-keyed row the
+  month-close marks it `g_openFixed`. A hand-keyed row saved WITHOUT the
+  mark follows the carry: its stored `g_open` is a copy, not read. So a
+  September change reaches October, and nothing stored goes stale.
+- **Only in a shop's FIRST month** (nothing earlier to carry from) is the
+  Opening what it always was: typed or imported, else kgs ÷ pack. Live
+  2026-10-01: September is every shop's first month, so September is
+  unchanged everywhere.
+- **Receipt and Sales bags are unchanged**: typed, else the office's stored
+  count, else kgs ÷ pack. They are movements keyed with their kgs, and the
+  Gunny Receipt adds up the Sales bags.
+- **Rows that carry nothing**: Empty Card+Box / Polythene Bag, whose stock
+  is Gunny's, and the police rows with no bag boxes (`NO_GUNNY`).
+- **One rule everywhere it shows.** Monthly Sales' `rowFor` and its save
+  both use `bagRowFor`. The statements get each month's Opening from the
+  server: `loadStatementEngine` hands the engine `ctx.bagOpening` =
+  `bagOpeningLookup(stores)`, and `stmtBagCounts` (45-bag-counts.js) takes
+  it over its own rule. That covers Page 2, Free Com, Cost Com, B6 and CRS
+  29's sheets. With no lookup (the goldens), or where it says nothing, the
+  builders' rule stands, so `verify:statements` is unchanged.
+- **No stored data needed fixing**: live holds September only (every
+  shop), and nothing is stored for October; the carry is worked out when
+  read. October Openings that move from kgs ÷ pack to September's Closing
+  bags (read only, 2026-10-01): **80 rows in 24 shops**, by ±1 mostly
+  (CRS 19 BRA 71 → 72, CRS 23 BRA 46 → 47 / SUGAR 13 → 14 / WHEAT 10 → 11).
+  Two September Closings are **−1** (CRS 20 AAY SUGAR, CRS 30 PHH FRK):
+  more bags sold than held by count. They carry as −1, which is what
+  Monthly Sales already shows as September's Closing, and are the office's
+  to correct.
+- All 615 shop-commodity rows: October Opening = September Closing. All 1,584
+  September + October rows add up (OB + RC = TOT, TOT − SAL − C.S = CB).
+- Localhost, live copy, each write judged by the real guard:
+  - CRS 23 October opened 47.
+  - September Sales bags 46 → Save → September CB 1 → October OB 1, on
+    Monthly Sales, Page 2 Preview and the PDF. Gunny Receipt 46.
+  - Same after Dashboard and back, a refresh, and CRS / month changes.
+  - October Opening +1 / Receipt +1 / Sales +1 moved Total and Closing at
+    once. Saved as `g_openFixed` 2, reopened 2, Preview 2.
+  - CRS 19 October opens at September's 72.
+
 ## The Gunny statement: three rows, one column
 
 `buildGunny` in `12-statement-builders.js`. Two things the office asked for
@@ -1335,6 +1401,42 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   size, moved 8.7 mm left (text 21.9 → 297.1 mm became 13.1 → 288.4 mm).
   **Still at the paper edge, not yet asked for:** Daily Sale and Gunny
   (right margin 0, measured 297.1 mm of 297); Receipt has 3.9 mm.
+- **CRS Page 2 and B6 GROW to fill their A4 landscape page** (office,
+  2026-10-01; `growsToPage` in pageSetup.ts, `data-fill-grow` in
+  fillPage.ts, `npm run verify:page2-fill`).
+  - **The problem**: Page 2 printed at 5.6 pt and stopped at 140 mm of
+    210, its table `width:100%`, so the existing fill could not enlarge it.
+    B6 printed at 6 pt and stopped at 156 mm.
+  - **How they grow**: `fillSheets` lays each one out NARROWER, at the width
+    that, zoomed back out to the printable width, fills the printable
+    height. So type, padding, ROW HEIGHT, borders, the summary box and the
+    signature line all grow by one factor. Both also stretch, so any height
+    left goes into the rows.
+  - **Nothing clips**: it backs off (×0.97 a step) while any cell is
+    narrower than its text, or the sheet would be taller than the page.
+    Worst case (every row, 9-digit figures): Page 2 ×1.07, B6 ×1.22, one
+    page, no cell clipped.
+  - **CRS 23 September**:
+
+    | | Page 2 before | Page 2 after | B6 before | B6 after |
+    | --- | --- | --- | --- | --- |
+    | Zoom | — | ×1.41 | — | ×1.22 |
+    | Text reaches | 140 mm | 192 mm | 156 mm | 188 mm |
+    | Table type | 5.6 pt | 7.9 pt | 6 pt | 7.3 pt |
+    | Title | 9.7 pt | 13.7 pt | 9.7 pt | 11.9 pt |
+    | Summary / signatures | 7.5 pt | 10.6 pt | | |
+
+    B6 is height-bound by its 33 rows. All one page; Page 2's two copies
+    both grow.
+  - CRS 29's own Page 2 and B6 (narrower sheets) fill the page too:
+    Page 2 9.9 pt, B6 13 pt.
+  - **Figures unchanged**: every printed token and every data and summary
+    row is identical before and after (Page 2 and B6, CRS 23 and 29). 14
+    shops print one page each. The builders are untouched (no golden
+    changes).
+  - **Preview = Print = PDF**: the preview runs the same `fillSheets` on the
+    same wrapper (`SheetPreview`), and Print / 📄 PDF are the server's
+    headless-Chrome PDF of the print document, which carries the fill script.
 - **Remittance and Sale Tax stretch to the foot of the page**
   (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
   which only shrinks, so `fillSheets` enlarges them as far as the width
@@ -1629,9 +1731,9 @@ record (`45-bag-counts.js`).
   Read back: the day sheet, Monthly Sales (kgs and bags, after leaving and
   returning), Gunny, and the CRS Page 2 / B6 / Gunny / CRS Police PDFs. Only
   CRS 23's keys changed. Backup `backups/day-sheet-23_2026-09-01-…`.
-  **Not carried into October:** October's Opening bags are worked out from
-  the kgs again (BRA 46, not September's Closing 47). That is the existing
-  rule for typed bag counts; it is left for the office to decide.
+  **Carried into October since the same day** (see "Bag counts carry"):
+  October opens at September's Closing bags, BRA 47. It was worked out from
+  the kgs again (46), which was then the existing rule for typed bag counts.
 - **CRS 27, from 01-09-2026** (office, 2026-09-30; CRS 27 held no stock data
   and was not started): BRA 3908, PHH BRA 850, PHH FRK 1500.062, NPHH FRK
   5000.062, AAY 105, AAY FRK 154.010, RRA 1000, NPHH RRA 0.030, SUGAR
@@ -1738,6 +1840,56 @@ never replaces.
   longer equal the POS summary. CRS 10 IS a COLL shop: COLL lists all
   eight under ADVANCE FOR THE MONTH OF OCT'2026 and keeps them out of its
   closing balance. Backup `backups/receipts-crs10-…`.
+
+### An administrator may change a saved receipt's DATE
+
+Office, 2026-10-01 (`src/lib/engine/receiptDate.ts`, `npm run
+verify:receipt-date`). Example: CRS 23's R/2026/082 was saved under
+23-09-2026. Receipt Register → **📅 Edit Date** (administrators only)
+opens the date box in the row's Date cell, with Save and Cancel.
+- **In place**: same id, Receipt No., type and quantities; only `date`
+  changes (`moveReceiptDate`). No delete-and-add, no duplicate, nothing
+  to approve.
+- **Both dates are republished**, exactly as a save and a delete do on
+  their own date: `republishMonth` for the OLD date, then the NEW, both from
+  the register before the move. That runs `resyncReceiptMonth` (the day
+  sheets, a hand-keyed month's copy, the projection), rebuilds the chain
+  from each date, then Gunny. The DSS, COLL and the statements read the
+  register by date, so they follow on their own.
+- **Validation**: a real date, not after today (the date box keeps a later
+  one out too), not the same date. Monthly Entry's own month row
+  (`source: 'monthly-entry'`) has no button; it is changed on Monthly
+  Entry. The tick only after `saveConfirmed()`; a refusal shows the
+  server's reason. The register's month filter follows the receipt.
+- **Shop staff**: no button, and `/api/state` refuses their write when a
+  saved receipt's date differs (`receiptDateMoves`, 403, an activity row
+  "Refused: …").
+- **Activity Log**: "Receipt Date Changed — R/2026/082: 23-09-2026 →
+  30-09-2026". The row carries the CRS, Receipt no and Receipt date (old →
+  new) as changes, plus who and when. Its entry date is the new date.
+- **A receipt the month's sales relied on can leave a Closing below 0.**
+  Moving it out of the month does not stop for that, for an administrator
+  or for a delete. Localhost, live copy: CRS 23 R/2026/082 30-09 → 01-10
+  took September's BRA Closing 2104 → −1390, because the 30-09 sheet sold
+  5706.998 against both receipts. October opens at −1390 and its Receipt
+  3494 brings it back to 2104.
+- Localhost, live copy, every write judged by the route's own guards (the
+  date rule included):
+  - CRS 23's Bill Clerk sees no Edit Date, and a forged move is refused.
+  - Administrator, R/2026/082 23-09 → 30-09: still one row.
+    - 23-09 no longer counts it; 30-09's sheet Receipt is 5494 (with
+      R/2026/083).
+    - September's Receipt and Closing are unchanged.
+    - DSS September 3 → 2 pages; the log row is written.
+    - Daily Entry for both dates shows it.
+  - It persisted after leaving the page and a refresh.
+  - 30-09 → 01-10: September BRA Receipt 5494 → 2000; October 3494,
+    opening at September's Closing.
+    - DSS October +1 page.
+    - Monthly and Daily Entry agree.
+    - The Receipt statement Preview and PDF list it under October, not
+      September.
+  - A date after today: nothing written. **No live receipt was moved.**
 
 **Correcting a saved receipt line** — `node tools/correct-receipt.mjs --crs=N
 --receipt-no=NO --move=FROM:TO,…` (dry run), then `--write`: moves a line's
@@ -2066,6 +2218,42 @@ Office, 2026-09-29. `npm run verify:remittance-save`.
   the row went blank whenever the pointer was on it. Hover now shades
   `tbody` rows only.
 
+### Keyboard travel in Monthly Remittance
+
+Office, 2026-10-01 (`monthly-entry/remitNav.ts`; one handler on the
+table body, so every row behaves alike).
+- **Amount box** (Non-Cereal A/C, `data-remit-amt`):
+  - Enter or ↓ goes to the next row's amount box; ↑ to the one above.
+  - ← goes to the same row's Remittance Date.
+  - Arriving selects the figure, so typing replaces it.
+  - The first and last boxes stay put rather than wrapping.
+- **Date box**:
+  - → goes back to the amount, but only with the cursor at the end, so → still
+    moves through a date being typed.
+  - Enter straight after arriving keeps the focus and opens the calendar.
+  - Enter after typing a date takes it (DateField) and moves to the row's
+    amount.
+- **Rows filled from Daily Entry deposits** are read-only (no box), so they
+  are not stops. Navigation only moves the focus.
+- **Nothing is written or submitted by navigating**:
+  - ↑ / ↓ never step a number;
+  - the mouse wheel over a focused amount scrolls the page (a non-passive
+    guard on the table body);
+  - Enter never presses Save.
+  - The as-typed write, the 5 s autosave and 💾 Save Remittance are unchanged.
+- **Phones**: the amount boxes ask for `enterKeyHint="next"`, and Android's
+  Next / Enter moves down as on a keyboard.
+- **Localhost, live copy (CRS 23 September)**:
+  - Your sequence: row 1 amount, then Enter, ↓ ↓ ↓ and ↑.
+  - ← to the date, a typed date, then → back; Enter after typing; Enter
+    straight after arriving.
+  - The wheel did not step a focused amount.
+  - Save Remittance stored only what was typed (no other row moved), and it
+    stayed after a refresh and after leaving and reopening.
+  - On a phone viewport, Enter moves to the next amount.
+  - CRS 8: Enter visits only its 11 keyable days, then Poly & C.Box and
+    the extra rows, skipping the 20 deposit rows.
+
 ## Clear requests — what a day and a month take
 
 `clearExecute.ts`. A **day** clear removes that shop and date only: the sheet
@@ -2283,6 +2471,41 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
   worked around in code. Still so on 2026-09-28.
 
+### The automatic PV's Gunny is Gunny Stock Management's
+
+Office, 2026-10-01 (`pvQuarter.ts` `pvPeriodGunny`, `npm run
+verify:pv-gunny`).
+- **The bug**: the Quarterly / Yearly PV (Automatic) printed the RAW stored
+  `meGunnyStore` record of the period's FIRST month. July–September has no
+  July record, so every Gunny figure printed 0, for every shop, while Gunny
+  Stock Management showed September's (CRS 1: SS 569 + 206 = 775 − 525 =
+  250).
+- **Now**: each month of the period is worked out as the Gunny Stock screen
+  works it, by `gunnyRowFor` on the month's Monthly Sales bag counts,
+  exactly as the 3-Month PV's current month always was. The code lives in
+  one function, `gunnyOfMonth`, used by both PVs. It is read from the stores
+  when the PV is built, never from a stored copy as such.
+- **The period is put together like the commodity rows**:
+  - Opening is the first month that has data (a published month or a
+    Gunny record), so empty leading months don't zero it.
+  - Receipt and Issues are added up over the months.
+  - Total = Opening + Receipt; Closing = Total − Issues.
+  - For one month that is the screen's row exactly. Over two, it is the
+    first month's Opening and the last month's Closing (CB → OB holds).
+- **Read only, 2026-10-01**: all 21 shops with Gunny figures, 63 non-zero
+  rows. The July–September PV equals the Gunny Stock screen and the stored
+  record, figure for figure, printed on the sheet. The full-year PV equals
+  them too.
+  - CRS 12's September POLY (−2) and C.BOX (−1) close below 0 on the screen
+    too: more issued than held.
+- **Localhost, live copy**: Reports → Quarterly PV → Jul – Aug – Sep for CRS
+  1, 5 and 23 matched the Gunny screen on all three items.
+  - Then CRS 1's SS Opening was typed 569 → 570 on Gunny Stock Management
+    and saved (tick after the database).
+  - The PV then read 570 + 206 = 776 − 525 = 251, and Print printed that
+    area.
+- The layout and the commodity rows are unchanged.
+
 ### The PV sheet: Annexure-I on Legal paper
 
 `buildPVTable` (`pvStatement.ts`), for both the automatic and the 3-month PV
@@ -2337,6 +2560,7 @@ npm run verify:statement-export  PDF sheets and one-worksheet-per-statement Exce
 npm run verify:receipt-rows  Receipt statement: a row per receipt, none reserved, none dropped
 npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every figure in one column
 npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
+npm run verify:pv-gunny        the automatic PV's Gunny = Gunny Stock Management (gunnyRowFor) per month; first-month Opening, Receipt / Issues added; latest saved data
 npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
@@ -2353,6 +2577,9 @@ npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, ke
 npm run verify:oap-statement    Reports OAP / APS / ANP: shops with an entry only, Monthly Sales figures, family from the master, one A4 landscape page per shop
 npm run verify:carry-forward    previous month Closing → this month Opening on Monthly Entry, for administrators too; chain, then last month published
 npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
+npm run verify:page2-fill       CRS Page 2 and B6 fill their A4 landscape page: one page, larger type, nothing clipped (worst case), CRS 29 too, builders untouched
+npm run verify:receipt-date     Receipt Register Edit Date (admin): in place, both dates republished, chain / months / DSS / statements follow, activity row, shop staff refused
+npm run verify:bag-carry        bags carry: last month's Closing bags = this month's Opening, typed Opening wins, first month unchanged, statements via ctx.bagOpening
 npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
 npm run verify:gunny-receipt    Gunny Receipt = Monthly Sales' bag counts (never typed): each commodity's pack and size, CRS 5's 227 / 28, the Receipt-page switch, day vs month once, refresh, next month's OB, rule 5, statement parity
 npm run verify:print-layout    a screen that prints, prints one area — not the sidebar, the topbar and a clipped page
