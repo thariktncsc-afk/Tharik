@@ -288,6 +288,15 @@ export default function MonthlyEntryPage() {
     return rebuildMonthlyFromDaily(crsId, month, year, entryStore, inspectionStore, meManualStore[key], lists, receiptStore);
   }, [crsId, month, year, entryStore, inspectionStore, meManualStore, key, lists, receiptStore]);
 
+  // Last month as published — where the stock chain has nothing to carry (a
+  // month keyed by month and not yet closed), its Closing is this month's
+  // Opening (office, 2026-10-01).
+  const prevMerged = useMemo(() => {
+    if (!crsId) return null;
+    const pm = month === 1 ? 12 : month - 1, py = month === 1 ? year - 1 : year;
+    return rebuildMonthlyFromDaily(crsId, pm, py, entryStore, inspectionStore, meManualStore[`${crsId}_${pm}_${py}`], lists, receiptStore).merged;
+  }, [crsId, month, year, entryStore, inspectionStore, meManualStore, lists, receiptStore]);
+
   // Which pack each commodity's sales empty into this month — the Receipt
   // page's saved Gunny / Poly switch (engine/gunnyPack.ts, office 2026-09-30).
   const packTypes = useMemo(() => packTypesFor(receiptStore, crsId ?? 0, month, year), [receiptStore, crsId, month, year]);
@@ -354,7 +363,29 @@ export default function MonthlyEntryPage() {
     const e = edits[`${sec}:${c.id}`] ?? {};
     const num = (edit: string | undefined, stored: number | undefined) => (edit !== undefined ? Number(edit) || 0 : Number(stored) || 0);
     const carried = openHeld && chain ? openingFor(chain, `${year}-${pad2(month)}-01`, c.id, sec).value : null;
-    const open = derived ? Number(rec?.open) || 0 : openHeld ? (carried ?? (Number(rec?.open) || 0)) : num(e.open, rec?.open);
+    // Previous month's Closing → this month's Opening, for everyone (office,
+    // 2026-10-01). An administrator's Opening box used to show only a typed or
+    // saved figure, so a month nobody had saved yet opened at 0.000 — and a
+    // month-close then saved those zeros. Where this month holds no saved row
+    // for the commodity, the box starts at the carried balance: the stock
+    // chain's on the 1st, else last month's published Closing (a month keyed
+    // by month and not yet closed has no sheet for the chain). A saved or
+    // typed Opening still wins; the bag-only rows keep their own rule.
+    const savedRow = (meManualStore[key] as Partial<MonthlyBlock> | undefined)?.[sec]?.[c.id];
+    const carryIn = (): number | null => {
+      if (SALES_ONLY.has(c.id) || !crsId) return null;
+      const viaChain = chain ? openingFor(chain, `${year}-${pad2(month)}-01`, c.id, sec).value : null;
+      if (viaChain !== null) return viaChain;
+      const prev = prevMerged?.[sec]?.[c.id];
+      return prev && prev.close !== undefined ? Number(prev.close) || 0 : null;
+    };
+    const open = derived
+      ? Number(rec?.open) || 0
+      : openHeld
+        ? (carried ?? (Number(rec?.open) || 0))
+        : e.open !== undefined || savedRow
+          ? num(e.open, rec?.open)
+          : (carryIn() ?? (Number(rec?.open) || 0));
     const receipt = rcpLocked ? Number(rec?.receipt) || 0 : num(e.receipt, rec?.receipt);
     const sales = derived ? Number(rec?.sales) || 0 : num(e.sales, rec?.sales);
     let adj = inspMonth[`${sec}:${c.id}`] ?? { excess: 0, shortage: 0, transfer: 0 };
@@ -412,7 +443,7 @@ export default function MonthlyEntryPage() {
     const b = lists.b.map((c) => rowFor('b', c));
     return { a, b };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lists, merged, source, inspMonth, edits, shopStarted, chain, meManualStore, key]);
+  }, [lists, merged, source, inspMonth, edits, shopStarted, chain, meManualStore, key, prevMerged]);
 
   const showAdj = {
     excess: [...rows.a, ...rows.b].some((r) => r.adj.excess !== 0),
@@ -765,12 +796,15 @@ export default function MonthlyEntryPage() {
       const stored = merged[sec][r.c.id]?.[field];
       // A held Opening shows what will be saved: the carried balance where there is one.
       const lockedVal = field === 'open' && r.openHeld ? r.open : Number(stored) || 0;
+      // An Opening nobody typed shows what will be saved — the carried
+      // balance on a month not yet saved (rowFor).
+      const shownStored = field === 'open' ? r.open : stored;
       const val = locked
         ? lockedVal ? lockedVal.toFixed(3) : ''
         : e[field] !== undefined
           ? e[field]
-          : stored !== undefined && Number(stored) !== 0
-            ? Number(stored).toFixed(3)
+          : shownStored !== undefined && Number(shownStored) !== 0
+            ? Number(shownStored).toFixed(3)
             : '';
       return (
         <input

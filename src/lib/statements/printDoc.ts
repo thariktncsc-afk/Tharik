@@ -59,8 +59,11 @@ export const LANDSCAPE_COLUMNS = 9;
  * would turn them by itself, and the office files all three on their side
  * (2026-09-20). Measuring still decides everything else, so a builder that
  * gains a column is still handled without anyone editing this.
+ *
+ * CRS 29's Indent (8 columns) joined them on 2026-10-01 at the office's
+ * asking: A4 landscape, its full-width table across the page.
  */
-export const ALWAYS_LANDSCAPE = new Set(['crs_police', 'card_details', 'rbi']);
+export const ALWAYS_LANDSCAPE = new Set(['crs_police', 'card_details', 'rbi', 'indent']);
 
 /** A CSS @page name for a section id (letters only: `crs_page1` → `stmtcrspage1`). */
 const pageName = (id: string) => 'stmt' + id.replace(/[^a-z0-9]/gi, '');
@@ -167,6 +170,12 @@ export function pageCss(sectionIds: string[] = [], firstHtml?: string): string {
     // is shrunk to fit. Checked by printing the real document to PDF and
     // reading the page sizes back out of it.
     ...firstPageCss(sectionIds[0], firstHtml),
+    // CRS 29's Indent on its side (ALWAYS_LANDSCAPE): the camp's sheets cap
+    // their width at 900px (`.c29-wrap`, about 238 mm — right for portrait),
+    // which left 30 mm of empty paper either side of a landscape Indent. Its
+    // table takes the page's width instead. This sheet only; the builder's
+    // markup is untouched.
+    '.stmt-sheet[data-section="indent"] .c29-wrap{max-width:none}',
     // One statement, one sheet. The last one takes no break after it, or every
     // print job ends on a blank page.
     '.stmt-sheet{break-after:page;page-break-after:always;break-inside:auto}',

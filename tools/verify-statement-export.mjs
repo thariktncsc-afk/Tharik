@@ -143,6 +143,12 @@ console.log('\nPDF — A4, not A3');
     ['crs_police', 'card_details', 'rbi'].every((id) =>
       new RegExp(`stmt-sheet--landscape[^>]*data-section="${id}"`).test(P.buildPrintDocument('T', '', [sectionOf(`crs19_${id}.html`)].map((s) => ({ ...s, id }))))));
   check('a statement NOT on that list is still measured', P.orientationOf(load('crs19_sale_tax.html'), 'sale_tax') === 'portrait');
+  // CRS 29's Indent (8 columns) on A4 landscape, its table across the page (office, 2026-10-01).
+  check('CRS 29 Indent prints landscape — print sheet and preview', P.orientationOf(load('crs29_indent.html'), 'indent') === 'landscape' &&
+    /stmt-sheet--landscape[^>]*data-section="indent"/.test(P.buildPrintDocument('T', '', [{ id: 'indent', label: 'Indent', copies: 1, html: load('crs29_indent.html') }])) &&
+    /stmt-sheet--landscape/.test(P.buildPreviewSheet(load('crs29_indent.html'), 'indent')));
+  check('…its table takes the page width (the camp wrapper\'s 900px cap lifted for that sheet only)',
+    /\.stmt-sheet\[data-section="indent"\] \.c29-wrap\{max-width:none\}/.test(P.pageCss(['indent'])) && !/data-section="b6"\] \.c29-wrap/.test(P.pageCss(['b6'])));
   check('the preview shows the same sheet the printer will', /stmt-sheet--landscape/.test(P.buildPreviewSheet(load('crs19_rbi.html'), 'rbi')) && /stmt-sheet--portrait/.test(P.buildPreviewSheet(load('crs19_rbi.html'))));
 
   check('the header row repeats on a continuation page', /thead\{display:table-header-group\}/.test(doc));
