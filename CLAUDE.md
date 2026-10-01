@@ -1391,6 +1391,39 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   size, moved 8.7 mm left (text 21.9 → 297.1 mm became 13.1 → 288.4 mm).
   **Still at the paper edge, not yet asked for:** Daily Sale and Gunny
   (right margin 0, measured 297.1 mm of 297); Receipt has 3.9 mm.
+- **CRS Page 2 GROWS to fill its A4 landscape page** (office, 2026-10-01;
+  `growsToPage` in pageSetup.ts, `data-fill-grow` in fillPage.ts, `npm run
+  verify:page2-fill`).
+  - **The problem**: its table is `width:100%`, so the existing fill could
+    not enlarge it. It printed at 5.6 pt and stopped at 140 mm of 210, with
+    the bottom third of the paper blank.
+  - **How it grows**: `fillSheets` lays it out NARROWER, at the width that,
+    zoomed back out to the printable width, fills ~90% of the printable
+    height. So type, padding, borders, the summary box and the signature
+    line all grow by one factor. It also stretches, so the height left goes
+    into its rows.
+  - **Nothing clips**: it backs off (×0.97 a step) while any cell is narrower
+    than its text, or the sheet would be taller than the page. Worst case
+    (every row, 9-digit figures): ×1.09, one page, no cell clipped.
+  - **CRS 23 September**:
+
+    | | Before | After |
+    | --- | --- | --- |
+    | Zoom | — | ×1.3 |
+    | Text reaches | 140 mm | 193 mm |
+    | Table type | 5.6 pt | 7.3 pt |
+    | Title | 9.7 pt | 12.7 pt |
+    | Summary / signatures | 7.5 pt | 9.8 pt |
+
+    Still one page; both copies grow.
+  - CRS 29's own Page 2 (a 900 px sheet) now fills the page too: 120 →
+    185 mm, 7.5 → 9.7 pt.
+  - **Figures unchanged**: every printed token and every data and summary
+    row is identical before and after (CRS 23, 29). 13 shops print one page
+    each. The builder is untouched (no golden changes).
+  - **Preview = Print = PDF**: the preview runs the same `fillSheets` on the
+    same wrapper (`SheetPreview`), and Print / 📄 PDF are the server's
+    headless-Chrome PDF of the print document, which carries the fill script.
 - **Remittance and Sale Tax stretch to the foot of the page**
   (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
   which only shrinks, so `fillSheets` enlarges them as far as the width
@@ -2495,6 +2528,7 @@ npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, ke
 npm run verify:oap-statement    Reports OAP / APS / ANP: shops with an entry only, Monthly Sales figures, family from the master, one A4 landscape page per shop
 npm run verify:carry-forward    previous month Closing → this month Opening on Monthly Entry, for administrators too; chain, then last month published
 npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
+npm run verify:page2-fill       CRS Page 2 fills its A4 landscape page: one page, larger type, nothing clipped (worst case), CRS 29 too, builder untouched
 npm run verify:receipt-date     Receipt Register Edit Date (admin): in place, both dates republished, chain / months / DSS / statements follow, activity row, shop staff refused
 npm run verify:bag-carry        bags carry: last month's Closing bags = this month's Opening, typed Opening wins, first month unchanged, statements via ctx.bagOpening
 npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB
