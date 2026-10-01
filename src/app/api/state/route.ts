@@ -16,6 +16,7 @@ import { cookies } from 'next/headers';
 import { describe, inspectWrite, isProtectedStore, STORE_LABEL } from '@/lib/clearGuard';
 import { describeStock, inspectStockWrite } from '@/lib/stockGuard';
 import { describeRice, inspectRiceWrite } from '@/lib/engine/crs29Rice';
+import { describeScope, inspectScopeWrite, masterForShop, type ScopedRow } from '@/lib/engine/commodityScope';
 import { logEvent } from '@/lib/clearServer';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 import { diffStateWrite, readHints, refusedDraft } from '@/lib/activityLog/core';
@@ -117,6 +118,12 @@ export async function GET(req: Request) {
     stores[row.store_key] = row.data;
     versions[row.store_key] = row.version;
   }
+  // A commodity assigned to one shop is that shop's (engine/commodityScope.ts):
+  // shop staff are sent the global rows and their own shop's, never another
+  // shop's. Administrators see the whole master.
+  if (session.role !== 'ADMIN' && Array.isArray(stores.__commodityMaster)) {
+    stores.__commodityMaster = masterForShop(stores.__commodityMaster as ScopedRow[], typeof session.crsId === 'number' ? session.crsId : null);
+  }
 
   return NextResponse.json({ stores, versions });
 }
@@ -152,6 +159,15 @@ export async function POST(req: Request) {
   let stored: Record<string, unknown> = {};
   const refuse = (module: string, crsId: number | null, reason: string) => recordActivity(session, [refusedDraft(module, crsId, reason)]);
 
+  // The Commodity Master decides which commodities every shop's screens carry
+  // and which shop a commodity belongs to — an administrator's to change.
+  // (Shop staff are also sent a filtered copy, so one written back from their
+  // browser would drop every other shop's commodities.)
+  if (!isAdmin && '__commodityMaster' in stores) {
+    await refuse('Commodities', typeof session.crsId === 'number' ? session.crsId : null, 'Refused: only an administrator may change the Commodity Master');
+    return NextResponse.json({ error: 'Only an administrator may change the Commodity Master.' }, { status: 403 });
+  }
+
   const touched = Object.keys(stores).filter(isProtectedStore);
   if (touched.length) {
     // The stock guard judges a keyed Receipt against the Receipt Register, and
@@ -166,6 +182,8 @@ export async function POST(req: Request) {
     // client, always read here.
     const alsoRead = [
       ...(needsRegister ? ['receiptStore', STOCK_INIT_KEY] : []),
+      // Which shop each commodity belongs to (inspectScopeWrite, below).
+      ...(needsRegister || 'receiptStore' in stores ? ['__commodityMaster'] : []),
       ...('entryStore' in stores ? ['inspectionStore'] : []),
     ];
     const read = [...new Set([...touched, ...alsoRead])];
@@ -265,6 +283,18 @@ export async function POST(req: Request) {
         { error: describeRice(riceBroken.slice(0, 3)) + (riceBroken.length > 3 ? ` (+${riceBroken.length - 3} more)` : ''), riceViolations: riceBroken },
         { status: 403 },
       );
+    }
+
+    // ── Commodity scope guard ───────────────────────────────────────────────
+    // A commodity assigned to one shop is not on any other shop's screens, so
+    // a figure keyed into it for another shop would print nowhere — refused
+    // for everyone. See src/lib/engine/commodityScope.ts.
+    const master = (Array.isArray(stores.__commodityMaster) ? stores.__commodityMaster : stored.__commodityMaster) as ScopedRow[] | undefined;
+    const scopeBroken = inspectScopeWrite(stored, stores, master);
+    if (scopeBroken.length) {
+      await logEvent(null, 'blocked', session, `Commodity scope guard refused: ${describeScope(scopeBroken)}`);
+      await refuse('Commodities', scopeBroken[0].crsId, `Refused: ${describeScope(scopeBroken)}`);
+      return NextResponse.json({ error: describeScope(scopeBroken), scopeViolations: scopeBroken }, { status: 403 });
     }
   }
 
