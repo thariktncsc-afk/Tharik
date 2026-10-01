@@ -107,6 +107,29 @@ console.log('\n6. Nothing saved → kgs ÷ pack size, as before');
   check(`Page 2 P.OIL ${p2[2]} + ${p2[4]} = ${p2[9]}, sales ${p2[11]}, closing ${p2[15]}`, p2[2] === '52' && p2[4] === '30' && p2[9] === '82' && p2[11] === '73' && p2[15] === '9', JSON.stringify(p2));
 }
 
+console.log('\n6b. CRS 29 (its own Page 2 / B6): RRA saved Opening 3, Sales 26 — as its Monthly Sales shows');
+{
+  const e = createStatementEngine({
+    stores: {
+      entryStore: {}, inspectionStore: {}, meSourceStore: {}, meRemitStore: {}, meGunnyStore: {}, meCardStore: {}, salesCloseStore: {}, receiptStore: [], meAllotStore: {}, meCardConfirmed: {}, meAdvanceStore: {},
+      monthlyStore: { '29_9_2026': { a: {
+        RRA: { open: 127, receipt: 1250, total: 1377, sales: 1287, close: 90, g_open: 3, g_receipt: 25, g_total: 28, g_sales: 26, g_close: 2 },
+        BRA: { open: 0, receipt: 23571, total: 23571, sales: 23522, close: 49, g_open: 0, g_receipt: 471, g_total: 471, g_sales: 470, g_close: 0 },
+      }, b: {} } },
+      meManualStore: { '29_9_2026': { a: {}, b: {}, dailyBags: { a: { RRA: { g_open: 3, g_sales: 26 } } } } },
+    },
+    users: [], CRS_LIST: Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `CRS ${i + 1}` })), CRS_MASTER: [], APP_CONFIG: {}, CRS_ACCOUNTS: {}, currentUser: null,
+  });
+  const d = e.getData(29, 9, 2026);
+  for (const sec of ['crs_page2', 'b6']) {
+    const h = e.buildSection(sec, d);
+    const rra = rowWith(h, 'R.R.A'), bra = rowWith(h, 'B.RICE'), tot = rowWith(h, 'RICE TOTAL');
+    const cb = sec === 'b6' ? 11 : 13; // B6 has one CS column where Page 2 has rate / amount / C.S
+    check(`${sec} R.R.A ${rra[2]} + ${rra[4]} = ${rra[6]}, − ${rra[8]} = ${rra[cb]} (it printed 2 / 25 / 27 / 25 / 1)`, rra[2] === '3' && rra[4] === '25' && rra[6] === '28' && rra[8] === '26' && rra[cb] === '2', JSON.stringify(rra));
+    check(`${sec} B.RICE Closing bags 0 + 471 − 470 = ${bra[cb]} (was 49 kg ÷ 50 = 0); RICE TOTAL Opening ${tot[2]}, Closing ${tot[cb]}`, bra[cb] === '1' && tot[2] === '3' && tot[cb] === '3', JSON.stringify({ bra, tot }));
+  }
+}
+
 console.log('\n7. Wiring');
 const b = readFileSync(join(root, 'tools/build-stmt-module.mjs'), 'utf8');
 const s12 = readFileSync(join(root, 'src/legacy/12-statement-builders.js'), 'utf8');

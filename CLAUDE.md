@@ -996,6 +996,25 @@ copies (kgs Total ÷ pack), not the grid's arithmetic.
   the statement built as loadStatementEngine builds it: CRS 19 Palm Oil
   53 → 54 → 52 → 53 (each saved, page left and reopened, Preview and PDF
   equal to the screen), Wheat Sales bags, CRS 1 BRA Opening bags.
+- **CRS 29's own Page 2 and B6 too** (office, 2026-10-01). The camp's
+  sheets are a separate family (`26-crs29.js`, `c29StockGrid` — one grid
+  for both) and still divided the kgs by each row's pack size: CRS 29
+  September printed RRA 2 / 25 / 27 / 25 / 1 while its Monthly Sales showed
+  the saved 3 / 25 / 28 / 26 / 2, and every Closing as the kgs Closing ÷
+  pack (B.RICE 0 where 0 + 471 − 470 = 1). It now reads `stmtBagCounts` too
+  (CYL, not stocked, stays kgs ÷ pack); RICE TOTAL adds the rows' counts.
+  Live: only bag cells change (15 on each sheet); golden dump identical.
+- **An open preview follows the data** (statements/page.tsx): when a store a
+  statement reads changes — this tab's save or another person's by live
+  sync — the section on screen is built again from the server. Print and
+  PDF were already built fresh on every click.
+- Localhost, live copy, the Statements page itself (its render / pdf /
+  access routes answered by the engine built as loadStatementEngine builds
+  it, from the same in-memory database): CRS 1 BRA Opening → 53, CRS 19
+  Wheat Receipt +2, CRS 29 RRA Sales +1, CRS 14 (keyed by month) Sugar
+  Opening +1 — each saved, the page left and reopened, then Monthly =
+  Preview = PDF on all five bag columns; a preview left open went 53 → 54
+  when another tab saved.
 
 ## The Gunny statement: three rows, one column
 

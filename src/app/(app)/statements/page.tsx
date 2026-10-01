@@ -15,7 +15,7 @@
  * verified byte-for-byte by tools/verify-statements.mjs) — only their location
  * changed.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { appAlert, appConfirm } from '@/components/dialog';
 import PaymentDialog from '@/components/PaymentDialog';
 import { useAuth } from '@/lib/authClient';
@@ -221,6 +221,34 @@ export default function StatementsPage() {
       if (open) window.open(URL.createObjectURL(blob), '_blank');
     }
   };
+
+  /**
+   * An open preview follows the data (office, 2026-10-01). The sheet is built
+   * on the server from the database, once, when Preview is pressed — so a
+   * Monthly Sales save made after that (here, in another tab, or by someone
+   * else, arriving by live sync) left the old figures on screen. When any
+   * store a statement reads changes, the open section is built again; Print
+   * and PDF are built fresh on every click already.
+   */
+  const watched = [
+    useStore<unknown>('monthlyStore'), useStore<unknown>('meManualStore'), useStore<unknown>('entryStore'),
+    useStore<unknown>('inspectionStore'), useStore<unknown>('receiptStore'), useStore<unknown>('meGunnyStore'),
+    useStore<unknown>('meRemitStore'), useStore<unknown>('meCardStore'), useStore<unknown>('meAllotStore'),
+  ];
+  const lastWatched = useRef<unknown[] | null>(null);
+  const openSection = preview?.section ?? null;
+  useEffect(() => {
+    const prev = lastWatched.current;
+    lastWatched.current = watched;
+    if (!prev || !openSection || prev.every((v, i) => v === watched[i])) return;
+    void (async () => {
+      const out = await render([openSection.id], `preview:${openSection.id}`);
+      const built = out?.sections[0];
+      if (!out || !built) return;
+      setPreview((p) => (p && p.section.id === openSection.id ? { ...p, html: `<style>${out.css}</style>` + built.html } : p));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, watched);
 
   const doPreview = async (section: Section) => {
     const out = await render([section.id], `preview:${section.id}`);
