@@ -511,6 +511,35 @@ CRS.
   CRS 1 / 5 / 10; Order 23 → 5 → between PHH BRA and AAY FRK; → All Shops →
   on CRS 1 and 30; existing rows untouched; 390 px phone, no sideways scroll.
 
+## The OAP / APS / ANP statement (Reports)
+
+Office, 2026-10-01 (`src/lib/engine/oapStatement.ts`, `reports/OapStatement.tsx`,
+`npm run verify:oap-statement`). Reports → **🧓 OAP / APS / ANP**: one A4
+landscape sheet per shop, in the office's "OAP & ANP" layout (TAMIL NADU …
+MADURAI REGION / title / CRS n … MON'YY / COMMODITY · O.B · RECEIPT ·
+SHORTAGE · TOTAL · SALES · C.B).
+- **Kept apart from the statements**: not a section of the statement
+  engine — no paywall, no golden, no builder touched.
+- **The family is the Commodity Master's**: every code OAP…, APS… or ANP…
+  (today OAP, APS — the POS's "ANP" —, OAP_FRK; ANP / APS_FRK / ANP_FRK join
+  when added). Commodity: one of them, or All (the sheet's title is then the
+  ones on it, "OAP & APS").
+- **A shop gets a sheet only with an entry**: the commodity has some
+  Opening, Receipt, Shortage, Sales or Closing that month. An administrator
+  ticks any set of shops (all by default); a shop user sees their own.
+- **Figures are Monthly Sales' own** (`rebuildMonthlyFromDaily` with the
+  shop's master list), worked out on every render — Daily / Monthly edits
+  show at once. TOTAL and C.B are the month's own, i.e. O.B + RECEIPT and
+  TOTAL − SALES when there is no shortage (with one, TOTAL is after it, as
+  everywhere else).
+- **Print / PDF**: a document of its own printed from a hidden frame
+  (`lib/printHtmlFrame.ts`) — `@page A4 landscape`, one page per shop, no
+  app on it; "Save as PDF" in the dialog gives the PDF.
+- Localhost, live copy, September 2026: CRS 10 (OAP 3+2−5=0, APS 10), 19
+  (OAP 5), 26 (OAP 0+5−5=0) — the 27 others left out; APS alone → CRS 10;
+  the printed document → 3 pages, each 297 × 210 mm; CRS 19's Packer sees
+  CRS 19 only. (No shop has an OAP entry for August.)
+
 ## Dates on screen are DD-MM-YYYY
 
 Office, 2026-09-29 (`npm run verify:date-format`). A phone's Chrome in US
@@ -2302,6 +2331,7 @@ npm run verify:remit-total       every statement's remittance (Page 2, Cost Com,
 npm run verify:reconcile        Expected (POS + TEA/SALT + Police + C.Box/Poly) vs remittance: one Excess on Page 2 / Cost Com / Sale Tax, the mismatch popup
 npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily Entry: created / updated / waiting / projection, no duplicates, next month's OB
 npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, kept by every republish and by Gunny Save, logged
+npm run verify:oap-statement    Reports OAP / APS / ANP: shops with an entry only, Monthly Sales figures, family from the master, one A4 landscape page per shop
 npm run verify:carry-forward    previous month Closing → this month Opening on Monthly Entry, for administrators too; chain, then last month published
 npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
 npm run verify:bag-counts       Page 2 / Free Com / Cost Com / B6 print Monthly Sales' bag counts: saved counts, 52→53→54→52, OB + RC = TOT, TOT − SAL = CB

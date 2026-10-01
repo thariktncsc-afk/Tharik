@@ -27,12 +27,13 @@ import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type Pv
 import { quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
+import OapStatement from './OapStatement';
 import { printArea, PRINT_AREA_CLASS } from '@/lib/printArea';
 import DateField from '@/components/DateField';
 
 type ShopRec = { name: string };
 type ReceiptRec = { crsId: number; date: string; items?: Record<string, { qty: number }> };
-type ReportType = 'daily' | 'monthly' | 'quarterly' | 'yearly';
+type ReportType = 'daily' | 'monthly' | 'quarterly' | 'yearly' | 'oap';
 
 const MNAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -358,7 +359,11 @@ export default function ReportsPage() {
             {tabBtn('monthly', 'Monthly')}
             {tabBtn('quarterly', '📋 Quarterly PV (3-Month)')}
             {tabBtn('yearly', '📋 Yearly PV')}
+            {tabBtn('oap', '🧓 OAP / APS / ANP')}
           </div>
+          {/* OAP / APS / ANP (office, 2026-10-01): its own statement, its own controls. */}
+          {type === 'oap' ? <OapStatement isAdmin={isAdmin} userCrs={typeof user?.crsId === 'number' ? user.crsId : null} /> : null}
+          {type !== 'oap' ? (<>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, alignItems: 'end' }}>
             <div>
               <label className="form-label">CRS SHOP</label>
@@ -501,6 +506,7 @@ export default function ReportsPage() {
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>Prints on Legal paper, landscape · By Counting and By 100 % are left blank for the PV officer to fill on-site</span>
             </div>
           ) : null}
+          </>) : null}
         </div>
       </div>
 
@@ -525,7 +531,7 @@ export default function ReportsPage() {
 
       {/* Four cards, so the row divides evenly at every breakpoint — g3 left a
           lone third card stranded below two once the grid halved. */}
-      {!isPV ? (
+      {!isPV && type !== 'oap' ? (
         <div className="grid g4 mb-4">
           <div className="kpi">
             <div className="kpi-icon" style={{ background: '#FEE2E2' }}>💰</div>
@@ -586,6 +592,7 @@ export default function ReportsPage() {
         </div>
       ) : null}
 
+      {type !== 'oap' ? (
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="card-title">
@@ -710,6 +717,7 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }
