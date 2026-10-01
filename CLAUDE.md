@@ -2172,6 +2172,42 @@ Office, 2026-09-29. `npm run verify:remittance-save`.
   the row went blank whenever the pointer was on it. Hover now shades
   `tbody` rows only.
 
+### Keyboard travel in Monthly Remittance
+
+Office, 2026-10-01 (`monthly-entry/remitNav.ts`; one handler on the
+table body, so every row behaves alike).
+- **Amount box** (Non-Cereal A/C, `data-remit-amt`):
+  - Enter or ↓ goes to the next row's amount box; ↑ to the one above.
+  - ← goes to the same row's Remittance Date.
+  - Arriving selects the figure, so typing replaces it.
+  - The first and last boxes stay put rather than wrapping.
+- **Date box**:
+  - → goes back to the amount, but only with the cursor at the end, so → still
+    moves through a date being typed.
+  - Enter straight after arriving keeps the focus and opens the calendar.
+  - Enter after typing a date takes it (DateField) and moves to the row's
+    amount.
+- **Rows filled from Daily Entry deposits** are read-only (no box), so they
+  are not stops. Navigation only moves the focus.
+- **Nothing is written or submitted by navigating**:
+  - ↑ / ↓ never step a number;
+  - the mouse wheel over a focused amount scrolls the page (a non-passive
+    guard on the table body);
+  - Enter never presses Save.
+  - The as-typed write, the 5 s autosave and 💾 Save Remittance are unchanged.
+- **Phones**: the amount boxes ask for `enterKeyHint="next"`, and Android's
+  Next / Enter moves down as on a keyboard.
+- **Localhost, live copy (CRS 23 September)**:
+  - Your sequence: row 1 amount, then Enter, ↓ ↓ ↓ and ↑.
+  - ← to the date, a typed date, then → back; Enter after typing; Enter
+    straight after arriving.
+  - The wheel did not step a focused amount.
+  - Save Remittance stored only what was typed (no other row moved), and it
+    stayed after a refresh and after leaving and reopening.
+  - On a phone viewport, Enter moves to the next amount.
+  - CRS 8: Enter visits only its 11 keyable days, then Poly & C.Box and
+    the extra rows, skipping the 20 deposit rows.
+
 ## Clear requests — what a day and a month take
 
 `clearExecute.ts`. A **day** clear removes that shop and date only: the sheet
