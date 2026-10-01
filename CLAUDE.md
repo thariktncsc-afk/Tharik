@@ -1197,6 +1197,13 @@ output. `npm run verify:statement-export` drives both exports over all 306.
   Card Details and RBI** are filed on their side whatever their width (they
   are 9, 8 and 8 columns, just under the threshold). It applies to the
   preview, the printed sheet and the Excel page setup alike.
+  **CRS 29's Indent** joined the list on 2026-10-01 (8 columns; office asked
+  for A4 landscape): one page, and its table across the page — the camp's
+  sheets cap their width at 900px (`.c29-wrap`, ~238 mm), so `pageCss` lifts
+  that cap for the Indent sheet alone (`.stmt-sheet[data-section="indent"]`;
+  the builder's markup is untouched). Printed with headless Chrome from live
+  data: 297 × 210 mm, 1 page, text 9.5–287.6 mm across, signatures on it; in
+  a select-all PDF of all 12 CRS 29 sheets only the Indent's page turned.
 - **Excel: one statement, one WORKSHEET**, in one .xlsx. It used to be the
   statements' HTML with a `.xls` name — Excel opened it as a single sheet,
   and the flex-laid-out statements collapsed on top of each other.
