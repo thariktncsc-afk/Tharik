@@ -2471,6 +2471,41 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
   worked around in code. Still so on 2026-09-28.
 
+### The automatic PV's Gunny is Gunny Stock Management's
+
+Office, 2026-10-01 (`pvQuarter.ts` `pvPeriodGunny`, `npm run
+verify:pv-gunny`).
+- **The bug**: the Quarterly / Yearly PV (Automatic) printed the RAW stored
+  `meGunnyStore` record of the period's FIRST month. July–September has no
+  July record, so every Gunny figure printed 0, for every shop, while Gunny
+  Stock Management showed September's (CRS 1: SS 569 + 206 = 775 − 525 =
+  250).
+- **Now**: each month of the period is worked out as the Gunny Stock screen
+  works it, by `gunnyRowFor` on the month's Monthly Sales bag counts,
+  exactly as the 3-Month PV's current month always was. The code lives in
+  one function, `gunnyOfMonth`, used by both PVs. It is read from the stores
+  when the PV is built, never from a stored copy as such.
+- **The period is put together like the commodity rows**:
+  - Opening is the first month that has data (a published month or a
+    Gunny record), so empty leading months don't zero it.
+  - Receipt and Issues are added up over the months.
+  - Total = Opening + Receipt; Closing = Total − Issues.
+  - For one month that is the screen's row exactly. Over two, it is the
+    first month's Opening and the last month's Closing (CB → OB holds).
+- **Read only, 2026-10-01**: all 21 shops with Gunny figures, 63 non-zero
+  rows. The July–September PV equals the Gunny Stock screen and the stored
+  record, figure for figure, printed on the sheet. The full-year PV equals
+  them too.
+  - CRS 12's September POLY (−2) and C.BOX (−1) close below 0 on the screen
+    too: more issued than held.
+- **Localhost, live copy**: Reports → Quarterly PV → Jul – Aug – Sep for CRS
+  1, 5 and 23 matched the Gunny screen on all three items.
+  - Then CRS 1's SS Opening was typed 569 → 570 on Gunny Stock Management
+    and saved (tick after the database).
+  - The PV then read 570 + 206 = 776 − 525 = 251, and Print printed that
+    area.
+- The layout and the commodity rows are unchanged.
+
 ### The PV sheet: Annexure-I on Legal paper
 
 `buildPVTable` (`pvStatement.ts`), for both the automatic and the 3-month PV
@@ -2525,6 +2560,7 @@ npm run verify:statement-export  PDF sheets and one-worksheet-per-statement Exce
 npm run verify:receipt-rows  Receipt statement: a row per receipt, none reserved, none dropped
 npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every figure in one column
 npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
+npm run verify:pv-gunny        the automatic PV's Gunny = Gunny Stock Management (gunnyRowFor) per month; first-month Opening, Receipt / Issues added; latest saved data
 npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
