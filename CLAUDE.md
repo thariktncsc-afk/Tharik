@@ -535,6 +535,16 @@ SHORTAGE · TOTAL · SALES · C.B).
 - **Print / PDF**: a document of its own printed from a hidden frame
   (`lib/printHtmlFrame.ts`) — `@page A4 landscape`, one page per shop, no
   app on it; "Save as PDF" in the dialog gives the PDF.
+- **Also on the Statements page** (office, the same evening: "not showing"
+  — they looked for it there): an OAP / APS / ANP card under the Statement
+  Sections (`statements/OapCard.tsx`), for the shop and month chosen.
+  - It shows a one-line summary, 👁 Preview and 🖨️ Print / PDF: the same
+    sheet and the same print as Reports.
+  - It is not a section: no checkbox, not in select-all / Excel / PDF /
+    Print of the sections, no payment.
+  - With no entry it says so ("No OAP / APS / ANP entry for CRS 23 in
+    September 2026"), and its buttons are disabled.
+  - It resets on a change of shop or month.
 - Localhost, live copy, September 2026: CRS 10 (OAP 3+2−5=0, APS 10), 19
   (OAP 5), 26 (OAP 0+5−5=0) — the 27 others left out; APS alone → CRS 10;
   the printed document → 3 pages, each 297 × 210 mm; CRS 19's Packer sees

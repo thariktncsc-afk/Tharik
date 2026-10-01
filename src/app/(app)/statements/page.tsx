@@ -43,6 +43,7 @@ import {
 } from '@/lib/payments/client';
 import { dmyTime } from '@/lib/dateFormat';
 import ReconcileNotice from '@/components/ReconcileNotice';
+import OapCard from './OapCard';
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -565,6 +566,10 @@ export default function StatementsPage() {
           )}
         </div>
       </div>
+
+      {/* The OAP / APS / ANP sheet for this shop and month — separate from the
+          statutory sections above (no checkbox, no payment). */}
+      {crsId ? <OapCard key={`${crsId}-${month}-${year}`} crsId={crsId} month={month} year={year} /> : null}
 
       {selectedCount > 0 ? (
         <div

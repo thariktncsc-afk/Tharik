@@ -117,6 +117,10 @@ console.log('\n5. Wiring');
   check('Reports has the 🧓 OAP / APS / ANP tab, which renders the statement alone', /tabBtn\('oap'/.test(page) && /type === 'oap' \? <OapStatement/.test(page) && /\{type !== 'oap' \? \(/.test(page));
   check('it prints a document of its own (hidden frame), never the app', /printHtmlDocument\(oapPrintDocument\(/.test(comp) && !/window\.print\(\)/.test(comp));
   check('an administrator picks the shops; a shop user has their own only', /isAdmin \? picked : userCrs \? \[userCrs\] : \[\]/.test(comp));
+  const stmts = readFileSync(join(root, 'src/app/(app)/statements/page.tsx'), 'utf8');
+  const card = readFileSync(join(root, 'src/app/(app)/statements/OapCard.tsx'), 'utf8');
+  check('the Statements page shows it for the chosen shop and month, after the statutory sections and outside them (no checkbox, no payment)', stmts.includes('<OapCard key={`${crsId}-${month}-${year}`} crsId={crsId} month={month} year={year} />') && stmts.indexOf('<OapCard') > stmts.indexOf('Statement Sections') && !/setSelected|sectionIds|pdfFor/.test(card));
+  check('…the same sheet and print as Reports (oapSheetFor / oapSheetHtml / oapPrintDocument)', /oapSheetFor\(/.test(card) && /oapSheetHtml\(/.test(card) && /printHtmlDocument\(oapPrintDocument\(/.test(card));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nALL OAP-STATEMENT CHECKS PASSED');
