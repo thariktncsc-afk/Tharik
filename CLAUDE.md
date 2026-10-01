@@ -1613,6 +1613,25 @@ every Closing equals the paper's).
 Entry saves an Initial Opening, every other commodity at 0; `--gunny-open=
 ss50:n,poly:n,cbox:n` sets the month's Gunny Opening as an administrator
 types it (`openingAuto: false`). With no `--sales` the sheet sells nothing.
+`--open-bags=ID:n,…` stores the Opening BAG counts as Monthly Sales keys
+them on a from-Daily row (`meManualStore[key].dailyBags`, Monthly Entry's
+own save): only a count that differs from kgs ÷ pack size is kept, so a
+count equal to it follows the kgs as before. The statements read the same
+record (`45-bag-counts.js`).
+- **CRS 23, from 01-09-2026** (office, 2026-10-01; CRS 23 held no stock data
+  and was not started): BRA 2316.998, PHH BRA 417, PHH FRK 1000.012, NPHH
+  FRK 1000.994, AAY FRK 50, RRA 1052.006, NPHH RRA 0.004, SUGAR 695.996, AAY
+  SUGAR 3, WHEAT 542.996, T.DHALL 401.012, P.OIL 401, OOTY 665, SALT CIS 125;
+  police BRA 2; Gunny 50 KG SS 1087, POLY 0, C.BOX 0. Opening bags as the
+  sheet gives them: 47 / 8 / 20 / 20 / 1 / 21 / 0 / 14 / 0 / 11 / 8 / 40 /
+  13 / 5. Only BRA 47, SUGAR 14 and WHEAT 11 differ from kgs ÷ 50 (46 / 13
+  / 10), so those three are stored as typed. Started-record 01-09-2026.
+  Read back: the day sheet, Monthly Sales (kgs and bags, after leaving and
+  returning), Gunny, and the CRS Page 2 / B6 / Gunny / CRS Police PDFs. Only
+  CRS 23's keys changed. Backup `backups/day-sheet-23_2026-09-01-…`.
+  **Not carried into October:** October's Opening bags are worked out from
+  the kgs again (BRA 46, not September's Closing 47). That is the existing
+  rule for typed bag counts; it is left for the office to decide.
 - **CRS 27, from 01-09-2026** (office, 2026-09-30; CRS 27 held no stock data
   and was not started): BRA 3908, PHH BRA 850, PHH FRK 1500.062, NPHH FRK
   5000.062, AAY 105, AAY FRK 154.010, RRA 1000, NPHH RRA 0.030, SUGAR
