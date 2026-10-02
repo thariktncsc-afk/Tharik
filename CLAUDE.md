@@ -2418,6 +2418,36 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   requiring SHORTAG… stepped it over silently — "still needs CRS PAGE2" with
   the file sitting right there. A file named like a PAGE2 that is not read as
   one is now an error naming it.
+- **PAGE2's column headings are read by POSITION, not by count** (office,
+  2026-10-02; `verify:pv-quarter` §6). CRS 20's July / August PDFs and the
+  system's own September workbook were all refused on the upload:
+  - "6 column headings but 5 sets of BAGS / KGS" — our own Page 2's
+    EXCESS / SHORT·AGE / TRANS·FER are headings with NO BAGS / KGS leaf under
+    them (the figure sits straight below), and two of them break over two
+    lines. The old walker paired leaves with headings in order and ran out.
+    Now a leaf belongs to the heading its span overlaps, a heading with no
+    leaf is one KGS column of its own, and a heading split over two lines
+    is joined (SHORT + AGE). The office's 13 known layouts and ours read by
+    the same rule.
+  - "the row OAP FRK is not a commodity this reader knows" — the office's
+    sheet has 20 kg on that line. OAP FRK is a commodity on the master, so
+    it now reads as `OAP_FRK`. Our own spellings are known too (`SUGAR AAY`,
+    `ARASU SALT (CIS)`), as are the ruled-but-empty lines (`APS FRK`, `PHH
+    RRA`, the five `PONGAL` lines) and the `AAY TOTAL` / `RRA TOTAL`
+    subtotals, which are stepped over. **A figure on a ruled-empty line is
+    refused**, never dropped.
+  - Row reading stops at the sheet's foot (`BILL CLERK :`, the Sales Amount
+    / TOTAL / EXCESS box), which our Page 2 prints and the office's does not.
+  - The three September uploads in the screenshot were: the whole workbook
+    (PAGE2 inside — reads, 21 rows), the CRS POLICE sheet printed twice, and
+    the GUNNY sheet printed twice. Uploaded together the month is complete.
+  - **What STILL refuses, and should**: CRS 20's July and August PAGE2 both
+    stop on PHH FRK — July 4411.48 + 0 ≠ the sheet's Total **4411**; August
+    1.538 + 2500 = 2501.538 ≠ **2502**. The office rounded that row's total
+    to the kilo on the paper. The reader refuses a row that does not add up,
+    with its figures, and that is left as it is: the office's call whether
+    the kgs or the rounded total is right. Their GUNNY and POLICE sheets
+    read, and chain July → August (SS 456 → 456, POLY 55 → 55, C.BOX 1 → 1).
 - **A blank CLOSING cell is Total − Sales**, not 0. CRS 1 leaves C.BOX and
   P.GUNNY's Closing unprinted and opens the next month at exactly Total −
   Sales (July C.BOX 398 → August opens 398). A printed Closing, 0 included,

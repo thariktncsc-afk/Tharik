@@ -149,10 +149,21 @@ const PAGE2_LABELS: Record<string, string | null> = {
   'SALT(CIS)': 'SALT_CIS', 'SALT(RFFS)': 'SALT_RFFS', OAP: 'OAP', APS: 'APS', 'PHH BRA': 'PHH_BRA',
   'PHH FRK': 'PHH_FRK', 'AAY FRK': 'AAY_FRK', 'NPHH FRK': 'NPHH_FRK', 'NPHH FRK RRA': 'NPHH_RRA',
   'C.BOX': 'EMPTY_BOX', 'P.GUNNY': 'EMPTY_BAG',
+  // Our own Page 2's spellings of the same rows (office, 2026-10-02: the
+  // system's September PDF uploaded beside the office's July / August).
+  'SUGAR AAY': 'AAY_SUGAR', 'ARASU SALT (CIS)': 'SALT_CIS', 'ARASU SALT (RFFS)': 'SALT_RFFS',
   // Printed, but not stock the PV counts: a subtotal, an amount-only line, a
   // non-stock product line.
-  'RICE TOTAL': null, POLICE: null, "PALM JAGGERY'S": null, 'PALM JAGGERY': null,
+  'RICE TOTAL': null, 'AAY TOTAL': null, 'RRA TOTAL': null, POLICE: null, "PALM JAGGERY'S": null, 'PALM JAGGERY': null,
+  // OAP FRK is a commodity of its own on the master (CRS 20 JULY'26 holds
+  // 20 kg of it); APS FRK and PHH RRA are ruled lines the forms carry for
+  // lines no shop stocks, printed empty. A figure on one of those is refused
+  // below, not silently dropped.
+  'OAP FRK': 'OAP_FRK', 'APS FRK': null, 'PHH RRA': null,
+  'PONGAL GIFT': null, 'PONGAL SUGAR': null, 'PONGAL RRA': null, 'PONGAL DHOTHI': null, 'PONGAL SAREE': null,
 };
+/** Rows that must be EMPTY: a figure on one is a commodity this reader cannot place. */
+const PAGE2_PLACEHOLDERS = new Set(['APS FRK', 'PHH RRA', 'PONGAL GIFT', 'PONGAL SUGAR', 'PONGAL RRA', 'PONGAL DHOTHI', 'PONGAL SAREE']);
 /** Counted in pieces, printed in the BAGS columns. */
 const PIECES = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
@@ -178,33 +189,74 @@ export function readPage2(items: TextItem[]): Record<string, Flow> {
   const leaves = items
     .filter((i) => Math.abs(i.y - leafY) <= 3 && /^(BAGS|KGS|RATE|AMOUNT)$/i.test(i.str.trim()))
     .sort((a, b) => a.x - b.x);
-  const parents = items
-    .filter((i) => i.y < leafY && i.y > leafY - 30 && norm(i.str) in PAGE2_PARENTS)
-    .sort((a, b) => a.x - b.x);
+  // The headings above the leaves. A heading printed on two lines — our own
+  // Page 2 breaks SHORT / AGE and TRANS / FER — is joined when its halves
+  // stand one over the other (office, 2026-10-02).
+  const above = items.filter((i) => i.y < leafY - 2 && i.y > leafY - 34 && /^[A-Z]+$/.test(norm(i.str)));
+  const used = new Set<TextItem>();
+  const parents: { x: number; r: number; field: keyof Flow }[] = [];
+  for (const a of above) {
+    if (used.has(a)) continue;
+    let name = norm(a.str);
+    let x0 = a.x;
+    let x1 = right(a);
+    if (!(name in PAGE2_PARENTS)) {
+      const below = above.find((b) => b !== a && !used.has(b) && b.y > a.y && b.y - a.y < 14 && Math.abs(centre(b) - centre(a)) < 12 && norm(a.str) + norm(b.str) in PAGE2_PARENTS);
+      if (!below) continue;
+      used.add(below);
+      name = norm(a.str) + norm(below.str);
+      x0 = Math.min(x0, below.x);
+      x1 = Math.max(x1, right(below));
+    }
+    used.add(a);
+    const field = PAGE2_PARENTS[name];
+    if (field === 'rate' || field === 'amount') continue;
+    parents.push({ x: x0, r: x1, field });
+  }
+  parents.sort((a, b) => a.x - b.x);
 
-  // Walk: each parent takes BAGS+KGS, or a single KGS; RATE and AMOUNT stand alone.
+  // Each leaf belongs to the heading it stands under; a heading with no leaf
+  // under it (EXCESS / SHORTAGE / TRANSFER on our own sheet) is one KGS
+  // column of its own. The office's 13 known layouts and ours read alike.
   const cols: Leaf[] = [];
-  let p = 0;
+  // A heading's word can be narrower than the cell beneath it (OPENING over a
+  // BAGS + KGS pair), so a leaf belongs to the heading whose text overlaps its
+  // span, else the nearest heading — never one further than half a cell away.
+  const parentOf = (x0: number, x1: number) => {
+    let hit: (typeof parents)[number] | null = null;
+    let best = Infinity;
+    for (const p of parents) {
+      const overlap = Math.min(x1, p.r) - Math.max(x0, p.x);
+      const d = overlap > 0 ? 0 : Math.min(Math.abs(x0 - p.r), Math.abs(p.x - x1));
+      if (d < best) { best = d; hit = p; }
+    }
+    return best <= 40 ? hit : null;
+  };
+  const taken = new Set<(typeof parents)[number]>();
   for (let i = 0; i < leaves.length; i++) {
     const sub = norm(leaves[i].str) as Leaf['sub'];
     if (sub === 'RATE' || sub === 'AMOUNT') {
       cols.push({ c: centre(leaves[i]), field: sub.toLowerCase(), sub });
       continue;
     }
-    const parent = parents[p];
-    if (!parent) throw new PdfReadError(`CRS PAGE2: a ${sub} column has no heading above it.`);
-    const field = PAGE2_PARENTS[norm(parent.str)];
     if (sub === 'BAGS') {
       const next = leaves[i + 1];
-      if (!next || norm(next.str) !== 'KGS') throw new PdfReadError(`CRS PAGE2: ${norm(parent.str)} has BAGS without KGS.`);
-      cols.push({ c: centre(leaves[i]), field, sub: 'BAGS' }, { c: centre(next), field, sub: 'KGS' });
+      if (!next || norm(next.str) !== 'KGS') throw new PdfReadError('CRS PAGE2: a BAGS column has no KGS beside it.');
+      // A pair spans its heading: it is the heading the two together sit under.
+      const parent = parentOf(leaves[i].x, right(next));
+      if (!parent) throw new PdfReadError('CRS PAGE2: a BAGS / KGS pair has no heading above it.');
+      taken.add(parent);
+      cols.push({ c: centre(leaves[i]), field: parent.field, sub: 'BAGS' }, { c: centre(next), field: parent.field, sub: 'KGS' });
       i++;
     } else {
-      cols.push({ c: centre(leaves[i]), field, sub: 'KGS' });
+      const parent = parentOf(leaves[i].x, right(leaves[i]));
+      if (!parent) throw new PdfReadError('CRS PAGE2: a KGS column has no heading above it.');
+      taken.add(parent);
+      cols.push({ c: centre(leaves[i]), field: parent.field, sub: 'KGS' });
     }
-    p++;
   }
-  if (p !== parents.length) throw new PdfReadError(`CRS PAGE2: ${parents.length} column headings but ${p} sets of BAGS / KGS under them — the layout is not one this reader knows.`);
+  for (const p of parents) if (!taken.has(p)) cols.push({ c: (p.x + p.r) / 2, field: p.field, sub: 'KGS' });
+  cols.sort((a, b) => a.c - b.c);
   for (const need of ['open', 'total', 'sales', 'closing']) {
     if (!cols.some((c) => c.field === need)) throw new PdfReadError(`CRS PAGE2: no ${need.toUpperCase()} column.`);
   }
@@ -214,9 +266,17 @@ export function readPage2(items: TextItem[]): Record<string, Flow> {
   for (const l of ls.slice(leafLineIdx + 1)) {
     const label = labelOf(l, firstColX);
     if (!label) continue;
+    // The table ends where the sheet's foot begins — the summary box and the
+    // signature line (our own Page 2 prints "BILL CLERK : …" there).
+    if (/^(BILL CLERK|AREA SUPERVISOR|AREA SUPERINTENDENT|SALES AMOUNT|REMITTANCE AMOUNT|NAME OF THE|B.C|P.K.R|TOTAL$|EXCESS$)/.test(label)) break;
     if (!(label in PAGE2_LABELS)) throw new PdfReadError(`CRS PAGE2: the row "${label}" is not a commodity this reader knows — nothing was read.`);
     const id = PAGE2_LABELS[label];
-    if (!id) continue;
+    if (!id) {
+      if (PAGE2_PLACEHOLDERS.has(label) && l.some((it) => it.x >= firstColX - 4 && NUMBER.test(it.str.trim()) && Number(it.str) !== 0)) {
+        throw new PdfReadError(`CRS PAGE2: the row "${label}" carries a figure, but this reader has no commodity to place it in — nothing was read.`);
+      }
+      continue;
+    }
     if (rows[id]) throw new PdfReadError(`CRS PAGE2: ${label} appears twice.`);
 
     const cell: Record<string, { BAGS?: number; KGS?: number }> = {};
