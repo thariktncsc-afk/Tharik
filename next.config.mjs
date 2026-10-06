@@ -14,9 +14,10 @@ const nextConfig = {
   // the function, which file tracing cannot see on its own.
   serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
   outputFileTracingIncludes: {
-    '/api/statements/pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
+    // The Tamil font (pdfFonts.ts) travels with both: a server's Chrome has none.
+    '/api/statements/pdf': ['./node_modules/@sparticuz/chromium/bin/**', './node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-tamil-*-normal.woff2'],
     // The PV download (one shop's PV per call) draws with the same Chrome.
-    '/api/pv/pdf': ['./node_modules/@sparticuz/chromium/bin/**', './node_modules/pdfjs-dist/standard_fonts/LiberationSans-*.ttf'],
+    '/api/pv/pdf': ['./node_modules/@sparticuz/chromium/bin/**', './node_modules/pdfjs-dist/standard_fonts/LiberationSans-*.ttf', './node_modules/@fontsource/noto-sans-tamil/files/noto-sans-tamil-tamil-*-normal.woff2'],
   },
   // The legacy engine is served as classic scripts from /public/js and must not
   // be cached across a rebuild during development.

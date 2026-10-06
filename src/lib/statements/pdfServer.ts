@@ -22,6 +22,7 @@
  * browser is kept per server process and a fresh page used per request.
  */
 import type { Browser } from 'puppeteer-core';
+import { pdfFontCss } from '@/lib/statements/pdfFonts';
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -89,7 +90,7 @@ export async function pvSheetToPdf(sheet: string, fitSource: string): Promise<Ui
       else void r.abort('blockedbyclient');
     });
     await page.setViewport({ width: 1600, height: 1000 });
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>${await pvFontCss()}html,body{margin:0;background:#fff}</style></head><body>${sheet}</body></html>`;
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>${await pdfFontCss('pv')}html,body{margin:0;background:#fff}</style></head><body>${sheet}</body></html>`;
     await page.setContent(doc, { waitUntil: 'load', timeout: 30000 });
     await page.evaluate(async () => {
       await document.fonts?.ready;
@@ -116,32 +117,6 @@ export function pdfPageCount(pdf: Uint8Array): number {
   return (text.match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? []).length;
 }
 
-let fontCss: Promise<string> | null = null;
-/**
- * Liberation Sans (SIL OFL, shipped with pdf.js) standing in for Arial — the
- * same character widths, so a server without Arial (Vercel's Linux Chrome)
- * measures and prints the PV exactly as an office PC does.
- */
-function pvFontCss(): Promise<string> {
-  if (!fontCss) {
-    fontCss = (async () => {
-      const fs = await import('node:fs/promises');
-      const path = await import('node:path');
-      const dir = path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts');
-      const face = async (file: string, weight: number) => {
-        try {
-          const b64 = (await fs.readFile(path.join(dir, file))).toString('base64');
-          return `@font-face{font-family:Arial;font-weight:${weight};font-style:normal;src:url(data:font/ttf;base64,${b64}) format('truetype')}`;
-        } catch {
-          return ''; // the machine's own fonts, then
-        }
-      };
-      return (await face('LiberationSans-Regular.ttf', 400)) + (await face('LiberationSans-Bold.ttf', 700)) + (await face('LiberationSans-Bold.ttf', 800));
-    })();
-  }
-  return fontCss;
-}
-
 /**
  * Print `doc` (a whole HTML document from buildPrintDocument) to PDF.
  * `preferCSSPageSize` is what lets each sheet keep its own page: the size
@@ -151,7 +126,11 @@ export async function htmlToPdf(doc: string): Promise<Uint8Array> {
   const b = await browser();
   const page = await b.newPage();
   try {
-    await page.setContent(doc, { waitUntil: 'load', timeout: 30000 });
+    // Tamil text (CRS 29's commodity names, a shop's name) needs a Tamil font,
+    // which a server's Chrome does not have (pdfFonts.ts).
+    const fonts = `<style>${await pdfFontCss('statements')}</style>`;
+    const withFonts = /<head[^>]*>/i.test(doc) ? doc.replace(/<head[^>]*>/i, (h) => h + fonts) : fonts + doc;
+    await page.setContent(withFonts, { waitUntil: 'load', timeout: 30000 });
     // The statements that fill their page are sized by a script as the
     // document is read; wait for fonts, then let that layout settle.
     await page.evaluate(async () => {

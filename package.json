@@ -73,6 +73,7 @@
     "verify:print-pdf": "node tools/verify-print-pdf.mjs"
   },
   "dependencies": {
+    "@fontsource/noto-sans-tamil": "^5.3.0",
     "@sparticuz/chromium": "^153.0.0",
     "@supabase/supabase-js": "^2.111.0",
     "@types/qrcode": "^1.5.6",

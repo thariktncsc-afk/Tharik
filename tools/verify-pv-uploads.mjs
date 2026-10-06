@@ -159,6 +159,11 @@ const save = (store, who, crsId, month, name, bytes, mode = 'replace') => V.save
   check('the tick only after the server answers with the file saved', /await refresh\(\[m\][\s\S]*saveSuccess\(/.test(ui) && !/saveSuccess\([\s\S]*savePdf\(/.test(ui));
   check('Generate asks the server again before building', /const generate = async \(\) => \{[\s\S]{0,200}await refresh\(\)/.test(ui));
   check('Replace PDF and Browse PDF on the card', /'Replace PDF'/.test(ui) && /'Browse PDF'/.test(ui));
+  // Office, 2026-10-06: a month the system has figures for is fetched, never asked for as a PDF.
+  check('each month from its own source: system figures first (any month, not only the current one), then a PDF',
+    /isCurrent\(m\) \|\| systemStates\[keyOf\(m\)\]\?\.has \? 'system' : 'pdf'/.test(ui) && /✓ Data available — automatically fetched/.test(ui) && /⚠ Manual upload required/.test(ui));
+  check('the system month is worked out again whenever the saved stores change, and Generate uses it, not a PDF',
+    /const systemStates = useMemo\([\s\S]*?\[period, systemMonth, today\.year, today\.month\]\)/.test(ui) && /kindOf\(m\) === 'system' \? systemMonth\(m\) : pdfQuarterMonth/.test(ui));
   const store = readFileSync(join(root, 'src/lib/pvUploads/storageStore.ts'), 'utf8');
   const kit = readFileSync(join(root, 'src/lib/pvUploads/routeKit.ts'), 'utf8');
   check('no migration needed: files in a private Storage bucket the server creates, details in crs_state under scope pv_upload',
