@@ -136,6 +136,37 @@ console.log('\n3. The PDF the server makes');
       check(`the server's page counter: ${R.pdfPageCount(three)} for a ${d3.numPages}-page PDF`, R.pdfPageCount(three) === d3.numPages && d3.numPages === 3);
       await d3.destroy();
     }
+    // TAMIL (office, 2026-10-06): the server's Chrome has no Tamil font, so the downloaded PV read
+    // "NAME OF THE CRS : 20 —" with the shop's name missing. Noto Sans Tamil now travels with the
+    // page (pdfFonts.ts). This machine has its own Tamil fonts, so the proof is the font the PDF
+    // EMBEDS for the Tamil text — Noto Sans Tamil, not Nirmala UI / Latha — and the text read back.
+    {
+      // A PDF's text layer splits Tamil syllables and drops some combined vowel signs, so the
+      // text is compared by its consonants in order (vowel signs, spaces and blanks removed).
+      const skel = (t) => t.replace(/[ா-்ௗ\s\u0000]/g, '');
+      const fontsOf = (pdf) => [...new Set([...Buffer.from(pdf).toString('latin1').matchAll(/\/BaseFont\s*\/(?:[A-Z]{6}\+)?([A-Za-z0-9-]+)/g)].map((m) => m[1]))];
+      const name = 'சுப்பிரமணியபுரம்';
+      const pdf = await R.pvSheetToPdf(sheet('A4'), F.fitPvSheet.toString());
+      const d = await pdfjs.getDocument({ data: new Uint8Array(pdf), verbosity: 0 }).promise;
+      const text = (await (await d.getPage(1)).getTextContent()).items.map((i) => i.str).join('');
+      const fonts = fontsOf(pdf);
+      check(`PV PDF: the shop's Tamil name is on it ("${(/NAME OF THE CRS :\s*20\s*—\s*(.{0,24})/.exec(text) ?? [])[1] ?? ''}"), drawn in ${fonts.filter((f) => /Tamil/i.test(f)).join(', ') || 'NO Tamil font'}; English in ${fonts.filter((f) => /Liberation/i.test(f)).join(', ')}`,
+        skel(text).includes(skel(name)) && fonts.some((f) => /NotoSansTamil/i.test(f)) && !fonts.some((f) => /Nirmala|Latha/i.test(f)) && fonts.some((f) => /LiberationSans/i.test(f)));
+      await d.destroy();
+      // A statement document (as printDoc makes them): Tamil in Noto Sans Tamil, English still in the machine's Calibri.
+      const doc = '<!DOCTYPE html><html><head><meta charset="utf-8"/><style>@page{size:A4}</style></head><body>' +
+        '<p style="font-family:Calibri,Arial,sans-serif;font-size:14px">B.RICE புழுங்கல் அரிசி — SUGAR சீனி</p>' +
+        '<p style="font-family:Calibri,Arial,sans-serif;font-size:14px;font-weight:bold">TOTAL மொத்தம்</p>' +
+        '<p style="font-family:Calibri,Arial,sans-serif;font-size:12px;font-style:italic">note in italics</p></body></html>';
+      const st = await R.htmlToPdf(doc);
+      const ds = await pdfjs.getDocument({ data: new Uint8Array(st), verbosity: 0 }).promise;
+      const stext = (await (await ds.getPage(1)).getTextContent()).items.map((i) => i.str).join('');
+      const sf = fontsOf(st);
+      check(`statement PDF: Tamil ("புழுங்கல் அரிசி", "சீனி", "மொத்தம்") in ${sf.filter((f) => /Tamil/i.test(f)).join(', ') || 'NO Tamil font'}; English, bold and italic still in ${sf.filter((f) => /Calibri/i.test(f)).join(', ') || 'NOT Calibri'}`,
+        ['புழுங்கல்', 'அரிசி', 'சீனி', 'மொத்தம்'].every((w) => skel(stext).includes(skel(w))) && sf.some((f) => /NotoSansTamil/i.test(f)) && !sf.some((f) => /Nirmala|Latha/i.test(f)) &&
+        sf.includes('Calibri') && sf.some((f) => /Calibri-Bold$/.test(f)) && sf.some((f) => /Calibri-Italic/.test(f)));
+      await ds.destroy();
+    }
     // The drawing page reaches no network, even for markup the route would have refused.
     let hits = 0;
     const srv = http.createServer((q, r) => { hits++; r.end('x'); });
@@ -156,8 +187,10 @@ console.log('\n4. Route and screen');
   check('signed in only (401), a shop user their own shop only (403)', /Not signed in\.' \}, \{ status: 401/.test(route) && /session\.role !== 'ADMIN' && Number\(session\.crsId\) !== crsId[\s\S]{0,160}status: 403/.test(route));
   check('the sheet is checked before it is drawn, and drawn with the screen\'s fit', route.indexOf('pvSheetProblem(') < route.indexOf('pvSheetToPdf(') && /fitPvSheet\.toString\(\)/.test(route));
   check('each download is an activity-log row (Reports · exported)', /module: 'Reports',\s*action: 'exported'/.test(route));
-  check('Chrome and the Arial-metric font are shipped with /api/pv/pdf on Vercel; 60 s allowed',
-    /'\/api\/pv\/pdf': \['\.\/node_modules\/@sparticuz\/chromium\/bin\/\*\*', '\.\/node_modules\/pdfjs-dist\/standard_fonts\/LiberationSans-\*\.ttf'\]/.test(cfg) && /maxDuration = 60/.test(route));
+  const inc = (r) => (new RegExp(`'${r}': \\[([^\\]]*)\\]`).exec(cfg) ?? [])[1] ?? '';
+  check('Chrome, the Arial-metric font and the Tamil font are shipped with /api/pv/pdf on Vercel (the Tamil font with /api/statements/pdf too); 60 s allowed',
+    /@sparticuz\/chromium\/bin/.test(inc('/api/pv/pdf')) && /LiberationSans-\*\.ttf/.test(inc('/api/pv/pdf')) && /noto-sans-tamil-tamil-\*-normal\.woff2/.test(inc('/api/pv/pdf')) &&
+    /noto-sans-tamil-tamil-\*-normal\.woff2/.test(inc('/api/statements/pdf')) && /maxDuration = 60/.test(route));
   check('Reports: 📥 Download PDF for the PV on screen; 📥 Download All Shops for an administrator (Automatic)',
     /data-pv-download="one"/.test(page) && /isAdmin && pvSource === 'auto' \? \([\s\S]{0,80}data-pv-download="all"/.test(page));
   check('All Shops: one request per shop, the same sheet builder as the screen, zipped in the browser', /autoPvHtml\(id, '', pvPaper\)/.test(page) && /return autoPvHtml\(crsId, pvNote, pvPaper\)/.test(page) && /zipSync\(files\)/.test(page));

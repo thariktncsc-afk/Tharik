@@ -817,7 +817,7 @@ export default function ReportsPage() {
                   // system; no monthly record is needed, so none is reported.
                   <div style={{ margin: '0 0 12px', background: pvHtml ? '#F0FDF4' : '#F8FAFC', border: `1px solid ${pvHtml ? '#86EFAC' : 'var(--border)'}`, borderRadius: 8, padding: '10px 14px', color: pvHtml ? '#15803D' : 'var(--muted)', fontSize: 12 }}>
                     {pvHtml
-                      ? <><strong>Generated from the uploaded PDFs</strong> and the current month&apos;s system data, carried month to month.</>
+                      ? <><strong>Generated month by month</strong> from the system&apos;s saved data where the shop has it, else from the uploaded PDFs, carried month to month.</>
                       : 'Upload the PDFs above and press Generate 3-Month PV.'}
                   </div>
                 ) : pvCoverage.missing.length ? (
