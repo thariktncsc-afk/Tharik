@@ -321,13 +321,9 @@ export function buildPVTable(opts: {
       balB: g ? fmtN(g.closing) : '0', balK: '',
     });
   }
-  // The classification the office wrote under its Gunny sheet, as written —
-  // "WHEAT CONSIDER AS GUNNY" — so the PV says how its Gunny was counted.
-  const notes = (gunnyNotes ?? []).map((n) => n.trim()).filter(Boolean);
-  if (notes.length) {
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    rows += `<tr class="pv-gunny-note"><td colspan="${PV_COLS}" class="l">Note: ${notes.map(esc).join('; ')}</td></tr>`;
-  }
+  // The Gunny section ends at C.BOX. The classification the office wrote
+  // under its Gunny sheet ("WHEAT CONSIDER AS GUNNY") prints in the NOTE row
+  // at the foot of the PV, once (office, 2026-10-06) — see noteLines below.
   if (policeComms.length) {
     rows += sectionLabel('Police');
     for (const cid of policeComms) rows += commodityRow(sl++, commMap[cid], null);
@@ -373,12 +369,23 @@ export function buildPVTable(opts: {
     '</tr>' +
     '</thead>';
 
+  // The NOTE row's lines: the Gunny sheet's notes as written, then what was
+  // typed on the PV screen — each once (case and spacing ignored).
+  const noteLines: string[] = [];
+  const seenNote = new Set<string>();
+  for (const n of [...(gunnyNotes ?? []), ...(note ?? '').split('\n')]) {
+    const t = n.trim();
+    const k = t.toUpperCase().replace(/\s+/g, ' ');
+    if (!t || seenNote.has(k)) continue;
+    seenNote.add(k);
+    noteLines.push(t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+  }
   const footer =
     '<tfoot>' +
     // The NOTE row (office, 2026-10-06): one full-width ruled cell, "NOTE:"
     // in bold, the text wrapping after it, tall enough for 2–4 lines and
     // growing with a longer note.
-    `<tr class="pv-note"><td colspan="${PV_COLS}" class="l f note"><b>NOTE:</b>${note && note.trim() ? ` <span class="note-text">${note.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span>` : ''}</td></tr>` +
+    `<tr class="pv-note"><td colspan="${PV_COLS}" class="l f note"><b>NOTE:</b>${noteLines.length ? ` <span class="note-text">${noteLines.join('<br>')}</span>` : ''}</td></tr>` +
     '<tr><td colspan="21" class="l f wrap">' +
     '1. Certified that the details were verified with connected records and found correct.<br>' +
     '2. Certified that the result of the physical verification have been recorded in the stock ledger, stack register and stack card.' +

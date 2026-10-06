@@ -106,4 +106,14 @@
     position: static !important;
     overflow: visible !important;
   }
+
+  /* Hidden is not gone: what `visibility` hides above still takes its space,
+     so a tall screen printed blank pages after the area — the 3-Month PV's
+     upload cards and its sheet gave a second, empty Legal page (office,
+     2026-10-06). Everything in #content that neither IS the area, holds it,
+     nor sits inside it is taken out of the layout too. The area and the
+     boxes that hold it are untouched, so nothing inside it is rebuilt. */
+  body.printing-area #content *:not(.print-area):not(.print-area *):not(:has(.print-area)) {
+    display: none !important;
+  }
 }
