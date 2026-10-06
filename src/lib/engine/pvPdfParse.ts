@@ -42,7 +42,15 @@ export type Flow = {
   total: number;
   sales: number;
   closing: number;
+  /**
+   * The BAG counts the sheet prints beside the kgs (office, 2026-10-06): the
+   * PV's bag columns are these, carried, never kgs ÷ pack. Absent where the
+   * sheet gave none to read.
+   */
+  bags?: BagFlow;
 };
+/** A row's bag counts: Opening + Receipt = Total, Total − Sales = Closing. */
+export type BagFlow = { open: number; receipt: number; total: number; sales: number; closing: number };
 export type GunnyFlow = { opening: number; receipt: number; total: number; issues: number; closing: number };
 export type GunnyKey = 'ss50' | 'poly' | 'cbox';
 
@@ -301,7 +309,17 @@ export function readPage2(items: TextItem[]): Record<string, Flow> {
     // Sales (July C.BOX 343 + 55 = 398 → August opens 398; P.GUNNY 118 − 74 →
     // 44). A PRINTED Closing — 0 included — is still read and still checked.
     const closing = cell.closing ? qty('closing') : r3(total - sales);
-    rows[id] = checkedFlow(`CRS PAGE2 · ${label}`, { open, receipt, excess, shortage, transferCell, total, sales, closing });
+    const flow = checkedFlow(`CRS PAGE2 · ${label}`, { open, receipt, excess, shortage, transferCell, total, sales, closing });
+    // The printed BAGS (a blank bag cell is 0; a blank Closing bag cell is
+    // Total − Sales, as for the kgs). Pieces rows ARE their counts.
+    if (PIECES.has(id)) {
+      flow.bags = { open: flow.open, receipt: flow.receipt, total: flow.total, sales: flow.sales, closing: flow.closing };
+    } else {
+      const bag = (fld: string) => cell[fld]?.BAGS ?? 0;
+      const bT = bag('total'), bS = bag('sales');
+      flow.bags = { open: bag('open'), receipt: bag('receipt'), total: bT, sales: bS, closing: cell.closing?.BAGS !== undefined ? bag('closing') : bT - bS };
+    }
+    rows[id] = flow;
   }
   if (!Object.keys(rows).length) throw new PdfReadError('CRS PAGE2: no commodity rows were read.');
   return rows;
