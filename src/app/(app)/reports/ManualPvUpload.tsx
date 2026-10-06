@@ -379,7 +379,16 @@ export default function ManualPvUpload({
   const monthReady = (m: YearMonth) =>
     kindOf(m) === 'system' ? !!systemStates[keyOf(m)]?.data : kindOf(m) === 'pdf' ? !!(slots[keyOf(m)]?.saved && slots[keyOf(m)]?.data) : false;
   const readyCount = period.months.filter(monthReady).length;
-  const missing = period.months.filter((m) => !isFuture(m) && !monthReady(m));
+  /**
+   * Three states, never mixed (office, 2026-10-06: "✓ August PDF Saved" over
+   * "Missing: August 2026"). MISSING = nothing to read from: no saved PDF and
+   * no system figures. A month whose PDF IS saved but whose figures could not
+   * all be read is "needs review" — saved, never missing.
+   */
+  const hasSavedPdf = (m: YearMonth) => !!slots[keyOf(m)]?.saved?.files.length;
+  const notReady = period.months.filter((m) => !isFuture(m) && !monthReady(m));
+  const missing = notReady.filter((m) => !(kindOf(m) === 'pdf' && hasSavedPdf(m)));
+  const toReview = notReady.filter((m) => kindOf(m) === 'pdf' && hasSavedPdf(m));
   const allReady = !checking && !(loadError && pdfMonths.length) && !future.length && readyCount === period.months.length;
 
   /** Build the PV from the PDFs saved NOW: the server is asked again first. */
@@ -390,7 +399,13 @@ export default function ManualPvUpload({
       if (!fresh && pdfMonths.length) return;
       const notReady = pdfMonths.filter((m) => !(fresh?.[keyOf(m)]?.saved && fresh?.[keyOf(m)]?.data));
       if (notReady.length) {
-        setProblems([`Not generated — ${notReady.map((m) => `${monthName(m.month)} ${m.year}`).join(', ')} ${notReady.length === 1 ? 'has' : 'have'} no saved CRS PAGE2 now.`]);
+        setProblems(
+          notReady.map((m) =>
+            fresh?.[keyOf(m)]?.saved?.files.length
+              ? `Not generated — ${monthName(m.month)} ${m.year}: the PDF is saved, but its CRS PAGE2 figures could not be read (see the card).`
+              : `Not generated — ${monthName(m.month)} ${m.year} has no saved CRS PAGE2 now.`,
+          ),
+        );
         return;
       }
       // Each month from its own source; a system month is worked out NOW, from the stores as saved.
@@ -676,6 +691,11 @@ export default function ManualPvUpload({
             {!checking && missing.length ? (
               <div data-pv-missing style={{ fontSize: 11.5, color: '#B45309', marginTop: 2 }}>
                 Missing: {missing.map((m) => `${monthName(m.month)} ${m.year}`).join(', ')}
+              </div>
+            ) : null}
+            {!checking && toReview.length ? (
+              <div data-pv-needs-review style={{ fontSize: 11.5, color: '#92400E', marginTop: 2 }}>
+                PDF saved — figures need review: {toReview.map((m) => `${monthName(m.month)} ${m.year}`).join(', ')}
               </div>
             ) : null}
           </div>

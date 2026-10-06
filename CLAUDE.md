@@ -2489,6 +2489,42 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
     upload is used (pages are read oldest first), and the difference is
     listed for review. It used to be refused.
   - Only `PdfReadError.code` 'wrong-shop' / 'wrong-month' refuse a file.
+- **CRS 11's July / August PDFs** (office, 2026-10-06, `verify:pv-quarter`
+  §2). Both read in full now: 19 commodities each, GUNNY, POLICE, nothing
+  for review.
+  - **"B.RICE: does not add up — Opening 6400 + Receipt 0 … Total
+    17943.42"**. This was never bags against kgs. The PDF's text layer holds
+    B.RICE's Receipt as ONE piece, "230 11543.42" (bags and kgs together),
+    so it was not read as a number, and Receipt came out 0.
+    - `splitRuns` (in `lines()`, so every sheet) splits a run of figures
+      back into one item per figure, each placed where its characters sit.
+    - Bags then land in BAGS and kgs in KGS: 128 + 230 = 358 − 185 = 173
+      bags, and 6400 + 11543.42 = 17943.42 − 9267 = 8676.42 kg. Bags and
+      kgs were always checked separately (`checkedFlow`, each unit on its
+      own).
+  - **"T.DHALL/CYL … not a commodity"**: labels are matched without minding
+    case, spaces or punctuation (`page2Label` / `policeLabel`):
+    - the app's own names and codes (`DSS_A` / `DSS_B`: "Toor Dal",
+      "BRA Rice", "Sugar (AAY)") and a short alias list;
+    - "A/B" when both parts name the SAME commodity ("T.DHALL/CYL").
+    - "SUGAR/WHEAT" is not guessed: it goes to review.
+  - Every office PDF on this machine was read before and after (200
+    sheets):
+    - 194 identical, 1 fixed (CRS 11 AUG), none broken.
+    - CRS 11 JULY and CRS 30 MAY / JUNE now read T.DHALL/CYL.
+    - CRS 7's "NPHH RRA" is now NPHH FRK RRA. Its OCT'25 sheet carries
+      1250 + 0 − 1155 = 95 kg, which used to be dropped.
+- **"Missing" means nothing to read** (`ManualPvUpload.tsx`). A month with a
+  saved PDF is never "Missing". If its figures cannot all be read it is
+  listed as "PDF saved — figures need review: …", and Generate says the PDF
+  is saved but its PAGE2 could not be read.
+- Localhost, CRS 11 Jul–Sep, the office's six PDFs one by one:
+  - August with only its GUNNY → "needs review", not Missing.
+  - All six → 3 / 3 ready. It held after a refresh, with no false error.
+  - Generate then stops on a REAL difference: B.RICE closes August at
+    8676.42 (the PDF), but CRS 11's Initial Opening on 01-09-2026 was typed
+    8676. That is the office's to correct (`tools/correct-opening.mjs`), not
+    the reader's.
 - **Uploads are SAVED per shop and month** — see "The Manual PV's uploads are
   saved", below. (They used to live in this tab's sessionStorage only.)
 - **Police only where `__crsMaster[].police`** says so — the system month

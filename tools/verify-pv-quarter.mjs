@@ -403,6 +403,63 @@ console.log('\n2. Built pages — what a real file can throw');
   const s2 = P.readFileSummary([brokenGunny], { crsId: 1, month: 7, year: 2026 });
   check(`each file's own status line: PDF 1 ${J(s1)}; PDF 2 ${J(s2)}`,
     s1.pages === 2 && s1.sheets.join() === 'CRS PAGE2' && s1.skipped === 1 && !s1.problems.length && s2.pages === 1 && !s2.sheets.length && s2.problems.some((p) => /CRS number/.test(p)));
+  // Office, 2026-10-06 (CRS 11 AUG'26): the text layer held B.RICE's Receipt as ONE piece, "230 11543.42".
+  const bra = { 'B.RICE': { open: [128, 6400], receipt: [230, 11543.42], total: [358, 17943.42], sales: [185, 9267], closing: [173, 8676.42] } };
+  const merged = (() => {
+    const items = page2(11, 8, bra, { adjustments: false });
+    const y = items.find((i) => i.str === 'B.RICE').y;
+    const a = items.find((i) => i.y === y && i.str === '230');
+    const b = items.find((i) => i.y === y && i.str === '11543.42');
+    const gap = Math.max(1, Math.round((b.x - (a.x + a.w)) / W(' ')));
+    const str = `230${' '.repeat(gap)}11543.42`;
+    return [...items.filter((i) => i !== a && i !== b), { str, x: a.x, y, w: b.x + b.w - a.x }];
+  })();
+  const mr = refused(() => P.readPage2(merged));
+  const mb = mr ? null : P.readPage2(merged).BRA;
+  check(`"230 11543.42" as one text piece: split back into its two columns — bags ${J(mb?.bags)}, kgs ${mb?.open} + ${mb?.receipt} = ${mb?.total} − ${mb?.sales} = ${mb?.closing}`,
+    !mr && mb.receipt === 11543.42 && mb.bags.receipt === 230 && mb.total === 17943.42 && mb.bags.total === 358 && mb.closing === 8676.42 && mb.bags.closing === 173, mr);
+  check('splitRuns leaves a single figure and text alone', J(P.splitRuns([{ str: '6400', x: 1, y: 1, w: 20 }, { str: 'B.RICE', x: 1, y: 1, w: 20 }]).map((i) => i.str)) === J(['6400', 'B.RICE']));
+  // Labels spelt the office's other ways (CRS 11 JULY'26: "T.DHALL/CYL").
+  const spelt = (label) => {
+    const items = page2(11, 7, { [label]: { open: [16, 788.154], receipt: [22, 1095], total: [38, 1883.154], sales: [22, 1119.154], closing: [16, 764] } }, { adjustments: false });
+    const rev = [];
+    try { return { rows: P.readPage2(items, rev), rev }; } catch (e) { return { err: e.message, rev }; }
+  };
+  for (const [label, id] of [['T.DHALL/CYL', 'TOOR'], ['CYL/T.DHALL', 'TOOR'], ['Toor Dal', 'TOOR'], ['T. DHALL', 'TOOR'], ['A A Y', 'AAY'], ['AAY', 'AAY'], ['BRA Rice', 'BRA'], ['SUGAR (AAY)', 'AAY_SUGAR'], ['Sugar(AAY)', 'AAY_SUGAR'], ['SALT (CIS)', 'SALT_CIS'], ['Palm Oil', 'PALM'], ['NPHH FRK RRA Rice', 'NPHH_RRA'], ['PHH  BRA', 'PHH_BRA']]) {
+    const r = spelt(label);
+    check(`"${label}" reads as ${id} (${r.err ?? Object.keys(r.rows ?? {}).filter((k) => k !== 'SUGAR').join()})`, !r.err && !!r.rows?.[id] && r.rows[id].closing === 764 && !r.rev.length, r.err ?? J(r.rev));
+  }
+  const mixed = spelt('SUGAR/WHEAT');
+  check('"SUGAR/WHEAT" (two different commodities) is not guessed: left out, listed for review', !mixed.err && !mixed.rows.WHEAT && mixed.rev.some((x) => /SUGAR\/WHEAT/.test(x)), J(mixed));
+  // The office's own CRS 11 PDFs, when they are on this machine (not in the repo: they are the office's).
+  {
+    const D = 'C:/Users/TharikAliR/Downloads';
+    const files = (tag) => ['CRS PAGE2 ', 'GUNNY-2', 'CRS POLICE'].map((k) => `${D}/CRS 11 ${tag}'26 - ${k}.pdf`);
+    if (files('JULY').concat(files('AUG')).every((f) => existsSync(f))) {
+      const pdfjs = await import(pathToFileURL(join(root, 'node_modules/pdfjs-dist/legacy/build/pdf.mjs')).href);
+      const pagesOf = async (f) => {
+        const d = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(f)), verbosity: 0 }).promise;
+        const out = [];
+        for (let n = 1; n <= d.numPages; n++) {
+          const pg = await d.getPage(n); const vp = pg.getViewport({ scale: 1 });
+          out.push({ file: f.split('/').pop(), items: (await pg.getTextContent()).items.filter((i) => i.str?.trim()).map((i) => ({ str: i.str, x: i.transform[4], y: vp.height - i.transform[5], w: i.width })) });
+        }
+        return out;
+      };
+      for (const [tag, month] of [['JULY', 7], ['AUG', 8]]) {
+        const pages = (await Promise.all(files(tag).map(pagesOf))).flat();
+        let m = null; const e = refused(() => (m = P.readMonthPages(pages, { crsId: 11, month, year: 2026 })));
+        check(`CRS 11 ${tag}'26 (the office's PDFs): ${e ?? `${Object.keys(m.rows).length} commodities, GUNNY ${!!m.gunny}, POLICE ${!!m.police}, review ${m.review.length}`}`,
+          !e && Object.keys(m.rows).length === 19 && m.gunny && m.police && !m.review.length && !!m.rows.TOOR, e);
+        if (month === 8 && m) {
+          const b = m.rows.BRA;
+          check(`  AUG B.RICE: bags ${b.bags.open} + ${b.bags.receipt} = ${b.bags.total} − ${b.bags.sales} = ${b.bags.closing}; kgs ${b.open} + ${b.receipt} = ${b.total} − ${b.sales} = ${b.closing}`,
+            J([b.bags.open, b.bags.receipt, b.bags.total, b.bags.sales, b.bags.closing]) === J([128, 230, 358, 185, 173]) && J([b.open, b.receipt, b.total, b.sales, b.closing]) === J([6400, 11543.42, 17943.42, 9267, 8676.42]));
+        }
+        if (month === 7 && m) check(`  JULY T.DHALL/CYL → Toor Dal, closing ${m.rows.TOOR.closing} (August opens at 764)`, m.rows.TOOR.closing === 764 && m.rows.TOOR.bags.closing === 16);
+      }
+    } else console.log('  (CRS 11 PDFs not on this machine — skipped)');
+  }
   check('a file named "CRS PAGE 2" (with a space) that is not a PAGE2 is named, as "PAGE2" is', /PAGE 2/.test("CRS 1 JULY'26 - CRS PAGE 2.pdf") &&
     /could not be read — CRS 1 JULY'26 - CRS PAGE 2\.pdf/.test(refused(() => P.readMonthPages([{ ...notP2, file: "CRS 1 JULY'26 - CRS PAGE 2.pdf" }], { crsId: 1, month: 7, year: 2026 })) ?? ''));
 }
