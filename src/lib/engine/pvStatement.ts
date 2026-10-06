@@ -254,6 +254,14 @@ export function buildPVTable(opts: {
   note?: string;
   /** A4 (default) or Legal, landscape. */
   paper?: PvPaperSize;
+  /**
+   * The shop's own commodity list, in the Commodity Master's Order
+   * (`commodityListsFor(master, crsId).a`, office 2026-10-07) — the same list
+   * and order Daily / Monthly Sales and Receipt show, so a shop's own
+   * commodity (CRS 10's OAP FRK, Order 10) prints where the shop sees it,
+   * under its own name. None: the built-in list, as before.
+   */
+  commodities?: { id: string; en: string; unit: string }[];
 }): string {
   const { commMap, periodLabel, crsId, crsName, gunny, staff, pvOfficer, pvDate, gunnyNotes, note } = opts;
   const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -281,7 +289,22 @@ export function buildPVTable(opts: {
   // in the Gunny section as C.BOX / POLYTHENE. Left out here, so the
   // numbering runs on with no gap.
   const PV_NOT_COMMODITY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
-  const mainComms = DSS_A.filter((c) => commMap[c.id] && !PV_NOT_COMMODITY.has(c.id)).map((c) => c.id);
+  // The rows in the shop's own order (opts.commodities), else the built-in
+  // list's. A row carrying figures that the list does not name (an uploaded
+  // PDF's OAP FRK for a shop without it) still prints, after them — never
+  // dropped. Police lines are their own section below.
+  const police = new Set(DSS_B.map((c) => c.id));
+  const listed = (opts.commodities ?? DSS_A).map((c) => c.id);
+  const mainComms = [...new Set([...listed, ...DSS_A.map((c) => c.id), ...Object.keys(commMap)])].filter(
+    (id) => commMap[id] && !PV_NOT_COMMODITY.has(id) && !police.has(id),
+  );
+  // A row named only by its code (a commodity outside the built-in list)
+  // prints the master's name and unit; the caller's rows are not changed.
+  const named = (id: string): PvCommRow => {
+    const r = commMap[id];
+    const c = (opts.commodities ?? []).find((x) => x.id === id);
+    return c && (r.name === id || !r.name) ? { ...r, name: c.en, unit: c.unit || r.unit } : r;
+  };
   const policeComms = DSS_B.filter((c) => commMap[c.id]).map((c) => c.id);
 
   /** One cell. `cls`: `l` (a label), `short` (red), `excess` (green). */
@@ -339,7 +362,7 @@ export function buildPVTable(opts: {
   let sl = 1;
   for (const cid of mainComms) {
     const div = cid === 'PALM' ? 10 : cid === 'SALT_CIS' || cid === 'SALT_RFFS' ? 25 : 50;
-    rows += commodityRow(sl++, commMap[cid], div);
+    rows += commodityRow(sl++, named(cid), div);
   }
   rows += sectionLabel('Gunny');
   for (const [label, key] of [

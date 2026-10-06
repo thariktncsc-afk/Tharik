@@ -261,6 +261,8 @@ export default function ReportsPage() {
         pvDate: officer.date,
         note,
         paper,
+        // The shop's own list and order (Commodity Master) — as Daily / Monthly / Receipt show it.
+        commodities: commodityListsFor(commodityMaster, crsId).a,
       });
     },
     [pvPeriod, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, users, pvOfficerStore, shops],
@@ -291,11 +293,13 @@ export default function ReportsPage() {
         pvDate: pvOfficer.date,
         note: pvNote,
         paper: pvPaper,
+        // The shop's own list and order (Commodity Master) — as Daily / Monthly / Receipt show it.
+        commodities: commodityListsFor(commodityMaster, crsId).a,
       });
     }
     return autoPvHtml(crsId, pvNote, pvPaper);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, pvPaper, autoPvHtml, generated, users]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, pvPaper, autoPvHtml, generated, users, commodityMaster]);
 
   /**
    * The PV as a PDF FILE (office, 2026-10-06), on the paper chosen above:
@@ -411,8 +415,9 @@ export default function ReportsPage() {
         receiptStore,
         meGunnyStore: meGunnyStore as never,
         salesCloseStore,
-      }, hasPolice),
-    [crsVal, hasPolice, entryStore, inspectionStore, meManualStore, receiptStore, meGunnyStore, salesCloseStore],
+        // The shop's own list (Commodity Master), so a shop's own commodity is in its month.
+      }, hasPolice, commodityListsFor(commodityMaster, Number(crsVal))),
+    [crsVal, hasPolice, entryStore, inspectionStore, meManualStore, receiptStore, meGunnyStore, salesCloseStore, commodityMaster],
   );
 
   /**

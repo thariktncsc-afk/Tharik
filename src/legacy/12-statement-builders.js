@@ -666,6 +666,8 @@ function buildCrsPage2(d){
     {sl:'17', label:'NPHH FRK',     id:'NPHH_FRK'},
     {sl:'18', label:'NPHH FRK RRA', id:'NPHH_RRA'},
   ];
+  // A shop's own commodity (CRS 10's OAP FRK) on a row of its own, where its Order puts it (46-shop-commodities.js).
+  ROWS = stmtWithOwnRows(d, ROWS, function(r){ return r.id || null; }, function(c, prev){ return {sl: stmtSlAfter(prev.sl), label: stmtOwnLabel(c), id: c.id}; });
 
   var salesAmountMain = 0; // sum of cost-commodity amounts (excludes empties/police)
   var bodyRows = '';
@@ -950,6 +952,8 @@ function buildFreeCom(d){
     {sl:9,  label:'OAP',          id:'OAP'},
     {sl:10, label:'APS',          id:'APS'},
   ];
+  // A shop's own commodity (CRS 10's OAP FRK) on a row of its own, where its Order puts it (46-shop-commodities.js).
+  RICE = stmtWithOwnRows(d, RICE, function(r){ return r.id; }, function(c, prev){ return {sl: stmtSlAfter(prev.sl), label: stmtOwnLabel(c), id: c.id}; });
   var WHEATROW = {sl:11, label:'WHEAT', id:'WHEAT'};
 
   function vals(id){
@@ -1318,6 +1322,8 @@ function buildSaleTax(d){
     {sl:16,label:'OOTY',id:'OOTY'},{sl:17,label:'TAN',id:'TAN'},{sl:18,label:'SALT(CIS)',id:'SALT_CIS'},
     {sl:19,label:'SALT(RFFS)',id:'SALT_RFFS'},{sl:20,label:'POLY BAG',id:'EMPTY_BAG'},{sl:21,label:'CARDBOARD BOX',id:'EMPTY_BOX'},
   ];
+  // A shop's own commodity (CRS 10's OAP FRK) on a row of its own, where its Order puts it (46-shop-commodities.js).
+  MAIN = stmtWithOwnRows(d, MAIN, function(r){ return r.id; }, function(c, prev){ return {sl: stmtSlAfter(prev.sl), label: stmtOwnLabel(c), id: c.id}; });
   var POL=[
     {sl:1,label:'B.R.A',id:'PB_BRA'},{sl:2,label:'WHEAT',id:'PB_WHEAT'},{sl:3,label:'SUGAR',id:'PB_SUGAR'},
     {sl:4,label:'CYL',id:'PB_TOOR'},{sl:5,label:'P.OIL',id:'PB_PALM'},
@@ -1574,7 +1580,7 @@ function buildB6(d){
   body+=comRow(7,'R.R.A','RRA')+blankRow(8,'PHH RRA')+comRow(9,'NPHH FRK RRA','NPHH_RRA');
   body+=subRow('RRA TOTAL',['RRA','NPHH_RRA']);
   // remaining commodities
-  body+=comRow(10,'OAP','OAP')+blankRow(11,'OAP FRK')+comRow(12,'APS','APS')+blankRow(13,'APS FRK');
+  body+=comRow(10,'OAP','OAP')+(stmtShopHas(d,'OAP_FRK')?comRow(11,'OAP FRK','OAP_FRK'):blankRow(11,'OAP FRK'))+comRow(12,'APS','APS')+(stmtShopHas(d,'APS_FRK')?comRow(13,'APS FRK','APS_FRK'):blankRow(13,'APS FRK'));
   body+=comRow(14,'SUGAR','SUGAR')+comRow(15,'SUGAR AAY','AAY_SUGAR')+comRow(16,'WHEAT','WHEAT');
   body+=comRow(17,'CYL','TOOR')+comRow(18,'P.OIL','PALM')+comRow(19,'OOTY','OOTY')+comRow(20,'TAN','TAN');
   body+=comRow(21,'ARASU SALT (CIS)','SALT_CIS')+comRow(22,'ARASU SALT (RFFS)','SALT_RFFS');
@@ -1721,6 +1727,8 @@ function buildRBI(d){
     ['BRA','BRA'],['RRA','RRA'],['AAY','AAY'],['PHH BRA','PHH_BRA'],['PHH FRK','PHH_FRK'],
     ['AAY FRK','AAY_FRK'],['NPHH FRK','NPHH_FRK'],['NPHH FRK RRA','NPHH_RRA'],['APS','APS'],['OAP','OAP'],
   ];
+  // A shop's own commodity (CRS 10's OAP FRK) on a row of its own, where its Order puts it (46-shop-commodities.js).
+  RICE = stmtWithOwnRows(d, RICE, function(r){ return r[1]; }, function(c){ return [stmtOwnLabel(c), c.id]; });
   var OTHER=[
     ['SUGAR','SUGAR'],['WHEAT','WHEAT'],['TD/CYL','TOOR'],['U.DHALL',null],['P.OIL','PALM'],
     ['OOTY','OOTY'],['TAN','TAN'],['SALT(CIS)','SALT_CIS'],['SALT(RFFS)','SALT_RFFS'],

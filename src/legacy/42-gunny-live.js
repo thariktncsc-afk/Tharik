@@ -49,7 +49,7 @@
 // have a bag box on the Monthly Sales grid (police sugar / wheat / dhall /
 // palm oil have none, so they are not counted — office, 2026-09-30).
 var GUNNY_PACK_COMMS = {
-  GUNNY: ['BRA','NPHH_FRK','PHH_FRK','AAY_FRK','AAY','OAP','APS','TOOR','PHH_BRA','WHEAT','RRA','NPHH_RRA','PB_BRA'],
+  GUNNY: ['BRA','NPHH_FRK','PHH_FRK','AAY_FRK','AAY','OAP','OAP_FRK','APS','TOOR','PHH_BRA','WHEAT','RRA','NPHH_RRA','PB_BRA'],
   POLY:  ['SUGAR','AAY_SUGAR','SALT_CIS','SALT_RFFS'],
   CBOX:  ['PALM','OOTY','TAN']
 };
