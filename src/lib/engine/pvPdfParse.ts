@@ -549,7 +549,12 @@ export function readMonthPages(
     try {
       r = readPage(p.items, pageReview);
     } catch (e) {
-      throw new PdfReadError(`${p.file} could not be read — ${e instanceof Error ? e.message : String(e)} Please upload the correct PDF.`);
+      // One file's unreadable sheet never stops the month (office, 2026-10-06:
+      // "If PDF 2 fails extraction, PDF 1 must still remain"): it is left out
+      // and named for review, and the other files are read as ever.
+      const why = `${p.file} could not be read — ${e instanceof Error ? e.message : String(e)} Left out.`;
+      if (!review.includes(why)) review.push(why);
+      continue;
     }
     for (const w of pageReview) if (!review.includes(`${p.file}: ${w}`)) review.push(`${p.file}: ${w}`);
     if (r.crsId !== want.crsId) throw new PdfReadError(`${p.file}: this is CRS ${r.crsId}'s statement, not CRS ${want.crsId}'s.`, 'wrong-shop');
@@ -569,9 +574,50 @@ export function readMonthPages(
   if (!page2) {
     // A file was given but is not a PAGE2 this reader recognises: say so
     // plainly rather than leave the month waiting.
-    const likely = skipped.filter((f) => /PAGEs*-?s*2/i.test(f));
+    const likely = skipped.filter((f) => /PAGE\s*-?\s*2/i.test(f));
     if (likely.length) throw new PdfReadError(`${mon} CRS PAGE2 could not be read — ${likely.join(', ')} is not laid out as a CRS PAGE2. Please upload the correct PDF.`);
+    const unread = review.filter((r) => / could not be read — /.test(r));
+    if (unread.length) throw new PdfReadError(`${mon}: no CRS PAGE2 could be read. ${unread.join(' ')}`);
     throw new PdfReadError(`${mon}: still needs CRS PAGE2.`);
   }
   return { crsId: want.crsId, month: want.month, year: want.year, rows: page2, gunny, police, notes, skipped, review };
+}
+
+/** What ONE saved file holds, for its own line on the card (office, 2026-10-06). */
+export type FileSummary = {
+  /** Pages in the file. */
+  pages: number;
+  /** The sheets read from it, in page order, once each: 'CRS PAGE2', 'GUNNY', 'CRS POLICE'. */
+  sheets: string[];
+  /** Pages of other sheets (Page 1, RBI, B6…), stepped over. */
+  skipped: number;
+  /** What could not be read, or was left out — the file is still saved. */
+  problems: string[];
+};
+
+/**
+ * One file read on its own, for its status line — never decides the month
+ * (readMonthPages does that over all the month's files together).
+ */
+export function readFileSummary(items: TextItem[][], want: { crsId: number; month: number; year: number }): FileSummary {
+  const out: FileSummary = { pages: items.length, sheets: [], skipped: 0, problems: [] };
+  for (const page of items) {
+    if (!page.some((i) => i.str.trim())) continue;
+    if (!pageKindOf(page)) {
+      out.skipped++;
+      continue;
+    }
+    const rev: string[] = [];
+    try {
+      const r = readPage(page, rev);
+      const name = r.kind === 'page2' ? 'CRS PAGE2' : r.kind === 'gunny' ? 'GUNNY' : 'CRS POLICE';
+      if (r.crsId !== want.crsId) out.problems.push(`${name} is CRS ${r.crsId}'s, not CRS ${want.crsId}'s.`);
+      else if (r.month !== want.month || r.year !== want.year) out.problems.push(`${name} is for another month.`);
+      else if (!out.sheets.includes(name)) out.sheets.push(name);
+    } catch (e) {
+      out.problems.push(e instanceof Error ? e.message : String(e));
+    }
+    for (const w of rev) if (!out.problems.includes(w)) out.problems.push(w);
+  }
+  return out;
 }

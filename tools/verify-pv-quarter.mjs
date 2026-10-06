@@ -390,6 +390,21 @@ console.log('\n2. Built pages — what a real file can throw');
   const r10 = refused(() => P.readMonthPages([notP2], { crsId: 1, month: 7, year: 2026 }));
   check('a PAGE2 file that cannot be read is an error naming it, not a silent wait',
     !!r10 && /July 2026 CRS PAGE2 could not be read — CRS 1 JULY'26 - CRS PAGE2 \.pdf .*Please upload the correct PDF/.test(r10), r10);
+  // Office, 2026-10-06 (CRS 7): one file's unreadable sheet never stops the others.
+  const brokenGunny = gunnySheet(1, 7, {}).filter((i) => i.str !== 'CRS 1');
+  const goodP2 = page2(1, 7, { 'B.RICE': { open: [20, 1000], receipt: [10, 500], transfer: 100, total: [32, 1600], sales: [2, 100], closing: [30, 1500] } }, { adjustments: false });
+  let two = null;
+  const r11 = refused(() => (two = P.readMonthPages([{ file: 'PDF-1.pdf', items: goodP2 }, { file: 'PDF-2.pdf', items: brokenGunny }], { crsId: 1, month: 7, year: 2026 })));
+  check('PDF 2 cannot be read → the month still reads from PDF 1, PDF 2 listed for review',
+    !r11 && !!two && two.rows.BRA?.closing === 1500 && two.gunny === null && two.review.some((r) => /^PDF-2\.pdf could not be read — .*CRS number.* Left out\.$/.test(r)), r11 ?? J(two?.review));
+  const r12 = refused(() => P.readMonthPages([{ file: 'PDF-2.pdf', items: brokenGunny }], { crsId: 1, month: 7, year: 2026 }));
+  check('…and with only that file, the month says why (not a silent wait)', !!r12 && /no CRS PAGE2 could be read\. PDF-2\.pdf could not be read/.test(r12), r12);
+  const s1 = P.readFileSummary([goodP2, [at('PAGE 1 OF THE STATEMENT', 10, 10)]], { crsId: 1, month: 7, year: 2026 });
+  const s2 = P.readFileSummary([brokenGunny], { crsId: 1, month: 7, year: 2026 });
+  check(`each file's own status line: PDF 1 ${J(s1)}; PDF 2 ${J(s2)}`,
+    s1.pages === 2 && s1.sheets.join() === 'CRS PAGE2' && s1.skipped === 1 && !s1.problems.length && s2.pages === 1 && !s2.sheets.length && s2.problems.some((p) => /CRS number/.test(p)));
+  check('a file named "CRS PAGE 2" (with a space) that is not a PAGE2 is named, as "PAGE2" is', /PAGE 2/.test("CRS 1 JULY'26 - CRS PAGE 2.pdf") &&
+    /could not be read — CRS 1 JULY'26 - CRS PAGE 2\.pdf/.test(refused(() => P.readMonthPages([{ ...notP2, file: "CRS 1 JULY'26 - CRS PAGE 2.pdf" }], { crsId: 1, month: 7, year: 2026 })) ?? ''));
 }
 
 // ── 3. The chain ─────────────────────────────────────────────────────────

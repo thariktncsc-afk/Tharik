@@ -2600,13 +2600,32 @@ verify:pv-uploads`). **No migration to run.**
   - **Errors**: the person is told "Unable to save the PDF. Please try
     again." (or read / remove / open). The technical detail goes to the
     server log (`[api/pv-uploads] … failed:`), never to the screen.
-- **What a month holds**:
-  - A month's active set is every file in its record.
-  - **Replace PDF** saves the new file, THEN removes the month's others: one
-    active set, no history, and a failed save leaves the month as it was.
-  - **Add PDF** keeps the others (a GUNNY beside its PAGE2).
-  - The same file twice in a month (sha256) is stored once.
-  - **Remove** clears the month.
+- **What a month holds: any number of PDFs, each on its own** (office,
+  2026-10-06, CRS 7's video: a second September PDF replaced the first,
+  because the system-month card's only button was a month-wide Replace).
+  - **+ Add PDF** is on every card, system months included, and always
+    APPENDS.
+  - Each saved file has its own line: "✓ PDF n Saved", its name, when / who,
+    its pages, and what was read from it (`readFileSummary`: "Read: CRS
+    PAGE2 · GUNNY", or amber "needs review").
+  - Each line has its own **Replace** and **Remove**:
+    - Replace = POST `mode=replace&replace=<id>`. The new file is saved,
+      THEN that one file is removed.
+    - Remove = `DELETE /api/pv-uploads/<id>`. The month's other files stay.
+  - A Replace that names no file removes nothing (a tab from before this).
+    A file id that is no longer saved answers 404, and nothing changes.
+  - The same file twice in a month (sha256) is stored once, and the card
+    names the saved copy.
+  - **One file that cannot be read never stops the others**:
+    `readMonthPages` leaves it out and lists it for review. The month is
+    read from the rest.
+  - Generate reads every saved file together. The same sheet in two files
+    counts once.
+  - Checked in a browser on a copy of live data, CRS 7, with July and
+    August as PAGE2 + GUNNY (two PDFs each). September was run twice: as
+    the system month (the video's card) and as a PDF month. Upload A, then
+    B, refresh (both there), add C, remove B (A and C stay), replace A
+    (only A goes), then Generate.
 - **A month the system has figures for is never asked for** (office,
   2026-10-06; `ManualPvUpload.tsx` `kindOf`).
   - **The problem**: every month before the current one HAD to be
