@@ -242,14 +242,16 @@ export default function ReportsPage() {
       // with data, Receipt and Issues added up (pvQuarter.ts pvPeriodGunny). It
       // used to print the raw stored record of the period's FIRST month only —
       // a quarter starting on a month with no record printed every Gunny 0.
-      const gunny = pvPeriodGunny(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId));
+      // (…then any PV-only correction set for the Automatic PV too — pvCorrections.ts.)
+      const gunny = pvGunnyWithCorrection(crsId, pvPeriod.months, pvPeriodGunny(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId)), 'auto');
       // Bag columns as Monthly Sales / Page 2 carry them, Closing = the latest
       // month's (pvQuarter.ts pvPeriodBags) — never kgs ÷ pack.
       const periodBagCounts = pvPeriodBags(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId));
       for (const [id, b] of Object.entries(periodBagCounts)) if (agg.commMap[id]) agg.commMap[id].bags = b;
       const officer = resolveForStatement(pvOfficerStore, crsId);
       return buildPVTable({
-        commMap: agg.commMap,
+        // Any PV-only correction the office set for THIS PV, Automatic included (pvCorrections.ts).
+        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, agg.commMap, 'auto'),
         periodLabel: pvPeriod.rangeLabel,
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
@@ -278,11 +280,11 @@ export default function ReportsPage() {
       return buildPVTable({
         // The chained quarter's rows and Gunny, then any PV-only correction
         // the office set for this shop's PV (pvCorrections.ts) — this PV's alone.
-        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, commMap),
+        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, commMap, 'manual'),
         periodLabel: pvPeriod.rangeLabel,
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
-        gunny: pvGunnyWithCorrection(crsId, pvPeriod.months, gunny),
+        gunny: pvGunnyWithCorrection(crsId, pvPeriod.months, gunny, 'manual'),
         gunnyNotes,
         staff: shopStaffNames(users, crsId),
         pvOfficer: pvOfficer.officer,
