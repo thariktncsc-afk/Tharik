@@ -665,5 +665,43 @@ console.log('\n6. Page 2 layouts the reader must know');
 }
 
 
+// ── 7. A TOTAL shown without decimals ────────────────────────────────────
+// (office, 2026-10-03 — CRS 20 JULY'26 PHH FRK 4411.48 printed as 4411,
+// NPHH FRK 4580.046 + transfer 20 as 4600; AUG'26 1.538 + 2500 as 2502.)
+console.log('\n7. A Total the workbook shows rounded to the kilo');
+{
+  const read = (row) => P.readPage2(page2(20, 7, { 'B.RICE': { open: [1, 50], total: [1, 50], closing: [1, 50] }, 'PHH FRK': row }));
+  const a = read({ open: [88, 4411.48], receipt: [0, 0], total: [88, 4411], sales: [88, 4409.942], closing: [0, 1.538] }).PHH_FRK;
+  check(`4411.48 printed as 4411 → the exact 4411.48 (the row proves it: − 4409.942 = 1.538)`, a.total === 4411.48 && a.closing === 1.538, J(a));
+  const b = read({ open: [0, 1.538], receipt: [50, 2500], total: [50, 2502], sales: [0, 1.538], closing: [50, 2500] }).PHH_FRK;
+  check(`1.538 + 2500 printed as 2502 → 2501.538`, b.total === 2501.538, J(b));
+  const c = read({ open: [91, 4580.046], transfer: 20, total: [91, 4600], sales: [90, 4579.874], closing: [1, 20.172] }).PHH_FRK;
+  check(`with a transfer: 4580.046 + 20 printed as 4600 → 4600.046, transfer in`, c.total === 4600.046 && c.transfer === 20, J(c));
+  const d = refused(() => read({ open: [88, 4411.48], total: [88, 4411], sales: [88, 4409.942], closing: [0, 1] }));
+  check('still refused when the Closing does not follow from the exact sum', !!d && /does not add up/.test(d), d);
+  const e = refused(() => read({ open: [88, 4411.48], total: [88, 4412], sales: [88, 4409.942], closing: [0, 2.058] }));
+  check('still refused when the printed Total is not the sum rounded (4412 for 4411.48)', !!e && /does not add up/.test(e), e);
+  const g = refused(() => read({ open: [88, 4411.48], total: [88, 4411.5], sales: [88, 4409.942], closing: [0, 1.558] }));
+  check('a Total printed WITH decimals is taken as printed, and refused if wrong', !!g && /does not add up/.test(g), g);
+}
+
+
+// ── 8. This system's own statements PDF as an uploaded month ────────────
+// (office, 2026-10-03 — CRS 20 September 2026: "Empty Polythene Bag: August
+// closes at 40, but September opens at 0".)
+console.log('\n8. Empty Card+Box / Polythene Bag on this system\'s own Page 2');
+{
+  const flow = (o) => ({ open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0, ...o });
+  const gunny = { ss50: { opening: 874, receipt: 426, total: 1300, issues: 1000, closing: 300 }, poly: { opening: 40, receipt: 32, total: 72, issues: 72, closing: 0 }, cbox: { opening: 1, receipt: 108, total: 109, issues: 109, closing: 0 } };
+  const ours = Q.pdfQuarterMonth({ crsId: 20, month: 9, year: 2026, rows: { BRA: flow({ open: 10, total: 10, closing: 10 }), EMPTY_BAG: flow({ sales: 72, closing: -72 }), EMPTY_BOX: flow({ sales: 109, closing: -109 }) }, gunny, police: null, notes: [], skipped: [] });
+  check(`a sales-only row (0 − 72 = −72) takes the GUNNY sheet's POLY: ${J(ours.rows.EMPTY_BAG)}`, J(ours.rows.EMPTY_BAG) === J(flow({ open: 40, receipt: 32, total: 72, sales: 72, closing: 0 })));
+  check(`…and C.BOX: 1 + 108 − 109 = 0`, ours.rows.EMPTY_BOX.open === 1 && ours.rows.EMPTY_BOX.closing === 0);
+  const office = Q.pdfQuarterMonth({ crsId: 20, month: 8, year: 2026, rows: { EMPTY_BAG: flow({ open: 55, receipt: 31, total: 86, sales: 46, closing: 40 }) }, gunny: { ...gunny, poly: { opening: 9, receipt: 9, total: 18, issues: 9, closing: 9 } }, police: null, notes: [], skipped: [] });
+  check('a row carrying stock of its own (the office\'s) is left as printed', office.rows.EMPTY_BAG.closing === 40 && office.rows.EMPTY_BAG.open === 55);
+  const noGunny = Q.pdfQuarterMonth({ crsId: 20, month: 9, year: 2026, rows: { EMPTY_BAG: flow({ sales: 72, closing: -72 }) }, gunny: null, police: null, notes: [], skipped: [] });
+  check('no GUNNY sheet uploaded: nothing to take, the row stays as printed', noGunny.rows.EMPTY_BAG.closing === -72);
+}
+
+
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');
 process.exit(failures ? 1 : 0);

@@ -317,6 +317,19 @@ function checkedFlow(
   f: { open: number; receipt: number; excess: number; shortage: number; transferCell: number; total: number; sales: number; closing: number },
 ): Flow {
   const before = f.open + f.receipt + f.excess - f.shortage;
+  // A TOTAL shown without decimals (office, 2026-10-02 — CRS 20 JULY'26 PHH
+  // FRK: 4411.48 + 0 printed as 4411; AUG'26: 1.538 + 2500 printed as 2502).
+  // The workbook cell holds the exact sum and only DISPLAYS it rounded to
+  // the kilo. Taken as the exact sum only when the row proves it: the
+  // printed Total is a whole number within half a kilo of the sum (with the
+  // transfer, in or out, where one is printed — JULY'26 NPHH FRK 4580.046 +
+  // 20 printed as 4600), and the exact sum − Sales is the printed Closing to
+  // the gram. Anything else is still refused.
+  if (Number.isInteger(f.total)) {
+    const sums = f.transferCell ? [before + f.transferCell, before - f.transferCell] : [before];
+    const exact = sums.find((s) => !eq(f.total, s) && Math.abs(f.total - s) < 0.5 && eq(s - f.sales, f.closing));
+    if (exact !== undefined) f = { ...f, total: r3(exact) };
+  }
   const delta = r3(f.total - before);
   let transfer = 0;
   if (f.transferCell) {

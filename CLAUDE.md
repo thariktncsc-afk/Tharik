@@ -2441,13 +2441,30 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   - The three September uploads in the screenshot were: the whole workbook
     (PAGE2 inside — reads, 21 rows), the CRS POLICE sheet printed twice, and
     the GUNNY sheet printed twice. Uploaded together the month is complete.
-  - **What STILL refuses, and should**: CRS 20's July and August PAGE2 both
-    stop on PHH FRK — July 4411.48 + 0 ≠ the sheet's Total **4411**; August
-    1.538 + 2500 = 2501.538 ≠ **2502**. The office rounded that row's total
-    to the kilo on the paper. The reader refuses a row that does not add up,
-    with its figures, and that is left as it is: the office's call whether
-    the kgs or the rounded total is right. Their GUNNY and POLICE sheets
-    read, and chain July → August (SS 456 → 456, POLY 55 → 55, C.BOX 1 → 1).
+  - **A TOTAL shown without decimals** (office, 2026-10-03; §7). CRS 20's
+    July / August PAGE2 then stopped on PHH FRK: 4411.48 + 0 printed as
+    Total **4411**, 1.538 + 2500 as **2502**, and July NPHH FRK 4580.046 +
+    transfer 20 as **4600**. The workbook cell holds the exact sum and only
+    DISPLAYS it to the kilo: in every case exact sum − Sales is the printed
+    Closing to the gram (4411.48 − 4409.942 = 1.538). `checkedFlow` takes
+    the exact sum ONLY when the row proves it: a whole-number Total within
+    half a kilo of the sum (± a printed transfer), AND sum − Sales = the
+    printed Closing. A Total printed with decimals, rounded the wrong way,
+    or whose Closing does not follow is still refused.
+  - **This system's own statements PDF as a month** (§8). Our Page 2 prints
+    Empty Card+Box / Polythene Bag as SALES ONLY (their stock is Gunny's), so
+    September (CRS 20's own statements) chained as "August closes at 40,
+    September opens at 0". `pdfQuarterMonth` now gives a sales-only row the
+    month's GUNNY sheet figures (POLY / C.BOX), as `systemQuarterMonth` does
+    for the system's month; a row with stock of its own (the office's) is
+    left as printed; no GUNNY sheet uploaded → unchanged.
+  - CRS 20, Q2 2026, on localhost with the screenshot's nine files: all three
+    months read, Generate builds the PV — BRA 0 + 17110 − 14396.828 =
+    2713.172, PHH FRK 4411.48 + 4500 − 5326.48 = 3585, NPHH FRK transfer
+    +20 (July's OAP FRK moved out), Gunny SS 665 + 1260 − 1625 = 300, POLY
+    and C.BOX close at 0; police and the Gunny note present. The uploaded
+    September Gunny says SS Receipt 426 where the system now says 425 (the
+    PDF was printed earlier) — the PV states what was uploaded.
 - **A blank CLOSING cell is Total − Sales**, not 0. CRS 1 leaves C.BOX and
   P.GUNNY's Closing unprinted and opens the next month at exactly Total −
   Sales (July C.BOX 398 → August opens 398). A printed Closing, 0 included,
