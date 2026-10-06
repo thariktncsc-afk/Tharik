@@ -2590,6 +2590,34 @@ verify:pv-uploads`). **No migration to run.**
   - **Add PDF** keeps the others (a GUNNY beside its PAGE2).
   - The same file twice in a month (sha256) is stored once.
   - **Remove** clears the month.
+- **A month the system has figures for is never asked for** (office,
+  2026-10-06; `ManualPvUpload.tsx` `kindOf`).
+  - **The problem**: every month before the current one HAD to be
+    uploaded, so in October CRS 20's September — fully keyed in the
+    system — still showed Browse PDF.
+  - **Now each month takes its best source on its own**:
+    1. The shop's figures in the SYSTEM (`systemQuarterMonth`: Monthly /
+       Daily Sales, Receipts, Inspection, Gunny, Police) when it has any
+       non-zero figure for that month; the current month always comes
+       from here. The card says "✓ Data available — automatically
+       fetched".
+    2. Otherwise a saved uploaded PDF.
+    3. Otherwise "⚠ Manual upload required" and Browse PDF.
+  - The counter reads "N / 3 months ready · September from the system".
+  - **The system comes first**: worked out again on every saved change
+    (live sync too), so a correction saved on Monthly Sales or Gunny is in
+    the next Generate.
+  - An official PDF may still be uploaded beside system data (Upload /
+    Replace PDF / Remove). It is kept as the source document and never
+    overrides the system's figures.
+  - **Localhost, live copy**:
+    - CRS 20: September fetched, July / August manual; CRS 2: all three
+      manual.
+    - July and August uploaded, plus an official September PDF: PV built.
+    - September Gunny SS Issues +5, saved elsewhere: PV SS balance
+      300 → 295.
+    - BRA Sales bags +1: PV Issues 288 → 289, Balance 54 → 53.
+    - The status held after the Dashboard and back, and after a refresh.
 - **The screen asks the server**, on opening and on every change of shop or
   quarter. It downloads the saved PDFs and reads them; it never uploads by
   itself.
