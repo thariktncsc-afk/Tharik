@@ -2806,41 +2806,50 @@ Office, 2026-10-06 (`pvQuarter.ts` `periodBags` / `pvPeriodBags`,
     at once; Gunny SS Receipt 426 → 427; the PV's BRA Balance 53 and Gunny
     SS 874 + 427 = 1301 − 1000 = 301.
 
-### PV-only Gunny corrections
+### PV-only corrections (Gunny rows, commodity bags)
 
 Office, 2026-10-06 (`src/lib/engine/pvCorrections.ts`, `npm run
 verify:pv-gunny` §7).
 - **What**: figures the office sets for ONE shop's ONE PV, printed on that
   PV and nowhere else.
   - Keyed by the shop and the PV's first and last month.
-  - The figures are the PERIOD's, as the PV prints them: Receipt, Issues
+  - The figures are the PERIOD's, as that PV prints them: Receipt, Issues
     and C.B over the whole period.
   - Opening = C.B − Receipt + Issues, so TOTAL = OPENING + RECEIPT and
     CB = TOTAL − SALES hold.
-- **Where it applies**: Reports (`pvGunnyWithCorrection`), for the Automatic
-  and the Manual 3-Month PV alike. So Preview, Print, Download PDF and the
-  all-shops ZIP (one markup) carry it.
+  - `PV_GUNNY_CORRECTIONS` covers Gunny rows. `PV_BAG_CORRECTIONS` covers a
+    commodity's BAG columns only; its kgs are never touched.
+- **Where it applies: the MANUAL 3-Month PV only.**
+  - Both corrections were read off that PV, where the Opening is the first
+    uploaded month's and Receipt / Issues add up three months.
+  - The Automatic PV of the same period holds only the months keyed in the
+    system, so the figures would contradict its own. CRS 7 Wheat would print
+    bags 16 / 73 beside September-only kgs 715 / 1391.
+  - Applied on Reports (`pvCommMapWithCorrection`, `pvGunnyWithCorrection`),
+    so Preview, Print and Download PDF (one markup) carry them.
 - **What it never touches**:
   - Monthly / Daily Sales, Gunny Stock Management, the Receipt Register,
     the DSS and the statements;
+  - the Automatic PV;
   - the 3-Month PV's month-to-month chain check (pvQuarter.ts);
   - the database: nothing is written.
-- **CRS 9, July – September 2026 PV**:
+- **The corrections, all on the July – September 2026 Manual PV**:
 
-  | | PV | System |
-  | --- | --- | --- |
-  | POLYTHENE (O / R / T / I / CB) | 0 / 49 / 49 / 38 / 11 | 46 / 35 / 11 (R / I / CB) |
-  | C.BOX (O / R / T / I / CB) | 0 / 145 / 145 / 145 / 0 | 144 / 144 / 0 (R / I / CB) |
-  | 50 KG SS | unchanged | |
+  | Shop | Row | Was | On the PV |
+  | --- | --- | --- | --- |
+  | CRS 9 | POLYTHENE (R / I / CB) | 46 / 35 / 11 | 49 / 38 / 11 (Opening 0) |
+  | CRS 9 | C.BOX (R / I / CB) | 144 / 144 / 0 | 145 / 145 / 0 |
+  | CRS 9 | 50 KG SS | | unchanged |
+  | CRS 7 | Wheat BAGS (O + R = T − I = CB) | 16 + 74 = 90 − 69 = 21 | 16 + 73 = 89 − 68 = 21 |
 
-  - These are the 3-month PV's figures. September alone is POLY
-    2 + 18 − 9 = 11, so a September-only correction would have printed CB 13.
-  - Localhost, live copy, Automatic PV: CRS 9 Jul–Sep prints the above, and
-    the Download PDF markup carries it.
-  - CRS 8 Jul–Sep and CRS 9 Oct–Dec are unchanged.
-  - Gunny Stock Management CRS 9 September is still 2 / 18 / 20 / 9 / 11
-    and 0 / 48 / 48 / 48 / 0.
-  - 0 writes.
+  CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
+- **Checked on localhost, fresh read-only copy of live data**:
+  - CRS 7, with the office's July / August PDFs (`Downloads/PV`) and
+    September from the system: the Manual PV generates, and Preview and the
+    Download PDF markup print Wheat as above.
+  - The Automatic PV still prints September's 14 / 27 / 41 / 20 / 21.
+  - Monthly Sales is unchanged, and 0 writes.
+
 
 ### The automatic PV's Gunny is Gunny Stock Management's
 

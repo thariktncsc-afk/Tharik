@@ -138,7 +138,7 @@ console.log('\n5. What the old reading printed');
   check(`the period's first month (July) has no stored record → the old PV printed ${J(printed(old)['50 kg SS GUNNY'].slice(1))} (after the Sl. No.)`, J(printed(old)['50 kg SS GUNNY'].slice(1)) === J([0, 0, 0, 0, 0]));
 }
 
-console.log('\n7. A PV-only correction: CRS 9, the July – September 2026 PV (office, 2026-10-06)');
+console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 Wheat bags — the Jul–Sep 2026 Manual PV');
 {
   const PC = await imp('lib/engine/pvCorrections.ts');
   // The PV as the office's screenshot shows it (period figures): SS 725 + 572 − 1025 = 272;
@@ -167,8 +167,26 @@ console.log('\n7. A PV-only correction: CRS 9, the July – September 2026 PV (o
   const pvq = readFileSync(join(root, 'src/lib/engine/pvQuarter.ts'), 'utf8');
   check('pvQuarter (the system figures, the 3-Month PV\'s chain check) does not apply it', !/pvCorrections|pvGunnyWithCorrection/.test(pvq));
   const page = readFileSync(join(root, 'src/app/(app)/reports/page.tsx'), 'utf8');
-  check('Reports applies it to BOTH PVs: Automatic and Manual 3-Month',
-    /const gunny = pvGunnyWithCorrection\(crsId, pvPeriod\.months, pvPeriodGunny\(/.test(page) && /gunny: pvGunnyWithCorrection\(crsId, pvPeriod\.months, gunny\)/.test(page));
+  check('Reports applies it to the Manual 3-Month PV (the PV the figures were read from), not the Automatic one',
+    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, commMap\)/.test(page) && /gunny: pvGunnyWithCorrection\(crsId, pvPeriod\.months, gunny\)/.test(page) &&
+    /const gunny = pvPeriodGunny\(crsId, pvPeriod\.months,/.test(page) && (page.match(/WithCorrection\(/g) ?? []).length === 2);
+
+  // CRS 7, the July – September 2026 PV: Wheat BAGS 16 + 73 = 89 − 68 = 21; its kgs and every other row untouched.
+  const wheat = { name: 'Wheat', unit: 'KG', open: 816, receipt: 3716, total: 4532, issues: 3465, closing: 1067, amount: 0, free: false, transfer: 0, shortage: 0, excess: 0, bags: { open: 16, receipt: 74, total: 90, issues: 69, closing: 21 } };
+  const sugar = { ...wheat, name: 'Sugar', bags: { open: 14, receipt: 42, total: 56, issues: 42, closing: 14 } };
+  const map = { WHEAT: wheat, SUGAR: sugar };
+  const mapSnap = J(map);
+  const fixed = PC.pvCommMapWithCorrection(7, quarter.months, map);
+  const b = fixed.WHEAT.bags;
+  check(`CRS 7 Wheat bags on the PV: ${b.open} + ${b.receipt} = ${b.total} − ${b.issues} = ${b.closing}`, J([b.open, b.receipt, b.total, b.issues, b.closing]) === J([16, 73, 89, 68, 21]));
+  check('…its kgs unchanged, Sugar unchanged, the input map untouched', J({ ...fixed.WHEAT, bags: undefined }) === J({ ...wheat, bags: undefined }) && fixed.SUGAR === sugar && J(map) === mapSnap);
+  const sheet = buildPVTable({ commMap: fixed, periodLabel: 'Q', crsId: 7, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' });
+  const wrow = [...sheet.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((x) => x[1].replace(/<[^>]+>/g, '').trim())).find((c) => c.includes('Wheat')) ?? [];
+  const nums = wrow.filter((x) => /^-?\d+(\.\d+)?$/.test(x));
+  check(`printed Wheat row: ${nums.join(' ')}`, ['16', '816', '73', '3716', '89', '4532', '68', '3465', '21', '1067'].every((v) => nums.includes(v)) && !nums.includes('74') && !nums.includes('69'));
+  for (const [label, crs, months] of [['CRS 9, same quarter', 9, quarter.months], ['CRS 7, Oct – Dec 2026', 7, quarterByIndex(2026, 2).months], ['CRS 7, September alone', 7, [{ month: 9, year: 2026 }]]]) {
+    check(`${label}: Wheat bags untouched`, PC.pvCommMapWithCorrection(crs, months, map) === map);
+  }
   const { execSync } = await import('node:child_process');
   const users = execSync('git grep -l -e pvCorrections -e pvGunnyWithCorrection -e PV_GUNNY_CORRECTIONS -- src', { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).sort();
   check(`nothing but the PV reads it: ${users.join(', ')}`, J(users) === J(['src/app/(app)/reports/page.tsx', 'src/lib/engine/pvCorrections.ts']));
