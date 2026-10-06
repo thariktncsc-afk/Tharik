@@ -411,7 +411,7 @@ const gun = (a, b, c) => ({ ss50: a, poly: b, cbox: c });
   const { commMap, gunny, gunnyNotes } = Q.quarterPvInputs(q);
   check('PV TOTAL = Opening + Receipt + Transfer + Excess (TOOR 400 + 20 + 20)', commMap.TOOR.total === 440 && commMap.TOOR.issues === 140);
   const html = S.buildPVTable({ commMap, gunny, gunnyNotes, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'X', billClerk: 'B' });
-  check('the note prints under the Gunny rows', /Gunny[\s\S]*C\.BOX[\s\S]*WHEAT CONSIDER AS GUNNY/.test(html) && !/WHEAT CONSIDER AS GUNNY[\s\S]*C\.BOX/.test(html));
+  check('the Gunny note prints in the NOTE row at the foot, once — not under the Gunny rows', /<b>NOTE:<\/b> <span class="note-text">WHEAT CONSIDER AS GUNNY<\/span>/.test(html) && (html.match(/WHEAT CONSIDER AS GUNNY/gi) ?? []).length === 1 && !/pv-gunny-note/.test(html));
   const POLICE_HEAD = /class="l sec">Police<\/td>/;
   check('the police section prints for a police shop, with its rows', POLICE_HEAD.test(html) && /BRA Rice \(Police\)/.test(html));
   check('Preview and Print are one document: the same builder, the same bytes',
@@ -456,7 +456,7 @@ const gun = (a, b, c) => ({ ss50: a, poly: b, cbox: c });
   // No note anywhere: no note line.
   const nn = Q.chainQuarter(9, [{ ...jul, notes: [] }, { ...aug, notes: [] }, sep]);
   const nnHtml = S.buildPVTable({ ...Q.quarterPvInputs(nn), periodLabel: 'P', crsId: 9, crsName: 'X', billClerk: 'B' });
-  check('no note in the PDFs: no note line on the PV', !/pv-gunny-note/.test(nnHtml));
+  check('no note in the PDFs: the NOTE row stands empty', /<b>NOTE:<\/b><\/td>/.test(nnHtml) && !/pv-gunny-note/.test(nnHtml));
 }
 
 // ── 4. September from the system ─────────────────────────────────────────
@@ -744,6 +744,9 @@ console.log('\n10. The PV\'s commodity rows and its NOTE row');
   check('the NOTE cell wraps, sits at the top and has room for about four lines', /td\.note\{white-space:normal;vertical-align:top;height:15mm;/.test(html));
   const blank = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, billClerk: '' });
   check('no note typed → "NOTE:" alone, the space left for a hand-written note', /<td colspan="\d+" class="l f note"><b>NOTE:<\/b><\/td>/.test(blank));
+  const both = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, billClerk: '', gunnyNotes: ['WHEAT CONSIDER AS GUNNY'], note: 'wheat consider as gunny\nStack 4 re-counted.' });
+  check('Gunny\'s note and a typed note share the NOTE row: Gunny\'s first, a repeat dropped', /<b>NOTE:<\/b> <span class="note-text">WHEAT CONSIDER AS GUNNY<br>Stack 4 re-counted\.<\/span>/.test(both) && (both.match(/consider as gunny/gi) ?? []).length === 1);
+  check('the Gunny section ends at C.BOX: no note row inside it', !/pv-gunny-note/.test(both) && /C\.BOX[\s\S]*?<\/tr>(<tr><td colspan="\d+" class="l sec">Police|<\/tbody>)/.test(both));
 }
 
 

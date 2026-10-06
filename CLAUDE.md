@@ -2505,8 +2505,14 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   and September from a live copy: the PV generates, P.GUNNY Balance 31 =
   POLYTHENE 31, C.BOX 36 = C.BOX 36.
 - **Gunny notes** ("WHEAT CONSIDER AS GUNNY") are lines containing CONSIDER
-  below the Gunny table, printed as written under the PV's Gunny rows — this PV
-  only; they change no figure.
+  below the Gunny table. They print in the PV's bottom **NOTE** row, once
+  (office, 2026-10-06): the Gunny section ends at C.BOX. The note comes first,
+  then whatever was typed in the PV screen's NOTE box; a line typed the same
+  as a Gunny note is printed once. They change no figure.
+- **Printing an area hides the rest of the screen with `display:none`**
+  (`print.css`), not just `visibility`. Content hidden by `visibility` still
+  takes up its space, so in Manual mode the upload cards pushed out a second,
+  blank Legal page (office, 2026-10-06). Now it is one page in both modes.
 - Nothing uploaded is saved anywhere. The generated quarter is tagged with its
   shop and period, and a PDF still being read when the shop changes is
   dropped, so one shop's figures can never print under another's name.
