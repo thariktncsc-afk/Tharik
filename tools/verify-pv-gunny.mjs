@@ -138,7 +138,7 @@ console.log('\n5. What the old reading printed');
   check(`the period's first month (July) has no stored record → the old PV printed ${J(printed(old)['50 kg SS GUNNY'].slice(1))} (after the Sl. No.)`, J(printed(old)['50 kg SS GUNNY'].slice(1)) === J([0, 0, 0, 0, 0]));
 }
 
-console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 Wheat bags — the Jul–Sep 2026 Manual PV');
+console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 Wheat bags (Manual PV), CRS 11 Police BRA bags (both PVs) — Jul–Sep 2026');
 {
   const PC = await imp('lib/engine/pvCorrections.ts');
   // The PV as the office's screenshot shows it (period figures): SS 725 + 572 − 1025 = 272;
@@ -146,7 +146,7 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   const flow = (opening, receipt, issues) => ({ opening, receipt, total: opening + receipt, issues, closing: opening + receipt - issues });
   const system = { ss50: flow(725, 572, 1025), poly: flow(0, 46, 35), cbox: flow(0, 144, 144) };
   const snapshot = J(system);
-  const pv = PC.pvGunnyWithCorrection(9, quarter.months, system);
+  const pv = PC.pvGunnyWithCorrection(9, quarter.months, system, 'manual');
   check(`POLYTHENE on the PV: ${J(tuple(pv.poly))} = 0 + 49 = 49 − 38 = 11`, J(tuple(pv.poly)) === J([0, 49, 49, 38, 11]));
   check(`C.BOX on the PV: ${J(tuple(pv.cbox))} = 0 + 145 = 145 − 145 = 0`, J(tuple(pv.cbox)) === J([0, 145, 145, 145, 0]));
   check(`50 KG SS GUNNY exactly as before: ${J(tuple(pv.ss50))}`, J(tuple(pv.ss50)) === J([725, 572, 1297, 1025, 272]) && pv.ss50 === system.ss50);
@@ -162,34 +162,65 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     ['CRS 9, Oct – Dec 2026', 9, quarterByIndex(2026, 2).months],
     ['CRS 9, the year Apr 2026 – Mar 2027', 9, Array.from({ length: 12 }, (_, i) => ({ month: ((i + 3) % 12) + 1, year: i < 9 ? 2026 : 2027 }))],
   ];
-  for (const [label, crs, months] of other) check(`${label}: untouched`, PC.pvGunnyWithCorrection(crs, months, system) === system);
+  for (const [label, crs, months] of other) check(`${label}: untouched`, PC.pvGunnyWithCorrection(crs, months, system, 'manual') === system);
   // The PV's own figures from the stores are not where it is applied: pvPeriodGunny is unchanged.
   const pvq = readFileSync(join(root, 'src/lib/engine/pvQuarter.ts'), 'utf8');
   check('pvQuarter (the system figures, the 3-Month PV\'s chain check) does not apply it', !/pvCorrections|pvGunnyWithCorrection/.test(pvq));
   const page = readFileSync(join(root, 'src/app/(app)/reports/page.tsx'), 'utf8');
-  check('Reports applies it to the Manual 3-Month PV (the PV the figures were read from), not the Automatic one',
-    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, commMap\)/.test(page) && /gunny: pvGunnyWithCorrection\(crsId, pvPeriod\.months, gunny\)/.test(page) &&
-    /const gunny = pvPeriodGunny\(crsId, pvPeriod\.months,/.test(page) && (page.match(/WithCorrection\(/g) ?? []).length === 2);
+  check('Reports lays the corrections over BOTH PVs, each saying which it is (Manual / Automatic)',
+    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, commMap, 'manual'\)/.test(page) && /gunny: pvGunnyWithCorrection\(crsId, pvPeriod\.months, gunny, 'manual'\)/.test(page) &&
+    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, agg\.commMap, 'auto'\)/.test(page) && /const gunny = pvGunnyWithCorrection\(crsId, pvPeriod\.months, pvPeriodGunny\([\s\S]{0,120}\), 'auto'\)/.test(page));
+  check('CRS 9\'s Gunny is the MANUAL PV\'s only: the Automatic PV of the same quarter is untouched', PC.pvGunnyWithCorrection(9, quarter.months, system, 'auto') === system);
 
   // CRS 7, the July – September 2026 PV: Wheat BAGS 16 + 73 = 89 − 68 = 21; its kgs and every other row untouched.
   const wheat = { name: 'Wheat', unit: 'KG', open: 816, receipt: 3716, total: 4532, issues: 3465, closing: 1067, amount: 0, free: false, transfer: 0, shortage: 0, excess: 0, bags: { open: 16, receipt: 74, total: 90, issues: 69, closing: 21 } };
   const sugar = { ...wheat, name: 'Sugar', bags: { open: 14, receipt: 42, total: 56, issues: 42, closing: 14 } };
   const map = { WHEAT: wheat, SUGAR: sugar };
   const mapSnap = J(map);
-  const fixed = PC.pvCommMapWithCorrection(7, quarter.months, map);
+  const fixed = PC.pvCommMapWithCorrection(7, quarter.months, map, 'manual');
   const b = fixed.WHEAT.bags;
   check(`CRS 7 Wheat bags on the PV: ${b.open} + ${b.receipt} = ${b.total} − ${b.issues} = ${b.closing}`, J([b.open, b.receipt, b.total, b.issues, b.closing]) === J([16, 73, 89, 68, 21]));
-  check('…its kgs unchanged, Sugar unchanged, the input map untouched', J({ ...fixed.WHEAT, bags: undefined }) === J({ ...wheat, bags: undefined }) && fixed.SUGAR === sugar && J(map) === mapSnap);
+  check('…its kgs unchanged, Sugar unchanged, the input map untouched', J({ ...fixed.WHEAT, bags: undefined, bagsFixed: undefined }) === J({ ...wheat, bags: undefined }) && fixed.SUGAR === sugar && J(map) === mapSnap);
   const sheet = buildPVTable({ commMap: fixed, periodLabel: 'Q', crsId: 7, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' });
   const wrow = [...sheet.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((x) => x[1].replace(/<[^>]+>/g, '').trim())).find((c) => c.includes('Wheat')) ?? [];
   const nums = wrow.filter((x) => /^-?\d+(\.\d+)?$/.test(x));
   check(`printed Wheat row: ${nums.join(' ')}`, ['16', '816', '73', '3716', '89', '4532', '68', '3465', '21', '1067'].every((v) => nums.includes(v)) && !nums.includes('74') && !nums.includes('69'));
   for (const [label, crs, months] of [['CRS 9, same quarter', 9, quarter.months], ['CRS 7, Oct – Dec 2026', 7, quarterByIndex(2026, 2).months], ['CRS 7, September alone', 7, [{ month: 9, year: 2026 }]]]) {
-    check(`${label}: Wheat bags untouched`, PC.pvCommMapWithCorrection(crs, months, map) === map);
+    check(`${label}: Wheat bags untouched`, PC.pvCommMapWithCorrection(crs, months, map, 'manual') === map);
   }
+  check('CRS 7\'s Wheat is the MANUAL PV\'s only: the Automatic PV is untouched', PC.pvCommMapWithCorrection(7, quarter.months, map, 'auto') === map);
+
+  // CRS 11, the July – September 2026 PV, Manual AND Automatic: BRA Rice (Police) Receipt +1 bag, Issues +1 bag.
+  const police = (o) => ({ unit: 'KG', amount: 0, free: true, transfer: 0, shortage: 0, excess: 0, ...o });
+  const map11 = {
+    BRA: police({ name: 'BRA Rice', open: 6400, receipt: 11543.42, total: 17943.42, issues: 9267, closing: 8676.42, bags: { open: 128, receipt: 230, total: 358, issues: 185, closing: 173 } }),
+    PB_BRA: police({ name: 'BRA Rice (Police)', open: 2, receipt: 54, total: 56, issues: 54, closing: 2 }),
+    PB_SUGAR: police({ name: 'Sugar (Police)', open: 0, receipt: 6, total: 6, issues: 6, closing: 0 }),
+  };
+  const snap11 = J(map11);
+  const policeRow = (m, name) => {
+    const html = buildPVTable({ commMap: m, periodLabel: 'Q', crsId: 11, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' });
+    const c = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((r) => r.includes(name)) ?? [];
+    // Sl · name · unit · then the 8 Opening, 10 Receipt, TRANSFER, TOTAL, 11 Issues … 14 Balance cells.
+    const v = c.slice(3);
+    return { open: [v[5], v[6]], receipt: [v[9], v[10]], total: [v[12], v[13]], issues: [v[14], v[15]], balance: [v[23], v[24]] };
+  };
+  const before11 = policeRow(map11, 'BRA Rice (Police)');
+  for (const kind of ['manual', 'auto']) {
+    const m = PC.pvCommMapWithCorrection(11, quarter.months, map11, kind);
+    const r = policeRow(m, 'BRA Rice (Police)');
+    check(`CRS 11 ${kind === 'manual' ? 'Manual' : 'Automatic'} PV, BRA Rice (Police) bags / kgs: Opening ${r.open.join(' / ')} · Receipt ${r.receipt.join(' / ')} · Total ${r.total.join(' / ')} · Issues ${r.issues.join(' / ')} · Balance ${r.balance.join(' / ')}`,
+      J(r) === J({ open: ['0', '2'], receipt: ['1', '54'], total: ['1', '56'], issues: ['1', '54'], balance: ['0', '2'] }));
+    check(`  …Sugar (Police) and B.RICE untouched, the input map untouched`, m.PB_SUGAR === map11.PB_SUGAR && m.BRA === map11.BRA && J(policeRow(m, 'Sugar (Police)')) === J(policeRow(map11, 'Sugar (Police)')) && J(map11) === snap11);
+  }
+  check(`without the correction the police row prints its bags as 0, as always (${J(before11)})`, J(before11) === J({ open: ['0', '2'], receipt: ['0', '54'], total: ['0', '56'], issues: ['0', '54'], balance: ['0', '2'] }));
+  for (const [label, crs, months] of [['CRS 10, same quarter', 10, quarter.months], ['CRS 11, Oct – Dec 2026', 11, quarterByIndex(2026, 2).months], ['CRS 11, August alone', 11, [{ month: 8, year: 2026 }]]]) {
+    check(`${label}: BRA Rice (Police) untouched`, PC.pvCommMapWithCorrection(crs, months, map11, 'auto') === map11 && PC.pvCommMapWithCorrection(crs, months, map11, 'manual') === map11);
+  }
+
   const { execSync } = await import('node:child_process');
-  const users = execSync('git grep -l -e pvCorrections -e pvGunnyWithCorrection -e PV_GUNNY_CORRECTIONS -- src', { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).sort();
-  check(`nothing but the PV reads it: ${users.join(', ')}`, J(users) === J(['src/app/(app)/reports/page.tsx', 'src/lib/engine/pvCorrections.ts']));
+  const users = execSync("git grep -l -e \"from '@/lib/engine/pvCorrections'\" -e \"from './pvCorrections'\" -- src", { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).sort();
+  check(`nothing but the PV's Reports page imports it: ${users.join(', ')}`, J(users) === J(['src/app/(app)/reports/page.tsx']));
 }
 
 console.log('\n6. Wiring');
