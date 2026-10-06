@@ -19,23 +19,28 @@
  * same CSS size (mm are 96 dpi px in print too), so preview = print = PDF.
  */
 
-const PX_PER_MM = 96 / 25.4;
-/** Kept spare below the box: a line that would tip onto a second page. */
-const SAFETY = 0.975;
-/** The most a commodity row's padding may grow, each side (px, before zoom). */
-const MAX_XPAD = 6;
-
 export type PvFit = { scale: number; xpad: number; widthMm: number; heightMm: number };
 
-/** Every cell whose text is wider than the cell. */
-function clipped(tbl: HTMLElement): boolean {
-  for (const td of Array.from(tbl.querySelectorAll('td'))) {
-    if (td.scrollWidth > td.clientWidth && td.textContent?.trim()) return true;
-  }
-  return false;
-}
-
+/**
+ * SELF-CONTAINED on purpose — no module-level names: the PDF download runs
+ * this very function inside headless Chrome (`fitPvSheet.toString()`,
+ * statements/pdfServer.ts), so the downloaded PDF is fitted exactly as the
+ * screen and the print are.
+ */
 export function fitPvSheet(root: ParentNode | null | undefined): PvFit | null {
+  const PX_PER_MM = 96 / 25.4;
+  /** Kept spare below the box: a line that would tip onto a second page. */
+  const SAFETY = 0.975;
+  /** The most a commodity row's padding may grow, each side (px, before zoom). */
+  const MAX_XPAD = 6;
+  /** Every cell whose text is wider than the cell. */
+  const clipped = (t: HTMLElement): boolean => {
+    for (const td of Array.from(t.querySelectorAll('td'))) {
+      if (td.scrollWidth > td.clientWidth && td.textContent?.trim()) return true;
+    }
+    return false;
+  };
+
   const paper = root?.querySelector<HTMLElement>('.pv-paper');
   const fit = paper?.querySelector<HTMLElement>('.pv-fit');
   const tbl = fit?.querySelector<HTMLElement>('#pv-tbl');

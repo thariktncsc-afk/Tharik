@@ -68,6 +68,40 @@ async function browser(): Promise<Browser> {
 }
 
 /**
+ * One PV sheet (pvStatement.ts `buildPVTable` markup) → PDF, on the paper the
+ * sheet names (A4 or Legal, landscape), fitted to it by `fitSource` — the
+ * very function the screen fits it with (pvFit.ts), so the download is the
+ * preview (office, 2026-10-06).
+ *
+ * The markup comes from the browser, so the page it is drawn in can reach
+ * nothing: every request it makes is refused (the caller has already refused
+ * markup holding a script, a link or a URL).
+ */
+export async function pvSheetToPdf(sheet: string, fitSource: string): Promise<Uint8Array> {
+  const b = await browser();
+  const page = await b.newPage();
+  try {
+    await page.setRequestInterception(true);
+    page.on('request', (r) => {
+      if (r.isInterceptResolutionHandled()) return;
+      void r.abort('blockedbyclient');
+    });
+    await page.setViewport({ width: 1600, height: 1000 });
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#fff}</style></head><body>${sheet}</body></html>`;
+    await page.setContent(doc, { waitUntil: 'load', timeout: 30000 });
+    await page.evaluate(async () => {
+      await document.fonts?.ready;
+    });
+    const fit = await page.evaluate(`(${fitSource})(document)`);
+    if (!fit) throw new Error('The PV sheet could not be laid out.');
+    const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false, timeout: 45000 });
+    return pdf;
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
+
+/**
  * Print `doc` (a whole HTML document from buildPrintDocument) to PDF.
  * `preferCSSPageSize` is what lets each sheet keep its own page: the size
  * comes from the document's @page rules, never from a single `format`.

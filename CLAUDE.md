@@ -2523,6 +2523,40 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
   worked around in code. Still so on 2026-09-28.
 
+### PV download: a PDF file per shop, A4 or Legal
+
+Office, 2026-10-06 (`/api/pv/pdf`, `lib/pvPdf.ts`, `npm run verify:pv-pdf`).
+Beside 🖨️ Print PV Statement:
+- **📥 Download PDF**: the PV on screen (Automatic or Manual) as a file, on
+  the chosen paper, e.g. `PV_CRS-20_July-2026-to-September-2026_A4.pdf`.
+  Shop users have it for their own shop.
+- **📥 Download All Shops (N)**: administrators, Automatic PV. It covers
+  every shop with a published month or a Gunny record in the period, after
+  a confirm that names the count, period and paper. The result is one ZIP,
+  `PV_All-Shops_<period>_<paper>.zip`, holding one PDF per shop.
+  - The typed NOTE is not put on them: it belongs to the shop on screen.
+  - A shop whose PDF fails is listed afterwards; the rest are still zipped.
+- **How**: the browser builds each sheet with the SAME function as the screen
+  (`autoPvHtml` in reports/page.tsx). `/api/pv/pdf` draws it in headless
+  Chrome (`pvSheetToPdf`, statements/pdfServer.ts) and fits it with
+  `fitPvSheet.toString()`. That is why pvFit.ts is self-contained, and why
+  preview = print = download.
+  - **One shop per request**: a PV PDF is ~250 KB, and thirty in one
+    answer would pass Vercel's 4.5 MB response limit. The browser zips them
+    (fflate) and shows progress ("Making PDFs… 12 / 22 (CRS 14)").
+- **The markup comes from the browser**, so the route:
+  - draws only the builder's own wrapper, for the shop (exact number) and
+    paper asked;
+  - refuses a tag or style rule that could run or fetch anything (script,
+    img, link, iframe, `on…=`, `src` / `href`, `url(`, `@import`). Typed
+    text — a NOTE that says "onwards=" — is just words;
+  - draws in a page whose every request is aborted.
+  - Signed in; a shop user only for their own shop. Each download is an
+    activity-log row (Reports · exported).
+- **Deploy**: `/api/pv/pdf` is in `outputFileTracingIncludes` (Chrome
+  shipped), `maxDuration = 60`. Like the statement PDF, the first deploy is
+  the test on Vercel.
+
 ### The Manual PV's uploads are saved
 
 Office, 2026-10-06 (`src/lib/pvUploads/`, `/api/pv-uploads`, migration
@@ -2783,6 +2817,7 @@ npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every f
 npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
 npm run verify:pv-gunny        the automatic PV's Gunny = Gunny Stock Management (gunnyRowFor) per month; first-month Opening, Receipt / Issues added; latest saved data
 npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
+npm run verify:pv-pdf          PV download: what /api/pv/pdf draws (refusals), file names, server PDFs on A4 and Legal (one page, filled, no network)
 npm run verify:pv-uploads      Manual PV uploads saved per CRS + month: save / list / read back, Replace = one active set, duplicates, refusals, shop isolation, screen wiring
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
