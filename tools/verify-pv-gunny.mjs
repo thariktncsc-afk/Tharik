@@ -218,6 +218,27 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     check(`${label}: BRA Rice (Police) untouched`, PC.pvCommMapWithCorrection(crs, months, map11, 'auto') === map11 && PC.pvCommMapWithCorrection(crs, months, map11, 'manual') === map11);
   }
 
+  // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
+  // BRA Rice (an earlier request, withdrawn the same day) untouched.
+  const wheat14 = police({ name: 'Wheat', open: 2400, receipt: 2620, total: 5020, issues: 2920, closing: 2100, bags: { open: 47, receipt: 52, total: 99, issues: 57, closing: 42 } });
+  const bra14 = police({ name: 'BRA Rice', open: 3250, receipt: 26448, total: 29698, issues: 27672.67, closing: 2000.33, shortage: 25, bags: { open: 65, receipt: 529, total: 594, issues: 553, closing: 41 } });
+  const map14 = { BRA: bra14, WHEAT: wheat14 };
+  const snap14 = J(map14);
+  const m14 = PC.pvCommMapWithCorrection(14, quarter.months, map14, 'manual');
+  const g14 = m14.WHEAT.bags;
+  check(`CRS 14 Manual PV, Wheat bags: ${g14.open} + ${g14.receipt} = ${g14.total} − ${g14.issues} = ${g14.closing}`, J([g14.open, g14.receipt, g14.total, g14.issues, g14.closing]) === J([47, 78, 125, 83, 42]));
+  check('  …its kgs unchanged, BRA Rice untouched (65 / 529 / 594 / 553 / 41), the input map untouched',
+    J({ ...m14.WHEAT, bags: undefined, bagsFixed: undefined }) === J({ ...wheat14, bags: undefined }) && m14.BRA === bra14 && J(map14) === snap14);
+  const rowOf14 = (name) => [...buildPVTable({ commMap: m14, periodLabel: 'Q', crsId: 14, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' }).matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]
+    .map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((r) => r.includes(name))?.slice(3) ?? [];
+  const p14 = rowOf14('Wheat');
+  const b14 = rowOf14('BRA Rice');
+  check(`  printed Wheat: Opening ${p14[5]} / ${p14[6]} · Receipt ${p14[9]} / ${p14[10]} · Total ${p14[12]} / ${p14[13]} · Issues ${p14[14]} / ${p14[15]} · Balance ${p14[23]} / ${p14[24]}`,
+    J([p14[5], p14[9], p14[12], p14[14], p14[23]]) === J(['47', '78', '125', '83', '42']) && J([p14[6], p14[10], p14[13], p14[15], p14[24]]) === J(['2400', '2620', '5020', '2920', '2100']));
+  check(`  printed BRA Rice as before: ${[b14[5], b14[9], b14[12], b14[14], b14[23]].join(' / ')}`, J([b14[5], b14[9], b14[12], b14[14], b14[23]]) === J(['65', '529', '594', '553', '41']));
+  check('  the Automatic PV and other periods / shops untouched',
+    PC.pvCommMapWithCorrection(14, quarter.months, map14, 'auto') === map14 && PC.pvCommMapWithCorrection(14, quarterByIndex(2026, 2).months, map14, 'manual') === map14 && PC.pvCommMapWithCorrection(13, quarter.months, map14, 'manual') === map14);
+
   const { execSync } = await import('node:child_process');
   const users = execSync("git grep -l -e \"from '@/lib/engine/pvCorrections'\" -e \"from './pvCorrections'\" -- src", { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).sort();
   check(`nothing but the PV's Reports page imports it: ${users.join(', ')}`, J(users) === J(['src/app/(app)/reports/page.tsx']));
