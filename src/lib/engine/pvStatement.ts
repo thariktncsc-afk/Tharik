@@ -228,8 +228,10 @@ export function buildPVTable(opts: {
    * only. None: no note line.
    */
   gunnyNotes?: string[];
+  /** The NOTE row's text, as typed on the PV screen; blank leaves the space for a hand-written note. */
+  note?: string;
 }): string {
-  const { commMap, periodLabel, crsId, crsName, gunny, billClerk, pvOfficer, pvDate, gunnyNotes } = opts;
+  const { commMap, periodLabel, crsId, crsName, gunny, billClerk, pvOfficer, pvDate, gunnyNotes, note } = opts;
   const fmtN = (v: number | undefined | null) => {
     if (v === undefined || v === null || v === 0) return '0';
     const n = Number(v);
@@ -239,7 +241,12 @@ export function buildPVTable(opts: {
   /** Transfer / shortage / excess — blank when the row does not carry them (the automatic PV). */
   const fmtT = (v: number | undefined) => (v === undefined ? '' : fmtN(v));
 
-  const mainComms = DSS_A.filter((c) => commMap[c.id]).map((c) => c.id);
+  // Empty Card+Box / Empty Polythene Bag are not commodity rows on the PV
+  // (office, 2026-10-06): their stock is Gunny Stock Management's and prints
+  // in the Gunny section as C.BOX / POLYTHENE. Left out here, so the
+  // numbering runs on with no gap.
+  const PV_NOT_COMMODITY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
+  const mainComms = DSS_A.filter((c) => commMap[c.id] && !PV_NOT_COMMODITY.has(c.id)).map((c) => c.id);
   const policeComms = DSS_B.filter((c) => commMap[c.id]).map((c) => c.id);
 
   /** One cell. `cls`: `l` (a label), `short` (red), `excess` (green). */
@@ -368,7 +375,10 @@ export function buildPVTable(opts: {
 
   const footer =
     '<tfoot>' +
-    `<tr><td colspan="${PV_COLS}" class="l f">NOTE:</td></tr>` +
+    // The NOTE row (office, 2026-10-06): one full-width ruled cell, "NOTE:"
+    // in bold, the text wrapping after it, tall enough for 2–4 lines and
+    // growing with a longer note.
+    `<tr class="pv-note"><td colspan="${PV_COLS}" class="l f note"><b>NOTE:</b>${note && note.trim() ? ` <span class="note-text">${note.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</span>` : ''}</td></tr>` +
     '<tr><td colspan="21" class="l f wrap">' +
     '1. Certified that the details were verified with connected records and found correct.<br>' +
     '2. Certified that the result of the physical verification have been recorded in the stock ledger, stack register and stack card.' +
@@ -402,6 +412,10 @@ export function buildPVTable(opts: {
     '#pv-tbl td.f.wrap{white-space:normal}' +
     '#pv-tbl td.f:not(.l){text-align:center}' +
     '#pv-tbl td.sig{padding-top:14px}' +
+    // The NOTE row: wraps, top-aligned, room for about four lines, grows with more.
+    '#pv-tbl td.note{white-space:normal;vertical-align:top;height:15mm;padding:6px 10px;line-height:1.45;word-wrap:break-word;overflow-wrap:anywhere}' +
+    '#pv-tbl td.note b{font-weight:800;margin-right:6px}' +
+    '#pv-tbl tr.pv-note{break-inside:avoid;page-break-inside:avoid}' +
     // Shortage red, Excess green — the figure only, never the row.
     '#pv-tbl td.short{color:#DC2626}' +
     '#pv-tbl td.excess{color:#15803D}' +

@@ -724,5 +724,28 @@ console.log('\n9. Bag counts: carried from Page 2, Closing = the latest month\'s
 }
 
 
+// ── 10. No Empty Card+Box / Polythene Bag commodity rows; the NOTE row ────
+// (office, 2026-10-06.)
+console.log('\n10. The PV\'s commodity rows and its NOTE row');
+{
+  const row = (name, unit = 'KG') => ({ name, unit, open: 1, receipt: 0, total: 1, issues: 0, closing: 1, amount: 0, free: true });
+  const commMap = { BRA: row('BRA Rice'), TAN: row('TAN', 'PKT'), EMPTY_BOX: row('Empty Card+Box', 'NOS'), EMPTY_BAG: row('Empty Polythene Bag', 'NOS'), PB_BRA: row('BRA Rice (Police)') };
+  const gunny = { ss50: { opening: 1, receipt: 0, total: 1, issues: 0, closing: 1 }, poly: { opening: 33, receipt: 95, total: 128, issues: 128, closing: 0 }, cbox: { opening: 66, receipt: 324, total: 390, issues: 390, closing: 0 } };
+  const html = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, billClerk: '', note: 'Stack 4 re-counted on site.\nWheat consider as gunny <ok>' });
+  const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1].replace(/<[^>]+>/g, '').trim()));
+  const named = (n) => rows.find((c) => c[1] === n);
+  check('Empty Card+Box and Empty Polythene Bag are not commodity rows', !named('Empty Card+Box') && !named('Empty Polythene Bag'));
+  check('…their stock still prints in the Gunny section (POLYTHENE 33 / 95 / 128, C.BOX 66 / 324 / 390)', /POLYTHENE/.test(html) && ['33', '95', '128'].every((v) => named('POLYTHENE')?.includes(v)) && ['66', '324', '390'].every((v) => named('C.BOX')?.includes(v)));
+  const sls = rows.filter((c) => /^\d+$/.test(c[0]) && c.length > 20).map((c) => Number(c[0]));
+  check(`numbering runs on with no gap: ${sls.join(', ')}`, sls.every((n, i) => n === i + 1));
+  const noteTd = html.match(/<tr class="pv-note"><td colspan="(\d+)" class="l f note">([\s\S]*?)<\/td><\/tr>/);
+  check(`the NOTE row is one cell across all ${S.PV_COLS} columns`, !!noteTd && Number(noteTd[1]) === S.PV_COLS);
+  check('"NOTE:" bold, then the note, its lines kept, its text escaped', /^<b>NOTE:<\/b> <span class="note-text">Stack 4 re-counted on site\.<br>Wheat consider as gunny &lt;ok&gt;<\/span>$/.test(noteTd?.[2] ?? ''), noteTd?.[2]);
+  check('the NOTE cell wraps, sits at the top and has room for about four lines', /td\.note\{white-space:normal;vertical-align:top;height:15mm;/.test(html));
+  const blank = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, billClerk: '' });
+  check('no note typed → "NOTE:" alone, the space left for a hand-written note', /<td colspan="\d+" class="l f note"><b>NOTE:<\/b><\/td>/.test(blank));
+}
+
+
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');
 process.exit(failures ? 1 : 0);

@@ -2518,6 +2518,30 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
   worked around in code. Still so on 2026-09-28.
 
+### PV: no Empty Card+Box / Polythene Bag rows; a real NOTE row
+
+Office, 2026-10-06 (`pvStatement.ts`, `verify:pv-quarter` §10).
+- **The two Empty rows are gone from the PV's commodity table**
+  (`PV_NOT_COMMODITY`, both the Automatic and the 3-Month PV).
+  - Numbering runs on with no gap: CRS 20 has commodities 1–19, then Gunny
+    20–22 and Police 23–27.
+  - Their stock still prints in the Gunny section as POLYTHENE / C.BOX.
+    Nothing in Gunny Stock, Monthly Sales or the money changes.
+- **The NOTE row**: one ruled cell across all 38 columns, "NOTE:" in bold,
+  then the text. It sits at the top of the cell, wraps, and has room for
+  about four lines (15 mm), growing with a longer note. It comes before the
+  certificates and signatures.
+  - The text is typed in a NOTE box under 🖨️ Print PV Statement. It is
+    printed, never stored. Left blank, the space is for a hand-written note.
+- **Localhost, CRS 20 Jul–Sep**: with a four-line note, the PV prints on 1
+  Legal landscape page (356 × 216 mm). NOTE at 155 mm, then the
+  certificates at 173 mm and the signatures at 185 mm. Nothing is clipped.
+- **Not done (asked)**: the CRS statements (Page 2's C.BOX / P.GUNNY rows,
+  Free Com, Cost Com) and Monthly Entry still show those rows. On Page 2
+  they carry money (₹0.60 / ₹2.50 a piece) into TOTAL, the remittance
+  reconciliation and EXCESS. On Monthly Entry they are where those sales are
+  keyed. Removing them there is the office's call.
+
 ### The PV's bag columns are carried bags, never kgs ÷ pack
 
 Office, 2026-10-06 (`pvQuarter.ts` `periodBags` / `pvPeriodBags`,
