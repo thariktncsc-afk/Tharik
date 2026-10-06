@@ -87,6 +87,8 @@ export default function ReportsPage() {
    * only lose fidelity.
    */
   const [pvSource, setPvSource] = useState<'auto' | 'manual'>('auto');
+  /** The PV's NOTE row, typed here; it is printed, never stored. */
+  const [pvNote, setPvNote] = useState('');
   /**
    * Who verified this shop and on what day. Resolved from the group assignment
    * (src/lib/engine/pvOfficer.ts) so it reaches every PV the same way —
@@ -215,6 +217,7 @@ export default function ReportsPage() {
         billClerk: user?.fullName ?? '',
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
+        note: pvNote,
       });
     }
     const agg = pvAggregatePeriod([crsId], pvPeriod.months, { entryStore, receiptStore, monthlyStore }, pvCommodityScope(crsId));
@@ -249,9 +252,10 @@ export default function ReportsPage() {
       billClerk: user?.fullName ?? '',
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
+        note: pvNote,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated]);
 
   /**
    * The current month of a manual 3-month PV, worked out from the stores as
@@ -524,6 +528,12 @@ export default function ReportsPage() {
                 🖨️ Print PV Statement
               </button>
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>Prints on Legal paper, landscape · By Counting and By 100 % are left blank for the PV officer to fill on-site</span>
+            </div>
+          ) : null}
+          {isPV ? (
+            <div style={{ marginTop: 10 }}>
+              <label className="form-label" htmlFor="pv-note">NOTE (prints in the PV's NOTE row — leave blank to write by hand)</label>
+              <textarea id="pv-note" aria-label="PV note" value={pvNote} onChange={(e) => setPvNote(e.target.value)} rows={3} placeholder="Additional remarks / official notes" style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
             </div>
           ) : null}
           </>) : null}
