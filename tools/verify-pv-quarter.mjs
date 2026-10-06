@@ -614,6 +614,32 @@ console.log('\n5. The sheet: Annexure-I, one A4 or Legal landscape page, filled'
         if (what.includes('widest')) check(`${label}: Shortage red, Excess green, the figure only`, g.coloured.length > 0 && g.coloured.every((c) => /^short:(15\.500|1)$|^excess:(10|1)$/.test(c)), g.coloured.slice(0, 4).join(', '));
         await d.destroy();
       }
+      // ONE SHEET, ALWAYS (office, 2026-10-06): the office's Chrome and the server's printed the
+      // NOTE, certificate and signatures on a SECOND sheet under a repeated heading. Whatever a
+      // browser's print layout does, there must be nothing it can put on a second sheet: here
+      // the print lays every row out ~20 % TALLER than the screen measured (a font or a Chrome
+      // that differs), and it is still one sheet.
+      for (const [paper, W, H] of [['A4', 297, 210], ['Legal', 355.6, 215.9]]) {
+        await page.emulateMediaType('screen');
+        await page.setViewport({ width: 1280, height: 900 });
+        await page.setContent(doc(build(wide, paper, { note: 'Stack 4 re-counted.\nTwo torn POLY bags set aside.' })));
+        await page.evaluate(() => window.fitPvSheet(document));
+        const how = await page.evaluate(() => ({ t: document.querySelector('.pv-fit').style.transform, z: getComputedStyle(document.querySelector('.pv-fit')).zoom }));
+        await page.evaluate(() => {
+          document.body.classList.add('printing-area');
+          const st = document.createElement('style');
+          st.textContent = '@media print{#pv-tbl td{padding-top:3px!important;padding-bottom:3px!important}}';
+          document.head.appendChild(st);
+        });
+        await page.emulateMediaType('print');
+        const groups = await page.evaluate(() => [getComputedStyle(document.querySelector('#pv-tbl thead')).display, getComputedStyle(document.querySelector('#pv-tbl tfoot')).display]);
+        const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+        const d = await pdfjs.getDocument({ data: new Uint8Array(pdf), verbosity: 0 }).promise;
+        const vp = (await d.getPage(1)).getViewport({ scale: 1 });
+        check(`${paper}: printed ~20 % taller than the screen measured — still ${d.numPages} sheet, ${(vp.width * PT).toFixed(1)} × ${(vp.height * PT).toFixed(1)} mm; scaled by transform (${how.t}, zoom ${how.z}); heading / footer print as ${groups.join(' / ')}`,
+          d.numPages === 1 && Math.abs(vp.width * PT - W) < 0.6 && Math.abs(vp.height * PT - H) < 0.6 && /^scale\(/.test(how.t) && String(how.z) === '1' && groups.every((g) => g === 'table-row-group'));
+        await d.destroy();
+      }
     } finally {
       await browser.close();
     }
