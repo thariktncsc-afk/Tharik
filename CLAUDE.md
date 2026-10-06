@@ -2849,41 +2849,57 @@ verify:pv-gunny` §7).
 - **What**: figures the office sets for ONE shop's ONE PV, printed on that
   PV and nowhere else.
   - Keyed by the shop and the PV's first and last month.
-  - The figures are the PERIOD's, as that PV prints them: Receipt, Issues
-    and C.B over the whole period.
-  - Opening = C.B − Receipt + Issues, so TOTAL = OPENING + RECEIPT and
-    CB = TOTAL − SALES hold.
   - `PV_GUNNY_CORRECTIONS` covers Gunny rows. `PV_BAG_CORRECTIONS` covers a
     commodity's BAG columns only; its kgs are never touched.
-- **Where it applies: the MANUAL 3-Month PV only.**
-  - Both corrections were read off that PV, where the Opening is the first
-    uploaded month's and Receipt / Issues add up three months.
-  - The Automatic PV of the same period holds only the months keyed in the
-    system, so the figures would contradict its own. CRS 7 Wheat would print
-    bags 16 / 73 beside September-only kgs 715 / 1391.
-  - Applied on Reports (`pvCommMapWithCorrection`, `pvGunnyWithCorrection`),
-    so Preview, Print and Download PDF (one markup) carry them.
+  - A row is corrected in one of two ways:
+    - **SET** the PERIOD's Receipt / Issues / C.B as that PV prints them;
+      Opening = C.B − Receipt + Issues.
+    - **ADD** bags to what the PV shows (a police line shows 0); Opening is
+      kept.
+  - Either way TOTAL = OPENING + RECEIPT and CB = TOTAL − SALES hold.
+  - A police line prints bags only when a correction set them
+    (`bagsFixed`, pvStatement.ts). Every other police line prints 0, as
+    always.
+- **Which PV**: each correction says `applies: 'manual' | 'both'`.
+  - `'manual'` — the Manual 3-Month PV only: figures read off that PV,
+    where the Opening is the first uploaded month's and Receipt / Issues add
+    up three months. The Automatic PV of the same period holds only the
+    months keyed in the system, so they would contradict its own (CRS 7
+    Wheat would print bags 16 / 73 beside September-only kgs 715 / 1391).
+  - `'both'` — the Manual and the Automatic PV.
+  - Applied on Reports for both PVs (`pvCommMapWithCorrection`,
+    `pvGunnyWithCorrection`, each told which PV it is), so Preview, Print
+    and Download PDF (one markup) carry them.
 - **What it never touches**:
   - Monthly / Daily Sales, Gunny Stock Management, the Receipt Register,
     the DSS and the statements;
-  - the Automatic PV;
   - the 3-Month PV's month-to-month chain check (pvQuarter.ts);
   - the database: nothing is written.
-- **The corrections, all on the July – September 2026 Manual PV**:
+- **The corrections, all on the July – September 2026 PV**:
 
-  | Shop | Row | Was | On the PV |
-  | --- | --- | --- | --- |
-  | CRS 9 | POLYTHENE (R / I / CB) | 46 / 35 / 11 | 49 / 38 / 11 (Opening 0) |
-  | CRS 9 | C.BOX (R / I / CB) | 144 / 144 / 0 | 145 / 145 / 0 |
-  | CRS 9 | 50 KG SS | | unchanged |
-  | CRS 7 | Wheat BAGS (O + R = T − I = CB) | 16 + 74 = 90 − 69 = 21 | 16 + 73 = 89 − 68 = 21 |
+  | Shop | PV | Row | Was | On the PV |
+  | --- | --- | --- | --- | --- |
+  | CRS 9 | Manual | POLYTHENE (R / I / CB) | 46 / 35 / 11 | 49 / 38 / 11 (Opening 0) |
+  | CRS 9 | Manual | C.BOX (R / I / CB) | 144 / 144 / 0 | 145 / 145 / 0 |
+  | CRS 9 | Manual | 50 KG SS | | unchanged |
+  | CRS 7 | Manual | Wheat BAGS (O + R = T − I = CB) | 16 + 74 = 90 − 69 = 21 | 16 + 73 = 89 − 68 = 21 |
+  | CRS 11 | Manual + Automatic | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 1 = 1 − 1 = 0 |
 
-  CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
+  - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
+  - CRS 11's police BRA kgs are unchanged: 2 / 54 / 56 / 54 / 2 on the
+    Manual PV. On the Automatic PV they are September's alone, 2 / 18 / 20
+    / 18 / 2, beside the same 1 bag (the office chose both PVs).
 - **Checked on localhost, fresh read-only copy of live data**:
   - CRS 7, with the office's July / August PDFs (`Downloads/PV`) and
     September from the system: the Manual PV generates, and Preview and the
-    Download PDF markup print Wheat as above.
-  - The Automatic PV still prints September's 14 / 27 / 41 / 20 / 21.
+    Download PDF markup print Wheat as above. The Automatic PV still prints
+    September's 14 / 27 / 41 / 20 / 21.
+  - CRS 11 Automatic PV: BRA Rice (Police) 0 / 1 / 1 / 1 / 0 bags, and the
+    Download PDF markup is the same. The four other police lines print 0
+    bags, as does CRS 10's police BRA.
+  - CRS 11's Manual PV does not generate until its 0.42 kg B.RICE Opening is
+    settled (see "CRS 11's July / August PDFs"); the Manual path is covered
+    by §7.
   - Monthly Sales is unchanged, and 0 writes.
 
 

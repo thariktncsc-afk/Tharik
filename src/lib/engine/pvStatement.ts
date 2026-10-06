@@ -40,6 +40,8 @@ export type PvCommRow = {
    * present the bag columns print these; absent, kgs ÷ pack as before.
    */
   bags?: { open: number; receipt: number; total: number; issues: number; closing: number };
+  /** Bags set by a PV-only correction (pvCorrections.ts) — printed even on a police line. */
+  bagsFixed?: boolean;
 };
 export type PvAggregate = {
   commMap: Record<string, PvCommRow>;
@@ -316,9 +318,10 @@ export function buildPVTable(opts: {
     td('') + td('') + //                               18 Shortage
     '</tr>';
   const commodityRow = (sl: number, r: PvCommRow, div: number | null) => {
-    // Police lines are kilos only: their bag columns print 0, as they always have.
+    // Police lines are kilos only: their bag columns print 0, as they always have —
+    // unless a PV-only correction set this line's bags (pvCorrections.ts, `bagsFixed`).
     const b = (kgs: number) => (div === null ? '0' : fmtB(kgs, div));
-    const g = div === null ? undefined : r.bags;
+    const g = div === null ? (r.bagsFixed ? r.bags : undefined) : r.bags;
     return dataRow(sl, r.name, r.unit, {
       obB: g ? String(g.open) : b(r.open), obK: fmtN(r.open),
       recB: g ? String(g.receipt) : b(r.receipt), recK: fmtN(r.receipt),
