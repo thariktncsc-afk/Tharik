@@ -15,9 +15,10 @@
  * Receipt totals count item quantities (the legacy sum over item objects
  * was always 0 — noted in pvStatement.ts too).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
-import { useStore } from '@/lib/dataStore';
+import { crsData, useStore, useUsers } from '@/lib/dataStore';
+import { shopStaffNames } from '@/lib/engine/staffAssignment';
 import { appAlert } from '@/components/dialog';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
 import { commodityListsFor, useCommodityMaster, useShops } from '@/lib/masters';
@@ -111,6 +112,14 @@ export default function ReportsPage() {
   const shopIds = shops.map((_, i) => i + 1);
   const crsIds = crsVal ? [Number(crsVal)] : shopIds;
   const isPV = type === 'quarterly' || type === 'yearly';
+  // The PV names the SHOP's Bill Clerk and Packer (users table), never the
+  // person signed in. The roster is read again whenever a PV is opened or the
+  // shop changes, so a BC / Packer reassigned on the Users screen — here or
+  // in another tab — is what the next preview and print say.
+  const users = useUsers();
+  useEffect(() => {
+    if (isPV && crsVal) void crsData.reloadUsers();
+  }, [isPV, crsVal]);
 
   const monthOptions = useMemo(() => {
     const out: { value: string; label: string }[] = [];
@@ -214,7 +223,7 @@ export default function ReportsPage() {
         crsName: shops[crsId - 1]?.name ?? '',
         gunny,
         gunnyNotes,
-        billClerk: user?.fullName ?? '',
+        staff: shopStaffNames(users, crsId),
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
         note: pvNote,
@@ -249,13 +258,13 @@ export default function ReportsPage() {
       crsId,
       crsName: shops[crsId - 1]?.name ?? '',
       gunny,
-      billClerk: user?.fullName ?? '',
+      staff: shopStaffNames(users, crsId),
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
         note: pvNote,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated, users]);
 
   /**
    * The current month of a manual 3-month PV, worked out from the stores as

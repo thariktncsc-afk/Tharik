@@ -2548,6 +2548,34 @@ Office, 2026-10-06 (`pvStatement.ts`, `verify:pv-quarter` §10).
   reconciliation and EXCESS. On Monthly Entry they are where those sales are
   keyed. Removing them there is the office's call.
 
+### The PV names the shop's own Bill Clerk and Packer
+
+Office, 2026-10-06 (`verify:pv-quarter` §11).
+- **The bug**: the PV header printed **the signed-in person's name** as the
+  Bill Clerk (`user.fullName`). An administrator's preview read "NAME OF THE
+  BILL CLERK : Administrator" for every shop.
+- **Now** `shopStaffNames(users, crsId)` (staffAssignment.ts) chooses, by
+  the same rule as the statements (`getUsersForCRS`, 06-users.js):
+  - only the selected shop's active `BC` and `Packer`, by `users.crs_id` and
+    `users.role`;
+  - BILL CLERK first, then P.K.R, in the same header cell;
+  - a vacant post is left out;
+  - a shop with neither keeps "NAME OF THE BILL CLERK : ____________" for a
+    hand-written name;
+  - a Packer-only shop signs "SIGNATURE OF P.K.R WITH SEAL".
+- The Reports page re-reads the roster (`crsData.reloadUsers`) whenever a PV
+  is opened or the shop changes. A post changed on the Users screen, in this
+  tab or another, is what the next preview and print say.
+- The statements already did this on the server: `loadStatementEngine` reads
+  the users table on every render (43-staff-posts.js). They are unchanged.
+- **Live roster, read only, all 30 shops**: each PV names only that shop's
+  active staff, never the administrator. For example CRS 23 BC Saravanan
+  (no Packer on the roster), CRS 7 Mathavi / Balaji, CRS 5 P.K.R
+  Ramamoorthy, CRS 2 the ruled blank.
+- **Localhost**: Automatic PV as the administrator for CRS 23, 7, 20, 5, 19
+  and 2. CRS 7 printed on one Legal page with both names. Its posts were
+  then swapped in the roster, and after a change of shop the PV followed.
+
 ### The PV's bag columns are carried bags, never kgs ÷ pack
 
 Office, 2026-10-06 (`pvQuarter.ts` `periodBags` / `pvPeriodBags`,

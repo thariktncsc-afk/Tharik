@@ -62,6 +62,18 @@ export function occupant<T extends Assignee>(users: T[], crsId: number, role: St
   return users.find((u) => u.crsId === crsId && u.role === role && u.active !== false) ?? null;
 }
 
+/**
+ * The names a shop's own sheets print: its active Bill Clerk and Packer, by
+ * `users.crs_id` + `users.role` — the same choice the statements make
+ * (getUsersForCRS). Only this shop's people; a vacant post is ''.
+ */
+export function shopStaffNames(users: Assignee[], crsId: number): { bc: string; packer: string } {
+  return {
+    bc: occupant(users, crsId, 'BC')?.fullName?.trim() ?? '',
+    packer: occupant(users, crsId, 'Packer')?.fullName?.trim() ?? '',
+  };
+}
+
 /** Which of BC / Packer nobody is filling at this shop. */
 export function vacantRoles(users: Assignee[], crsId: number): StaffRole[] {
   return STAFF_ROLES.filter((r) => !occupant(users, crsId, r));

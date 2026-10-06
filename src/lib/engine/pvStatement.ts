@@ -218,7 +218,12 @@ export function buildPVTable(opts: {
   crsId: number;
   crsName: string;
   gunny: GunnyMonth;
-  billClerk: string;
+  /**
+   * The shop's own staff, as the users table assigns them (`shopStaffNames`,
+   * staffAssignment.ts) — never the person signed in. A post nobody holds is
+   * left out; a shop with neither keeps the ruled line for a hand-written name.
+   */
+  staff: { bc?: string; packer?: string };
   pvOfficer?: string;
   /** Already formatted DD-MM-YYYY; blank leaves the ruled line for the officer. */
   pvDate?: string;
@@ -231,7 +236,18 @@ export function buildPVTable(opts: {
   /** The NOTE row's text, as typed on the PV screen; blank leaves the space for a hand-written note. */
   note?: string;
 }): string {
-  const { commMap, periodLabel, crsId, crsName, gunny, billClerk, pvOfficer, pvDate, gunnyNotes, note } = opts;
+  const { commMap, periodLabel, crsId, crsName, gunny, staff, pvOfficer, pvDate, gunnyNotes, note } = opts;
+  const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // One line per post the shop actually has, BC first — the statements' rule
+  // (43-staff-posts.js). Neither: the Bill Clerk line with its ruled blank.
+  const bcName = (staff?.bc ?? '').trim();
+  const pkrName = (staff?.packer ?? '').trim();
+  const staffLines = [
+    bcName && `<b>NAME OF THE BILL CLERK :</b> ${escHtml(bcName)}`,
+    pkrName && `<b>NAME OF THE P.K.R :</b> ${escHtml(pkrName)}`,
+  ].filter(Boolean) as string[];
+  if (!staffLines.length) staffLines.push('<b>NAME OF THE BILL CLERK :</b> ____________');
+  const signerTitle = !bcName && pkrName ? 'P.K.R' : 'BILL CLERK';
   const fmtN = (v: number | undefined | null) => {
     if (v === undefined || v === null || v === 0) return '0';
     const n = Number(v);
@@ -341,7 +357,7 @@ export function buildPVTable(opts: {
     `<tr><td colspan="${PV_COLS}" class="t1">TAMIL NADU CIVIL SUPPLIES CORPORATION MADURAI REGION</td></tr>` +
     `<tr><td colspan="21" class="l t2"><b>NAME OF THE CRS :</b> ${crsId}${crsName ? ' — ' + crsName : ''}</td>` +
     `<td colspan="17" class="l t2"><b>NAME AND DESIGNATION OF THE P.V.OFFICER :</b> ${pvOfficer || '____________'}</td></tr>` +
-    `<tr><td colspan="21" class="l t2"><b>NAME OF THE BILL CLERK :</b> ${billClerk}</td>` +
+    `<tr><td colspan="21" class="l t2">${staffLines.join('<br>')}</td>` +
     `<td colspan="17" class="l t2"><b>DATE OF P.V. :</b> ${pvDate || '____________'}</td></tr>` +
     `<tr><td colspan="${PV_COLS}" class="t3">PHYSICAL VERIFICATION REPORT OF COMMODITIES AS ON ${periodLabel}</td></tr>` +
     '<tr class="hd">' +
@@ -391,7 +407,7 @@ export function buildPVTable(opts: {
     '2. Certified that the result of the physical verification have been recorded in the stock ledger, stack register and stack card.' +
     '</td>' +
     '<td colspan="17" class="f wrap"><br><br><b>SIGNATURE OF THE PHYSICAL VERIFICATION OFFICER</b></td></tr>' +
-    '<tr><td colspan="21" class="f sig"><b>SIGNATURE OF BILL CLERK WITH SEAL</b></td>' +
+    `<tr><td colspan="21" class="f sig"><b>SIGNATURE OF ${signerTitle} WITH SEAL</b></td>` +
     '<td colspan="17" class="f"></td></tr>' +
     '</tfoot>';
 
