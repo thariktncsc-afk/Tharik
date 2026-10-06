@@ -15,14 +15,15 @@
  * Receipt totals count item quantities (the legacy sum over item objects
  * was always 0 — noted in pvStatement.ts too).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore, useUsers } from '@/lib/dataStore';
 import { shopStaffNames } from '@/lib/engine/staffAssignment';
 import { appAlert } from '@/components/dialog';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
 import { commodityListsFor, useCommodityMaster, useShops } from '@/lib/masters';
-import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow } from '@/lib/engine/pvStatement';
+import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow, type PvPaperSize } from '@/lib/engine/pvStatement';
+import { fitPvSheet } from '@/lib/engine/pvFit';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
 import { pvPeriodBags, pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
@@ -90,6 +91,25 @@ export default function ReportsPage() {
   const [pvSource, setPvSource] = useState<'auto' | 'manual'>('auto');
   /** The PV's NOTE row, typed here; it is printed, never stored. */
   const [pvNote, setPvNote] = useState('');
+  // The paper the PV prints on, A4 or Legal (landscape). Remembered in this
+  // browser only — a convenience; the sheet is the same document either way.
+  const [pvPaper, setPvPaperState] = useState<PvPaperSize>('A4');
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('pv.paper') === 'Legal') setPvPaperState('Legal');
+    } catch {
+      /* storage blocked: A4 */
+    }
+  }, []);
+  const setPvPaper = (p: PvPaperSize) => {
+    setPvPaperState(p);
+    try {
+      localStorage.setItem('pv.paper', p);
+    } catch {
+      /* not remembered — still used for this print */
+    }
+  };
+  const pvAreaRef = useRef<HTMLDivElement>(null);
   /**
    * Who verified this shop and on what day. Resolved from the group assignment
    * (src/lib/engine/pvOfficer.ts) so it reaches every PV the same way —
@@ -227,6 +247,7 @@ export default function ReportsPage() {
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
         note: pvNote,
+        paper: pvPaper,
       });
     }
     const agg = pvAggregatePeriod([crsId], pvPeriod.months, { entryStore, receiptStore, monthlyStore }, pvCommodityScope(crsId));
@@ -262,9 +283,21 @@ export default function ReportsPage() {
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
         note: pvNote,
+        paper: pvPaper,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated, users]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, pvPaper, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated, users]);
+
+  // The sheet scaled to its page (pvFit.ts) whenever it is drawn again — new
+  // figures, a note, another paper — and once more as the browser prints.
+  useLayoutEffect(() => {
+    if (pvHtml) fitPvSheet(pvAreaRef.current);
+  }, [pvHtml]);
+  useEffect(() => {
+    const before = () => fitPvSheet(pvAreaRef.current);
+    window.addEventListener('beforeprint', before);
+    return () => window.removeEventListener('beforeprint', before);
+  }, []);
 
   /**
    * The current month of a manual 3-month PV, worked out from the stores as
@@ -530,13 +563,21 @@ export default function ReportsPage() {
                   }
                   // The PV alone on the paper — printing the screen put the
                   // sidebar down every sheet (office, 2026-09-27; app/print.css).
+                  fitPvSheet(pvAreaRef.current);
                   printArea();
                 }}
                 style={{ background: 'linear-gradient(135deg,#1B3A6B,#2563EB)', color: '#fff', border: 'none', padding: '9px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
               >
                 🖨️ Print PV Statement
               </button>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Prints on Legal paper, landscape · By Counting and By 100 % are left blank for the PV officer to fill on-site</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, margin: 0 }}>
+                Paper
+                <select aria-label="PV paper size" value={pvPaper} onChange={(e) => setPvPaper(e.target.value === 'Legal' ? 'Legal' : 'A4')} style={{ border: '1px solid var(--border)', borderRadius: 7, padding: '6px 8px', fontSize: 12, fontWeight: 600 }}>
+                  <option value="A4">A4 · landscape</option>
+                  <option value="Legal">Legal · landscape</option>
+                </select>
+              </label>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Prints on {pvPaper} paper, landscape, filling the page · By Counting and By 100 % are left blank for the PV officer to fill on-site</span>
             </div>
           ) : null}
           {isPV ? (
@@ -679,7 +720,7 @@ export default function ReportsPage() {
                     <strong>All {pvPeriod?.months.length} months published.</strong> This PV is complete for {pvPeriod?.label}.
                   </div>
                 )}
-                <div className={PRINT_AREA_CLASS} dangerouslySetInnerHTML={{ __html: pvHtml }} />
+                <div ref={pvAreaRef} className={PRINT_AREA_CLASS} dangerouslySetInnerHTML={{ __html: pvHtml }} />
               </>
             ) : (
               <div style={{ textAlign: 'center', padding: 24, color: 'var(--muted)' }}>Please select a specific CRS shop to generate a PV Statement.</div>

@@ -1226,7 +1226,7 @@ printed. `npm run verify:print-layout`.
 - Two screens print themselves: **Monthly Entry's statement preview** and the
   **PV on Reports**. Both now call `printArea()` and mark their document
   `.print-area`; the PV carries its own `@page{size:legal landscape}` — see
-  "The PV sheet: Annexure-I on Legal paper", below.
+  "The PV sheet: Annexure-I on A4 or Legal paper", below.
 - The check also refuses a NEW screen that calls `window.print()` without
   either printing an area or opening a document of its own — which is how
   this fault would come back.
@@ -2703,7 +2703,7 @@ verify:pv-gunny`).
     area.
 - The layout and the commodity rows are unchanged.
 
-### The PV sheet: Annexure-I on Legal paper
+### The PV sheet: Annexure-I on A4 or Legal paper
 
 `buildPVTable` (`pvStatement.ts`), for both the automatic and the 3-month PV
 (office, 2026-09-28). `npm run verify:pv-quarter` §5.
@@ -2715,18 +2715,42 @@ verify:pv-gunny`).
   number row running to 38, so the numbers and section rows stuck out past
   the commodity rows — it had lost "Shortage during the year" and the PV
   result's Excess / Shortage pair.
-- **Legal landscape, one page** — the workbook is `paperSize="5"`,
-  landscape, fit to page, and all nine PV PDFs the office sent are
-  355.6 × 215.9 mm, one page. `@page{size:legal landscape;margin:12mm 18mm}`
-  (18 mm = the workbook's 0.709 in).
+- **A4 or Legal landscape, one page, filled** (office, 2026-10-06; it was
+  Legal only — the workbook's `paperSize="5"`, 12 / 18 mm margins). An A4
+  printer shrank that Legal sheet onto A4: 5.3 pt type with wide margins and
+  blank space round it.
+  - **Choosing the paper**: a Paper choice (A4 default, Legal) beside 🖨️
+    Print PV Statement, remembered in this browser. `@page{size:A4
+    landscape|legal landscape;margin:6mm}` — the printer's safe minimum.
+  - **Filling it** (`pvFit.ts` `fitPvSheet`): the table is laid out narrower
+    and the sheet zoomed back out to the full printable width. Type, padding,
+    rows and borders all grow by one factor — the largest that keeps it
+    inside the page height with no cell cut — with 2 % in hand, because paper
+    sets text a hair wider than the screen.
+    - Height still left goes into the commodity rows (≤ 6 px each side).
+    - It runs after every render, on a paper change, on Print and on
+      `beforeprint`.
+    - Cell side padding is 0.5 px; the figures are centred.
+  - Measured, CRS 20 (preview = print, the same DOM):
+
+    | | Scale | Title | Figures / commodity | Margins |
+    | --- | --- | --- | --- | --- |
+    | A4 | ×1.01 | 11.4 pt | 6.5 pt | text 7 → 289 mm of 297, signatures at 196 of 210 mm |
+    | Legal | ×1.16 | 13.1 pt | 7.4 pt | |
+
+    A4 is bound by width as much as height: 38 columns of 9-figure kilos in
+    285 mm.
+  - The title reads **TAMIL NADU CIVIL SUPPLIES CORPORATION – MADURAI REGION**
+    at 15 px (before the fit).
+  - **NOTE is as tall as its notes**: no fixed height. One note stays on the
+    NOTE line; several are numbered, one a line.
 - **Laid out in millimetres, never against the window**: on screen the sheet
-  is a 355.6 mm page (its scroller scrolls on a narrow window); in print the
-  same table at the same 319.6 mm. The old one was a `min-width:1400px`
-  screen table, squeezed onto A4. Columns have fixed shares (`PV_COL_MM`):
-  kgs columns hold a 9-figure quantity at the sheet's own type (8.5px data,
-  unchanged); the columns the officer fills by hand are narrower. Every
-  commodity there is, at the widest figures, still fits one page with no cell
-  cut (checked by printing it).
+  is the chosen page (its scroller scrolls on a narrow window); in print the
+  same table at the same width. The old one was a `min-width:1400px` screen
+  table, squeezed onto A4. Columns keep fixed shares (`PV_COL_MM`): kgs
+  columns hold a 9-figure quantity; the columns the officer fills by hand
+  are narrower. Every commodity there is, at the widest figures, fits one
+  page on both papers with no cell cut (`verify:pv-quarter` §5 prints both).
 - **Where each figure prints** (as the office's PDFs place them): Opening →
   8 "Physical"; Receipt 10; TRANSFER (net, in +); TOTAL = Opening + Receipt +
   Transfer + Excess; Issues 11 (sales); **Shortage → 12 "Shortage during the
