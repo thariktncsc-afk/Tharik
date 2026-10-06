@@ -28,6 +28,7 @@ import { fitPvSheet } from '@/lib/engine/pvFit';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
 import { pvPeriodBags, pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
+import { pvCommMapWithCorrection, pvGunnyWithCorrection } from '@/lib/engine/pvCorrections';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 import OapStatement from './OapStatement';
@@ -275,11 +276,13 @@ export default function ReportsPage() {
       if (!manualQuarter || manualQuarter.scope !== `${crsId}|${pvPeriod.rangeLabel}`) return '';
       const { commMap, gunny, gunnyNotes } = quarterPvInputs(manualQuarter.q);
       return buildPVTable({
-        commMap,
+        // The chained quarter's rows and Gunny, then any PV-only correction
+        // the office set for this shop's PV (pvCorrections.ts) — this PV's alone.
+        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, commMap),
         periodLabel: pvPeriod.rangeLabel,
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
-        gunny,
+        gunny: pvGunnyWithCorrection(crsId, pvPeriod.months, gunny),
         gunnyNotes,
         staff: shopStaffNames(users, crsId),
         pvOfficer: pvOfficer.officer,

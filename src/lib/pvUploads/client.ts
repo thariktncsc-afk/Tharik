@@ -24,12 +24,30 @@ export async function fetchSavedMonths(crsId: number, months: { year: number; mo
   return b.months ?? {};
 }
 
-/** Save one PDF for a shop's month. Resolves only once it is in the database. */
-export async function savePdf(crsId: number, year: number, month: number, file: File, mode: UploadMode): Promise<{ month: SavedPvMonth; duplicate: boolean }> {
+/**
+ * Save one PDF for a shop's month. Resolves only once it is in the database.
+ * `add` joins the month's others; `replace` with `replaceId` takes that one
+ * file's place and nothing else's.
+ */
+export async function savePdf(
+  crsId: number,
+  year: number,
+  month: number,
+  file: File,
+  mode: UploadMode,
+  replaceId?: number,
+): Promise<{ month: SavedPvMonth; duplicate: boolean; file: { id: number; name: string } }> {
   const q = new URLSearchParams({ crs: String(crsId), year: String(year), month: String(month), mode, name: file.name });
+  if (mode === 'replace' && replaceId) q.set('replace', String(replaceId));
   const res = await fetch(`/api/pv-uploads?${q}`, { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: file });
-  const b = await answer<{ month: SavedPvMonth; duplicate: boolean }>(res, `Saving ${file.name}`);
-  return { month: b.month, duplicate: !!b.duplicate };
+  const b = await answer<{ month: SavedPvMonth; duplicate: boolean; file: { id: number; name: string } }>(res, `Saving ${file.name}`);
+  return { month: b.month, duplicate: !!b.duplicate, file: b.file };
+}
+
+/** Remove ONE saved PDF; the month's others stay. */
+export async function removeSavedFile(f: SavedPvFile): Promise<void> {
+  const res = await fetch(`/api/pv-uploads/${f.id}`, { method: 'DELETE' });
+  await answer(res, `Removing ${f.name}`);
 }
 
 /** Remove every saved PDF of a shop's month. */

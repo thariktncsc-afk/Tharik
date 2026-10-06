@@ -98,6 +98,39 @@ async function changeMonth(crsId: number, year: number, month: number, by: strin
   throw new PvStoreError(`crs_state ${key}: still conflicting after 5 attempts`);
 }
 
+/**
+ * Remove the month's files that `gone` picks, under the record's version —
+ * only those: a file saved by someone else in between is kept.
+ */
+async function removeWhere(crsId: number, year: number, month: number, gone: (f: FileRec) => boolean): Promise<PvUploadRow[]> {
+  let removed: FileRec[] = [];
+  const { rec } = await readMonth(crsId, year, month);
+  if (!rec?.files.some(gone)) return [];
+  await changeMonth(crsId, year, month, 'pv-upload', (m) => {
+    removed = m.files.filter(gone);
+    return { ...m, files: m.files.filter((f) => !gone(f)) };
+  });
+  if (removed.length) {
+    const res = await supabaseAdmin().storage.from(PV_BUCKET).remove(removed.map((f) => f.path));
+    // The record no longer lists them, so they are already gone for the app;
+    // a file left behind in the bucket is only disk space.
+    if (res.error) console.error('[pv-uploads] leftover files not removed:', res.error.message);
+  }
+  return removed.map(strip);
+}
+
+/** One file's record, by id, whichever shop-month holds it. */
+async function findFile(id: number): Promise<FileRec | null> {
+  const { data, error } = await supabaseAdmin()
+    .from('crs_state')
+    .select('data')
+    .eq('scope', PV_SCOPE)
+    .contains('data', { files: [{ id }] })
+    .limit(1);
+  if (error) throw new PvStoreError(`crs_state find ${id} failed: ${error.code} ${error.message}`);
+  return ((data?.[0]?.data as MonthRec | undefined)?.files ?? []).find((x) => x.id === id) ?? null;
+}
+
 /** A file id: unique, numeric (the screen and the file route take a number). */
 const newId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
 
@@ -134,31 +167,20 @@ export function storagePvStore(): PvUploadStore {
     },
 
     async removeOthers(crsId, year, month, keep) {
-      let removed: FileRec[] = [];
-      const { rec } = await readMonth(crsId, year, month);
-      if (!rec?.files.some((f) => !keep.includes(f.id))) return [];
-      await changeMonth(crsId, year, month, 'pv-upload', (m) => {
-        removed = m.files.filter((f) => !keep.includes(f.id));
-        return { ...m, files: m.files.filter((f) => keep.includes(f.id)) };
-      });
-      if (removed.length) {
-        const gone = await supabaseAdmin().storage.from(PV_BUCKET).remove(removed.map((f) => f.path));
-        // The record no longer lists them, so they are already gone for the app;
-        // a file left behind in the bucket is only disk space.
-        if (gone.error) console.error('[pv-uploads] leftover files not removed:', gone.error.message);
-      }
-      return removed.map(strip);
+      return removeWhere(crsId, year, month, (f) => !keep.includes(f.id));
+    },
+
+    async removeIds(crsId, year, month, ids) {
+      return removeWhere(crsId, year, month, (f) => ids.includes(f.id));
+    },
+
+    async find(id) {
+      const f = await findFile(id);
+      return f ? strip(f) : null;
     },
 
     async get(id) {
-      const { data, error } = await supabaseAdmin()
-        .from('crs_state')
-        .select('data')
-        .eq('scope', PV_SCOPE)
-        .contains('data', { files: [{ id }] })
-        .limit(1);
-      if (error) throw new PvStoreError(`crs_state find ${id} failed: ${error.code} ${error.message}`);
-      const f = ((data?.[0]?.data as MonthRec | undefined)?.files ?? []).find((x) => x.id === id);
+      const f = await findFile(id);
       if (!f) return null;
       const dl = await supabaseAdmin().storage.from(PV_BUCKET).download(f.path);
       if (dl.error || !dl.data) throw new PvStoreError(`Storage download ${f.path} failed: ${dl.error?.message ?? 'no data'}`);
