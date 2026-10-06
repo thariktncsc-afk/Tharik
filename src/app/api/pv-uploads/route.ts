@@ -4,8 +4,10 @@
  * migration to run.
  *
  * GET    ?crs=20&months=2026-7,2026-8,2026-9          the months' saved files (names, sizes, when, who)
- * POST   ?crs=20&year=2026&month=9&mode=replace|add&name=…   body: the PDF itself
+ * POST   ?crs=20&year=2026&month=9&mode=add&name=…     body: the PDF itself — joins the month's others
+ * POST   …&mode=replace&replace=<file id>               the new PDF takes THAT file's place only
  * DELETE ?crs=20&year=2026&month=9                     remove the month's files
+ * DELETE /api/pv-uploads/<id>                          remove ONE file (the [id] route)
  *
  * A shop user reaches their own shop only; an administrator any shop. The
  * answer to a POST is the month as it is now SAVED — the screen shows that,
@@ -42,12 +44,13 @@ export async function POST(req: Request) {
   const month = Number(u.searchParams.get('month'));
   const mode = u.searchParams.get('mode') === 'replace' ? 'replace' : u.searchParams.get('mode') === 'add' ? 'add' : ('' as never);
   const name = u.searchParams.get('name') ?? '';
+  const replaceId = u.searchParams.get('replace') ? Number(u.searchParams.get('replace')) : null;
   try {
     const { session, actor } = await actorOf();
     const len = Number(req.headers.get('content-length') ?? 0);
     if (len > MAX_PDF_BYTES) return NextResponse.json({ error: `${name} is larger than the ${MAX_PDF_BYTES / 1048576} MB a PDF may be.` }, { status: 413 });
     const bytes = new Uint8Array(await req.arrayBuffer());
-    const a = await saveUpload(storagePvStore(), actor, { crsId, year, month, name, mode, bytes }, todayIst());
+    const a = await saveUpload(storagePvStore(), actor, { crsId, year, month, name, mode, bytes, replaceId }, todayIst());
     if (a.saved && !a.saved.duplicate) {
       const kind = a.saved.removed.length ? 'replaced' : 'saved';
       after(() =>

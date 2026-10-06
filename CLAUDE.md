@@ -2489,6 +2489,42 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
     upload is used (pages are read oldest first), and the difference is
     listed for review. It used to be refused.
   - Only `PdfReadError.code` 'wrong-shop' / 'wrong-month' refuse a file.
+- **CRS 11's July / August PDFs** (office, 2026-10-06, `verify:pv-quarter`
+  §2). Both read in full now: 19 commodities each, GUNNY, POLICE, nothing
+  for review.
+  - **"B.RICE: does not add up — Opening 6400 + Receipt 0 … Total
+    17943.42"**. This was never bags against kgs. The PDF's text layer holds
+    B.RICE's Receipt as ONE piece, "230 11543.42" (bags and kgs together),
+    so it was not read as a number, and Receipt came out 0.
+    - `splitRuns` (in `lines()`, so every sheet) splits a run of figures
+      back into one item per figure, each placed where its characters sit.
+    - Bags then land in BAGS and kgs in KGS: 128 + 230 = 358 − 185 = 173
+      bags, and 6400 + 11543.42 = 17943.42 − 9267 = 8676.42 kg. Bags and
+      kgs were always checked separately (`checkedFlow`, each unit on its
+      own).
+  - **"T.DHALL/CYL … not a commodity"**: labels are matched without minding
+    case, spaces or punctuation (`page2Label` / `policeLabel`):
+    - the app's own names and codes (`DSS_A` / `DSS_B`: "Toor Dal",
+      "BRA Rice", "Sugar (AAY)") and a short alias list;
+    - "A/B" when both parts name the SAME commodity ("T.DHALL/CYL").
+    - "SUGAR/WHEAT" is not guessed: it goes to review.
+  - Every office PDF on this machine was read before and after (200
+    sheets):
+    - 194 identical, 1 fixed (CRS 11 AUG), none broken.
+    - CRS 11 JULY and CRS 30 MAY / JUNE now read T.DHALL/CYL.
+    - CRS 7's "NPHH RRA" is now NPHH FRK RRA. Its OCT'25 sheet carries
+      1250 + 0 − 1155 = 95 kg, which used to be dropped.
+- **"Missing" means nothing to read** (`ManualPvUpload.tsx`). A month with a
+  saved PDF is never "Missing". If its figures cannot all be read it is
+  listed as "PDF saved — figures need review: …", and Generate says the PDF
+  is saved but its PAGE2 could not be read.
+- Localhost, CRS 11 Jul–Sep, the office's six PDFs one by one:
+  - August with only its GUNNY → "needs review", not Missing.
+  - All six → 3 / 3 ready. It held after a refresh, with no false error.
+  - Generate then stops on a REAL difference: B.RICE closes August at
+    8676.42 (the PDF), but CRS 11's Initial Opening on 01-09-2026 was typed
+    8676. That is the office's to correct (`tools/correct-opening.mjs`), not
+    the reader's.
 - **Uploads are SAVED per shop and month** — see "The Manual PV's uploads are
   saved", below. (They used to live in this tab's sessionStorage only.)
 - **Police only where `__crsMaster[].police`** says so — the system month
@@ -2600,13 +2636,32 @@ verify:pv-uploads`). **No migration to run.**
   - **Errors**: the person is told "Unable to save the PDF. Please try
     again." (or read / remove / open). The technical detail goes to the
     server log (`[api/pv-uploads] … failed:`), never to the screen.
-- **What a month holds**:
-  - A month's active set is every file in its record.
-  - **Replace PDF** saves the new file, THEN removes the month's others: one
-    active set, no history, and a failed save leaves the month as it was.
-  - **Add PDF** keeps the others (a GUNNY beside its PAGE2).
-  - The same file twice in a month (sha256) is stored once.
-  - **Remove** clears the month.
+- **What a month holds: any number of PDFs, each on its own** (office,
+  2026-10-06, CRS 7's video: a second September PDF replaced the first,
+  because the system-month card's only button was a month-wide Replace).
+  - **+ Add PDF** is on every card, system months included, and always
+    APPENDS.
+  - Each saved file has its own line: "✓ PDF n Saved", its name, when / who,
+    its pages, and what was read from it (`readFileSummary`: "Read: CRS
+    PAGE2 · GUNNY", or amber "needs review").
+  - Each line has its own **Replace** and **Remove**:
+    - Replace = POST `mode=replace&replace=<id>`. The new file is saved,
+      THEN that one file is removed.
+    - Remove = `DELETE /api/pv-uploads/<id>`. The month's other files stay.
+  - A Replace that names no file removes nothing (a tab from before this).
+    A file id that is no longer saved answers 404, and nothing changes.
+  - The same file twice in a month (sha256) is stored once, and the card
+    names the saved copy.
+  - **One file that cannot be read never stops the others**:
+    `readMonthPages` leaves it out and lists it for review. The month is
+    read from the rest.
+  - Generate reads every saved file together. The same sheet in two files
+    counts once.
+  - Checked in a browser on a copy of live data, CRS 7, with July and
+    August as PAGE2 + GUNNY (two PDFs each). September was run twice: as
+    the system month (the video's card) and as a PDF month. Upload A, then
+    B, refresh (both there), add C, remove B (A and C stay), replace A
+    (only A goes), then Generate.
 - **A month the system has figures for is never asked for** (office,
   2026-10-06; `ManualPvUpload.tsx` `kindOf`).
   - **The problem**: every month before the current one HAD to be
@@ -2786,6 +2841,51 @@ Office, 2026-10-06 (`pvQuarter.ts` `periodBags` / `pvPeriodBags`,
   - BRA Sales bags 100 → 101 on Monthly Sales, saved, gave: Closing 54 → 53
     at once; Gunny SS Receipt 426 → 427; the PV's BRA Balance 53 and Gunny
     SS 874 + 427 = 1301 − 1000 = 301.
+
+### PV-only corrections (Gunny rows, commodity bags)
+
+Office, 2026-10-06 (`src/lib/engine/pvCorrections.ts`, `npm run
+verify:pv-gunny` §7).
+- **What**: figures the office sets for ONE shop's ONE PV, printed on that
+  PV and nowhere else.
+  - Keyed by the shop and the PV's first and last month.
+  - The figures are the PERIOD's, as that PV prints them: Receipt, Issues
+    and C.B over the whole period.
+  - Opening = C.B − Receipt + Issues, so TOTAL = OPENING + RECEIPT and
+    CB = TOTAL − SALES hold.
+  - `PV_GUNNY_CORRECTIONS` covers Gunny rows. `PV_BAG_CORRECTIONS` covers a
+    commodity's BAG columns only; its kgs are never touched.
+- **Where it applies: the MANUAL 3-Month PV only.**
+  - Both corrections were read off that PV, where the Opening is the first
+    uploaded month's and Receipt / Issues add up three months.
+  - The Automatic PV of the same period holds only the months keyed in the
+    system, so the figures would contradict its own. CRS 7 Wheat would print
+    bags 16 / 73 beside September-only kgs 715 / 1391.
+  - Applied on Reports (`pvCommMapWithCorrection`, `pvGunnyWithCorrection`),
+    so Preview, Print and Download PDF (one markup) carry them.
+- **What it never touches**:
+  - Monthly / Daily Sales, Gunny Stock Management, the Receipt Register,
+    the DSS and the statements;
+  - the Automatic PV;
+  - the 3-Month PV's month-to-month chain check (pvQuarter.ts);
+  - the database: nothing is written.
+- **The corrections, all on the July – September 2026 Manual PV**:
+
+  | Shop | Row | Was | On the PV |
+  | --- | --- | --- | --- |
+  | CRS 9 | POLYTHENE (R / I / CB) | 46 / 35 / 11 | 49 / 38 / 11 (Opening 0) |
+  | CRS 9 | C.BOX (R / I / CB) | 144 / 144 / 0 | 145 / 145 / 0 |
+  | CRS 9 | 50 KG SS | | unchanged |
+  | CRS 7 | Wheat BAGS (O + R = T − I = CB) | 16 + 74 = 90 − 69 = 21 | 16 + 73 = 89 − 68 = 21 |
+
+  CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
+- **Checked on localhost, fresh read-only copy of live data**:
+  - CRS 7, with the office's July / August PDFs (`Downloads/PV`) and
+    September from the system: the Manual PV generates, and Preview and the
+    Download PDF markup print Wheat as above.
+  - The Automatic PV still prints September's 14 / 27 / 41 / 20 / 21.
+  - Monthly Sales is unchanged, and 0 writes.
+
 
 ### The automatic PV's Gunny is Gunny Stock Management's
 

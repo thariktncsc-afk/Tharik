@@ -28,6 +28,7 @@
  * Pure: it takes positioned text items and knows nothing of pdf.js, so the
  * same code runs in the browser and in tools/verify-pv-quarter.mjs.
  */
+import { DSS_A, DSS_B } from '@/lib/engine/commodities';
 
 /** One piece of text as drawn: x from the left, y from the TOP, in points. */
 export type TextItem = { str: string; x: number; y: number; w: number };
@@ -112,8 +113,33 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const eq = (a: number, b: number) => Math.abs(a - b) < EPS;
 
 /** Items grouped into lines: same baseline within `tol` points, sorted top to bottom. */
+/**
+ * A PDF's text layer may hold two neighbouring cells as ONE piece of text —
+ * CRS 11 AUG'26's PAGE2 has B.RICE's Receipt as "230 11543.42", bags and kgs
+ * together (office, 2026-10-06). Read whole, it was no number at all, so the
+ * Receipt came out 0 and "Opening 6400 + Receipt 0 ≠ Total 17943.42" was
+ * reported. Such a run of figures is split back into one item per figure,
+ * each placed where its characters sit, so each lands in its OWN column:
+ * bags with bags, kgs with kgs.
+ */
+const RUN = /^\s*-?\d+(?:\.\d+)?(?:\s+-?\d+(?:\.\d+)?)+\s*$/;
+export function splitRuns(items: TextItem[]): TextItem[] {
+  const out: TextItem[] = [];
+  for (const it of items) {
+    if (!RUN.test(it.str) || !it.str.length) {
+      out.push(it);
+      continue;
+    }
+    const cw = it.w / it.str.length;
+    for (const m of it.str.matchAll(/-?\d+(?:\.\d+)?/g)) {
+      out.push({ str: m[0], x: it.x + (m.index ?? 0) * cw, y: it.y, w: m[0].length * cw });
+    }
+  }
+  return out;
+}
+
 function lines(items: TextItem[], tol = 3): TextItem[][] {
-  const sorted = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
+  const sorted = splitRuns(items).sort((a, b) => a.y - b.y || a.x - b.x);
   const out: TextItem[][] = [];
   for (const it of sorted) {
     const last = out[out.length - 1];
@@ -198,6 +224,56 @@ const PAGE2_LABELS: Record<string, string | null> = {
 };
 /** Rows that must be EMPTY: a figure on one is a commodity this reader cannot place. */
 const PAGE2_PLACEHOLDERS = new Set(['APS FRK', 'PHH RRA', 'PONGAL GIFT', 'PONGAL SUGAR', 'PONGAL RRA', 'PONGAL DHOTHI', 'PONGAL SAREE']);
+/**
+ * A row label as the office's sheets spell it, matched without minding case,
+ * spaces or punctuation (office, 2026-10-06: CRS 11 JULY'26 prints
+ * "T.DHALL/CYL", which was left out as unknown). Accepted, in this order:
+ *   1. the label as listed above;
+ *   2. the same letters spelt differently — "A.A.Y" / "AAY", "SALT (CIS)" /
+ *      "SALT(CIS)", "SUGAR (AAY)";
+ *   3. the app's own commodity names and codes (commodities.ts: "BRA Rice",
+ *      "Toor Dal", "Palm Oil", "NPHH_RRA") and the aliases below;
+ *   4. "A/B" when A and B both name the SAME commodity ("T.DHALL/CYL").
+ * Returns the listed label it stands for, or null when it is not a row this
+ * reader knows (a line of text, or a figure to put up for review).
+ */
+const canon = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+function makeResolver(table: Record<string, string | null>, named: { id: string; en: string }[], extra: Record<string, string>) {
+  const byCanon = new Map<string, string>();
+  const keyForId = new Map<string, string>();
+  for (const [k, id] of Object.entries(table)) {
+    if (!byCanon.has(canon(k))) byCanon.set(canon(k), k);
+    if (id && !keyForId.has(id)) keyForId.set(id, k);
+  }
+  const addId = (alias: string, id: string) => {
+    const k = keyForId.get(id);
+    if (k && !byCanon.has(canon(alias))) byCanon.set(canon(alias), k);
+  };
+  for (const c of named) {
+    addId(c.en, c.id);
+    addId(c.id, c.id);
+  }
+  for (const [alias, id] of Object.entries(extra)) addId(alias, id);
+  const one = (label: string): string | null => (label in table ? label : byCanon.get(canon(label)) ?? null);
+  return (label: string): string | null => {
+    const hit = one(label);
+    if (hit) return hit;
+    const parts = label.split('/').map((p) => p.trim()).filter(Boolean);
+    if (parts.length < 2) return null;
+    const keys = parts.map(one);
+    if (keys.some((k) => !k)) return null;
+    const ids = new Set(keys.map((k) => table[k!]));
+    return ids.size === 1 && [...ids][0] ? keys[0] : null;
+  };
+}
+const PAGE2_ALIASES: Record<string, string> = {
+  BRA: 'BRA', 'BRA RICE': 'BRA', 'B RICE': 'BRA', AAY: 'AAY', 'AAY RICE': 'AAY', RRA: 'RRA', 'RRA RICE': 'RRA',
+  'TOOR DAL': 'TOOR', 'TOOR DHALL': 'TOOR', 'TUR DAL': 'TOOR', DHALL: 'TOOR', 'PALM OIL': 'PALM',
+  'AAY SUGAR': 'AAY_SUGAR', 'SUGAR AAY': 'AAY_SUGAR', 'NPHH FRK RRA RICE': 'NPHH_RRA', 'NPHH RRA': 'NPHH_RRA',
+  'SALT CIS': 'SALT_CIS', 'SALT RFFS': 'SALT_RFFS', 'POLY': 'EMPTY_BAG', 'POLY GUNNY': 'EMPTY_BAG', 'CBOX': 'EMPTY_BOX',
+};
+const page2Label = makeResolver(PAGE2_LABELS, DSS_A, PAGE2_ALIASES);
+
 /** Counted in pieces, printed in the BAGS columns. */
 const PIECES = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
@@ -298,8 +374,10 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
   const firstColX = Math.min(...cols.map((c) => c.c)) - 25;
   const rows: Record<string, Flow> = {};
   for (const l of ls.slice(leafLineIdx + 1)) {
-    const label = labelOf(l, firstColX);
-    if (!label) continue;
+    const printedLabel = labelOf(l, firstColX);
+    if (!printedLabel) continue;
+    // The listed label it stands for ("T.DHALL/CYL" → "T.DHALL"), else as printed.
+    const label = page2Label(printedLabel) ?? printedLabel;
     // The table ends where the sheet's foot begins — the summary box and the
     // signature line (our own Page 2 prints "BILL CLERK : …" there).
     // (FOOT: also the staff lines, e.g. "PACKER : ..." for a shop with only a Packer.)
@@ -456,6 +534,9 @@ export function readGunny(items: TextItem[]): { gunny: Record<GunnyKey, GunnyFlo
 // ── CRS POLICE ────────────────────────────────────────────────────────────
 
 const POLICE_LABELS: Record<string, string> = { 'B.R.A': 'PB_BRA', BRA: 'PB_BRA', SUGAR: 'PB_SUGAR', WHEAT: 'PB_WHEAT', 'T.DHALL': 'PB_TOOR', 'T.DAL': 'PB_TOOR', 'P.OIL': 'PB_PALM' };
+const policeLabel = makeResolver(POLICE_LABELS, DSS_B.map((c) => ({ id: c.id, en: c.en.replace(/\s*\(Police\)$/i, '') })), {
+  'BRA RICE': 'PB_BRA', 'B.RICE': 'PB_BRA', CYL: 'PB_TOOR', 'TOOR DAL': 'PB_TOOR', 'PALM OIL': 'PB_PALM',
+});
 const POLICE_COLS: Record<string, string> = { 'O.B': 'open', RECEIPT: 'receipt', TOTAL: 'total', SALES: 'sales', RATE: 'rate', AMOUNT: 'amount', 'C.B': 'closing' };
 
 export function readPolice(items: TextItem[], review: string[] = []): Record<string, Flow> {
@@ -471,7 +552,8 @@ export function readPolice(items: TextItem[], review: string[] = []): Record<str
     const label = norm(l.filter((i) => i.x < firstColX - 4).map((i) => i.str).join(' ')).replace(/^\d+\s+/, '');
     if (!label || /TOTAL/.test(label)) continue;
     if (FOOT.test(label)) break;
-    const id = POLICE_LABELS[label];
+    const known = policeLabel(label);
+    const id = known ? POLICE_LABELS[known] : undefined;
     if (!id) {
       // Text, not data — unless it carries figures, which a person should see.
       if (l.some((it) => it.x >= firstColX - 4 && NUMBER.test(it.str.trim()) && Number(it.str) !== 0)) {
@@ -549,7 +631,12 @@ export function readMonthPages(
     try {
       r = readPage(p.items, pageReview);
     } catch (e) {
-      throw new PdfReadError(`${p.file} could not be read — ${e instanceof Error ? e.message : String(e)} Please upload the correct PDF.`);
+      // One file's unreadable sheet never stops the month (office, 2026-10-06:
+      // "If PDF 2 fails extraction, PDF 1 must still remain"): it is left out
+      // and named for review, and the other files are read as ever.
+      const why = `${p.file} could not be read — ${e instanceof Error ? e.message : String(e)} Left out.`;
+      if (!review.includes(why)) review.push(why);
+      continue;
     }
     for (const w of pageReview) if (!review.includes(`${p.file}: ${w}`)) review.push(`${p.file}: ${w}`);
     if (r.crsId !== want.crsId) throw new PdfReadError(`${p.file}: this is CRS ${r.crsId}'s statement, not CRS ${want.crsId}'s.`, 'wrong-shop');
@@ -569,9 +656,50 @@ export function readMonthPages(
   if (!page2) {
     // A file was given but is not a PAGE2 this reader recognises: say so
     // plainly rather than leave the month waiting.
-    const likely = skipped.filter((f) => /PAGEs*-?s*2/i.test(f));
+    const likely = skipped.filter((f) => /PAGE\s*-?\s*2/i.test(f));
     if (likely.length) throw new PdfReadError(`${mon} CRS PAGE2 could not be read — ${likely.join(', ')} is not laid out as a CRS PAGE2. Please upload the correct PDF.`);
+    const unread = review.filter((r) => / could not be read — /.test(r));
+    if (unread.length) throw new PdfReadError(`${mon}: no CRS PAGE2 could be read. ${unread.join(' ')}`);
     throw new PdfReadError(`${mon}: still needs CRS PAGE2.`);
   }
   return { crsId: want.crsId, month: want.month, year: want.year, rows: page2, gunny, police, notes, skipped, review };
+}
+
+/** What ONE saved file holds, for its own line on the card (office, 2026-10-06). */
+export type FileSummary = {
+  /** Pages in the file. */
+  pages: number;
+  /** The sheets read from it, in page order, once each: 'CRS PAGE2', 'GUNNY', 'CRS POLICE'. */
+  sheets: string[];
+  /** Pages of other sheets (Page 1, RBI, B6…), stepped over. */
+  skipped: number;
+  /** What could not be read, or was left out — the file is still saved. */
+  problems: string[];
+};
+
+/**
+ * One file read on its own, for its status line — never decides the month
+ * (readMonthPages does that over all the month's files together).
+ */
+export function readFileSummary(items: TextItem[][], want: { crsId: number; month: number; year: number }): FileSummary {
+  const out: FileSummary = { pages: items.length, sheets: [], skipped: 0, problems: [] };
+  for (const page of items) {
+    if (!page.some((i) => i.str.trim())) continue;
+    if (!pageKindOf(page)) {
+      out.skipped++;
+      continue;
+    }
+    const rev: string[] = [];
+    try {
+      const r = readPage(page, rev);
+      const name = r.kind === 'page2' ? 'CRS PAGE2' : r.kind === 'gunny' ? 'GUNNY' : 'CRS POLICE';
+      if (r.crsId !== want.crsId) out.problems.push(`${name} is CRS ${r.crsId}'s, not CRS ${want.crsId}'s.`);
+      else if (r.month !== want.month || r.year !== want.year) out.problems.push(`${name} is for another month.`);
+      else if (!out.sheets.includes(name)) out.sheets.push(name);
+    } catch (e) {
+      out.problems.push(e instanceof Error ? e.message : String(e));
+    }
+    for (const w of rev) if (!out.problems.includes(w)) out.problems.push(w);
+  }
+  return out;
 }

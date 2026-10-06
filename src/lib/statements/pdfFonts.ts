@@ -42,7 +42,7 @@ const FAMILIES: { name: string; regular: string[]; bold: string[] }[] = [
 ];
 /** A family's italic faces, by full name and PostScript name (Arial's carry "MT"). */
 function italicNames(name: string, bold: boolean): string[] {
-  const ps = name.replace(/s+/g, '');
+  const ps = name.replace(/\s+/g, '');
   return bold
     ? [`${name} Bold Italic`, `${ps}-BoldItalic`, `${ps}-BoldItalicMT`]
     : [`${name} Italic`, `${ps}-Italic`, `${ps}-ItalicMT`];

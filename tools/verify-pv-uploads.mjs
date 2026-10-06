@@ -54,7 +54,7 @@ const crs20 = { userId: 20, role: 'BC', crsId: 20, name: 'Alagarsamy' };
 const crs23 = { userId: 23, role: 'BC', crsId: 23, name: 'Saravanan' };
 const pdf = (text) => new Uint8Array(Buffer.from(`%PDF-1.4\n% ${text}\n%%EOF\n`));
 const Q3 = [{ year: 2026, month: 7 }, { year: 2026, month: 8 }, { year: 2026, month: 9 }];
-const save = (store, who, crsId, month, name, bytes, mode = 'replace') => V.saveUpload(store, who, { crsId, year: 2026, month, name, mode, bytes }, TODAY);
+const save = (store, who, crsId, month, name, bytes, mode = 'add', replaceId = null) => V.saveUpload(store, who, { crsId, year: 2026, month, name, mode, bytes, replaceId }, TODAY);
 
 // ─── 1. Save, list, read back ────────────────────────────────────────────────
 {
@@ -71,26 +71,31 @@ const save = (store, who, crsId, month, name, bytes, mode = 'replace') => V.save
   check('FY: March 2027 → 2026-27, April 2026 → 2026-27, March 2026 → 2025-26', C.fyText(2027, 3) === '2026-27' && C.fyText(2026, 4) === '2026-27' && C.fyText(2026, 3) === '2025-26');
 }
 
-// ─── 2. Replace / Add / duplicate ────────────────────────────────────────────
+// ─── 2. Add / Replace one / duplicate ───────────────────────────────────────
+// Office, 2026-10-06 (CRS 7): a month holds any number of PDFs, each on its own.
 {
-  console.log('\n§2  Replace PDF, Add PDF, the same file twice');
+  console.log('\n§2  Add PDF appends; Replace replaces THAT file only; the same file twice');
   const st = V.memoryStore();
-  await save(st, admin, 20, 9, 'page2.pdf', pdf('v1'));
-  await save(st, admin, 20, 9, 'gunny.pdf', pdf('gunny'), 'add');
-  check('Add keeps the month\'s other file: 2 files', st.rows.filter((r) => r.month === 9).length === 2);
-  const r = await save(st, admin, 20, 9, 'page2-corrected.pdf', pdf('v2'), 'replace');
-  const names = st.rows.filter((x) => x.crs_id === 20 && x.month === 9).map((x) => x.file_name);
-  check(`Replace leaves ONE active file for CRS 20 September: ${names.join(', ')}`, names.length === 1 && names[0] === 'page2-corrected.pdf');
-  check(`the answer names what it replaced (${r.body.replaced})`, r.body.replaced.sort().join() === 'gunny.pdf,page2.pdf' && r.saved.removed.length === 2);
-  const d = await save(st, admin, 20, 9, 'same-again.pdf', pdf('v2'), 'add');
-  check('the same file again is not stored twice (sha256)', d.body.duplicate === true && st.rows.filter((x) => x.month === 9).length === 1);
-  const d2 = await save(st, admin, 20, 9, 'page2-corrected.pdf', pdf('v2'), 'replace');
-  check('Replace with the same file keeps it, still one row', d2.status === 200 && st.rows.filter((x) => x.month === 9).length === 1);
-  await save(st, admin, 20, 8, 'aug.pdf', pdf('aug'));
-  await save(st, admin, 20, 9, 'v3.pdf', pdf('v3'));
-  check('replacing September leaves August alone', st.rows.some((x) => x.month === 8 && x.file_name === 'aug.pdf') && st.rows.filter((x) => x.month === 9).map((x) => x.file_name).join() === 'v3.pdf');
-  const latest = await V.fileBytes(st, admin, st.rows.find((x) => x.month === 9).id);
-  check('the active file is the latest one saved', Buffer.from(latest.bytes).toString().includes('v3'));
+  const sep = () => st.rows.filter((x) => x.crs_id === 7 && x.month === 9).map((x) => x.file_name);
+  const A = await save(st, admin, 7, 9, 'CRS7-September-2026-1.pdf', pdf('A'), 'add');
+  const B = await save(st, admin, 7, 9, 'CRS7-September-2026-2.pdf', pdf('B'), 'add');
+  check(`PDF A then PDF B for CRS 7 September: both saved (${sep().join(', ')})`, A.status === 200 && B.status === 200 && sep().length === 2 && B.body.month.files.length === 2);
+  check('each has its own id, name, size, sha256, time and who', new Set(st.rows.map((r) => r.id)).size === 2 && st.rows.every((r) => r.file_name && r.file_size && /^[0-9a-f]{64}$/.test(r.sha256) && r.uploaded_at && r.uploaded_by_name));
+  const old = await save(st, admin, 7, 9, 'CRS7-September-2026-3.pdf', pdf('C'), 'replace');
+  check('a Replace that names no file (a tab from before) removes nothing — it adds', old.status === 200 && sep().length === 3 && old.body.replaced.length === 0);
+  const idB = st.rows.find((r) => r.file_name === 'CRS7-September-2026-2.pdf').id;
+  const r = await save(st, admin, 7, 9, 'CRS7-September-2026-2-corrected.pdf', pdf('B2'), 'replace', idB);
+  check(`Replace PDF 2 → only PDF 2 goes: ${sep().join(', ')}`, r.status === 200 && r.body.replaced.join() === 'CRS7-September-2026-2.pdf' && sep().join() === 'CRS7-September-2026-1.pdf,CRS7-September-2026-3.pdf,CRS7-September-2026-2-corrected.pdf');
+  const gone = await save(st, admin, 7, 9, 'x.pdf', pdf('X'), 'replace', idB);
+  check(`replacing a file no longer saved: ${gone.status}, nothing stored`, gone.status === 404 && sep().length === 3 && !sep().includes('x.pdf'));
+  const d = await save(st, admin, 7, 9, 'same-as-A.pdf', pdf('A'), 'add');
+  check('the same file again is not stored twice (sha256), and the answer names the saved one', d.body.duplicate === true && d.body.file.name === 'CRS7-September-2026-1.pdf' && sep().length === 3);
+  const idA = st.rows.find((x) => x.file_name === 'CRS7-September-2026-1.pdf').id;
+  const d2 = await save(st, admin, 7, 9, 'CRS7-September-2026-1.pdf', pdf('A'), 'replace', idA);
+  check('replacing a file with itself keeps it, nothing removed', d2.status === 200 && sep().length === 3 && d2.body.replaced.length === 0);
+  await save(st, admin, 7, 8, 'aug.pdf', pdf('aug'));
+  await save(st, admin, 7, 9, 'D.pdf', pdf('D'), 'replace', st.rows.find((x) => x.file_name === 'CRS7-September-2026-3.pdf').id);
+  check('a September replace leaves August alone', st.rows.some((x) => x.month === 8 && x.file_name === 'aug.pdf') && sep().length === 3 && sep().includes('D.pdf'));
 }
 
 // ─── 3. Refused, nothing stored ──────────────────────────────────────────────
@@ -133,17 +138,24 @@ const save = (store, who, crsId, month, name, bytes, mode = 'replace') => V.save
   check('the administrator reaches any shop', la.status === 200 && la.body.months['2026-9'].files[0].name === 'crs23-sep.pdf' && (await V.fileBytes(st, admin, other.id)).status === 200);
 }
 
-// ─── 5. Remove ───────────────────────────────────────────────────────────────
+// ─── 5. Remove one PDF, and a whole month ────────────────────────────────────
 {
-  console.log('\n§5  Remove');
+  console.log('\n§5  Remove one PDF (the others stay); remove a month');
   const st = V.memoryStore();
-  await save(st, admin, 20, 9, 'a.pdf', pdf('a'));
-  await save(st, admin, 20, 9, 'b.pdf', pdf('b'), 'add');
-  await save(st, admin, 20, 8, 'aug.pdf', pdf('aug'));
-  await save(st, admin, 23, 9, 'c.pdf', pdf('c'));
-  const r = await V.removeMonth(st, admin, 20, 2026, 9);
-  check(`removes CRS 20 September's two files (${r.body.removed})`, r.status === 200 && r.removed.length === 2);
-  check('August and CRS 23 stay', st.rows.map((x) => x.file_name).sort().join() === 'aug.pdf,c.pdf');
+  const sep = () => st.rows.filter((x) => x.crs_id === 7 && x.month === 9).map((x) => x.file_name).join();
+  for (const n of ['A', 'B', 'C']) await save(st, admin, 7, 9, `${n}.pdf`, pdf(n), 'add');
+  await save(st, admin, 7, 8, 'aug.pdf', pdf('aug'));
+  const idB = st.rows.find((r) => r.file_name === 'B.pdf').id;
+  const one = await V.removeFile(st, admin, idB);
+  check(`Remove PDF B → A and C remain (${sep()})`, one.status === 200 && one.body.removed.join() === 'B.pdf' && sep() === 'A.pdf,C.pdf' && one.body.month.files.length === 2);
+  check('removing it again: 404, nothing else touched', (await V.removeFile(st, admin, idB)).status === 404 && sep() === 'A.pdf,C.pdf');
+  await save(st, crs23, 23, 9, 'crs23.pdf', pdf('23'));
+  const theirs = st.rows.find((r) => r.crs_id === 23).id;
+  check("CRS 20's user removing CRS 23's file: 404, still there", (await V.removeFile(st, crs20, theirs)).status === 404 && st.rows.some((r) => r.id === theirs));
+  check('signed out: 401', (await V.removeFile(st, null, theirs)).status === 401);
+  check('CRS 23 removing its own: 200', (await V.removeFile(st, crs23, theirs)).status === 200);
+  const r = await V.removeMonth(st, admin, 7, 2026, 9);
+  check(`removing the month takes its files (${r.body.removed}); August stays`, r.status === 200 && r.removed.length === 2 && st.rows.map((x) => x.file_name).join() === 'aug.pdf');
 }
 
 // ─── 6. The route and the screen ─────────────────────────────────────────────
@@ -153,12 +165,18 @@ const save = (store, who, crsId, month, name, bytes, mode = 'replace') => V.save
   const file = readFileSync(join(root, 'src/app/api/pv-uploads/[id]/route.ts'), 'utf8');
   const ui = readFileSync(join(root, 'src/app/(app)/reports/ManualPvUpload.tsx'), 'utf8');
   check('the route answers through listUploads / saveUpload / removeMonth on the storage store', /listUploads\(storagePvStore\(\)/.test(route) && /saveUpload\(storagePvStore\(\)/.test(route) && /removeMonth\(storagePvStore\(\)/.test(route));
-  check('the file route checks the shop through fileBytes', /fileBytes\(storagePvStore\(\)/.test(file));
+  check('the file route checks the shop through fileBytes, and removes ONE file through removeFile', /fileBytes\(storagePvStore\(\)/.test(file) && /export async function DELETE[\s\S]*removeFile\(storagePvStore\(\)/.test(file));
+  check('the POST passes the file a Replace names (replace=<id>)', /searchParams\.get\('replace'\)/.test(route) && /replaceId \}/.test(route));
   check('the screen keeps nothing in sessionStorage / localStorage', !/sessionStorage|localStorage/.test(ui));
   check('on opening it asks the server (refresh in the scope effect)', /useEffect\(\(\) => \{[\s\S]{0,200}void refresh\(\)/.test(ui));
   check('the tick only after the server answers with the file saved', /await refresh\(\[m\][\s\S]*saveSuccess\(/.test(ui) && !/saveSuccess\([\s\S]*savePdf\(/.test(ui));
   check('Generate asks the server again before building', /const generate = async \(\) => \{[\s\S]{0,200}await refresh\(\)/.test(ui));
-  check('Replace PDF and Browse PDF on the card', /'Replace PDF'/.test(ui) && /'Browse PDF'/.test(ui));
+  check('every card: Add PDF appends (no month-wide Replace or Remove); each file its own Replace / Remove by id',
+    /'\+ Add PDF'/.test(ui) && /'Browse PDF'/.test(ui) && !/'Replace PDF'/.test(ui) && !/removeSavedMonth|removeAll/.test(ui) && /removeSavedFile\(f\)/.test(ui) && /savePdf\(crsId, m\.year, m\.month, file, replace \? 'replace' : 'add', replace\?\.id\)/.test(ui));
+  check('each saved file its own line: ✓ PDF n Saved, name, when / who, pages, what was read',
+    /✓ PDF \{i \+ 1\} Saved/.test(ui) && /data-pv-file-name/.test(ui) && /dmyTime\(f\.uploadedAt\)/.test(ui) && /sum\.pages/.test(ui) && /readFileSummary\(/.test(ui));
+  check('the system-month card has Add PDF too (CRS 7: its only button used to replace the month)',
+    /kind === 'system'[\s\S]{0,5000}official \? '\+ Add PDF' : 'Upload PDF'/.test(ui));
   // Office, 2026-10-06: a month the system has figures for is fetched, never asked for as a PDF.
   check('each month from its own source: system figures first (any month, not only the current one), then a PDF',
     /isCurrent\(m\) \|\| systemStates\[keyOf\(m\)\]\?\.has \? 'system' : 'pdf'/.test(ui) && /✓ Data available — automatically fetched/.test(ui) && /⚠ Manual upload required/.test(ui));

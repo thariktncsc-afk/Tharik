@@ -40,17 +40,22 @@
  *     sent), then saved; the card, the counter and the success tick follow
  *     the server's answer, never what was sent, and a failed save says so and
  *     leaves the month as it was;
- *   - Replace PDF makes the new file the month's only one; Add PDF keeps the
- *     others (a GUNNY next to its PAGE2);
+ *   - A MONTH HOLDS ANY NUMBER OF PDFs, each saved on its own (office,
+ *     2026-10-06 — CRS 7's second September PDF replaced its first, because
+ *     the system-month card's only button was a month-wide Replace). Add PDF
+ *     always appends, on every card; each saved file has its own line —
+ *     "✓ PDF 2 Saved", its name, when / who, its pages and what was read
+ *     from it — and its own Replace (that file only) and Remove (that file
+ *     only). One file that cannot be read never stops the others;
  *   - Generate asks the server again and reads any file that changed since,
  *     so the PV is always built from the PDFs saved NOW.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { monthName, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
-import { PdfReadError, readMonthPages, type PdfMonth } from '@/lib/engine/pvPdfParse';
+import { PdfReadError, readFileSummary, readMonthPages, type FileSummary, type PdfMonth } from '@/lib/engine/pvPdfParse';
 import { chainQuarter, pdfQuarterMonth, type QuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
-import { fetchSavedMonths, removeSavedMonth, savedFilePages, savePdf, type PdfPage } from '@/lib/pvUploads/client';
-import type { SavedPvMonth, UploadMode } from '@/lib/pvUploads/core';
+import { fetchSavedMonths, removeSavedFile, savedFilePages, savePdf, type PdfPage } from '@/lib/pvUploads/client';
+import type { SavedPvFile, SavedPvMonth } from '@/lib/pvUploads/core';
 import { appAlert, appConfirm } from '@/components/dialog';
 import { saveSuccess } from '@/components/SaveSuccess';
 import { dmyTime } from '@/lib/dateFormat';
@@ -59,10 +64,13 @@ import { dmyTime } from '@/lib/dateFormat';
  * One past month. `saved` is what the server holds; `pages` are those files
  * read, and `pagesOf` the file ids they were read from — so a file replaced
  * elsewhere is noticed and read again. `notices` are per-file messages that do
- * not decide the month (a file that is not a PDF, a duplicate).
+ * not decide the month (a file that is not a PDF, a duplicate). `files` is
+ * each saved file read on its own, for its own status line.
  */
+type FileState = { summary: FileSummary | null; error: string };
 type Slot = {
   saved: SavedPvMonth | null;
+  files: Record<number, FileState>;
   pages: PdfPage[];
   pagesOf: string;
   data: PdfMonth | null;
@@ -71,7 +79,7 @@ type Slot = {
   notices: string[];
   loading: boolean;
 };
-const EMPTY_SLOT: Slot = { saved: null, pages: [], pagesOf: '', data: null, error: '', pending: '', notices: [], loading: false };
+const EMPTY_SLOT: Slot = { saved: null, files: {}, pages: [], pagesOf: '', data: null, error: '', pending: '', notices: [], loading: false };
 
 const keyOf = (m: YearMonth) => `${m.year}-${m.month}`;
 const idsOf = (s: SavedPvMonth | null | undefined) => (s?.files ?? []).map((f) => f.id).join(',');
@@ -169,12 +177,25 @@ export default function ManualPvUpload({
   const scopeRef = useRef(scopeId);
   scopeRef.current = scopeId;
 
-  /** A saved month read into pages (its files fetched from the server). */
+  /**
+   * A saved month read into pages (its files fetched from the server), each
+   * file on its own: one that cannot be fetched or opened is marked on its
+   * own line and left out, and the month is read from the others.
+   */
   const readSaved = async (m: YearMonth, saved: SavedPvMonth | null, notices: string[] = []): Promise<Slot> => {
     if (!saved?.files.length) return { ...EMPTY_SLOT, notices };
     const pages: PdfPage[] = [];
-    for (const f of saved.files) pages.push(...(await savedFilePages(f)));
-    return settle(m, { ...EMPTY_SLOT, saved, pages, pagesOf: idsOf(saved), notices });
+    const files: Record<number, FileState> = {};
+    for (const f of saved.files) {
+      try {
+        const fp = await savedFilePages(f);
+        pages.push(...fp);
+        files[f.id] = { summary: readFileSummary(fp.map((p) => p.items), { crsId, month: m.month, year: m.year }), error: '' };
+      } catch (e) {
+        files[f.id] = { summary: null, error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+    return settle(m, { ...EMPTY_SLOT, saved, files, pages, pagesOf: idsOf(saved), notices });
   };
 
   /**
@@ -241,20 +262,22 @@ export default function ManualPvUpload({
    * Save the picked PDFs, EACH ON ITS OWN (office, 2026-10-06). The original
    * file is what is kept; reading its figures is a separate step and never
    * stops a save: a sheet the reader cannot fully read is saved all the same,
-   * and the card says "Data extraction needs review".
+   * and its line says "Data extraction needs review".
+   *
+   * Without `replace` every file is ADDED to the month — never in place of
+   * another. With `replace` (one file, from that file's own Replace button)
+   * the new PDF takes that file's place and the month's others stay.
    *
    * Refused before saving, and only these: not a PDF, a file that will not
    * open, or a statement for ANOTHER shop or month (it must never land under
-   * this one). One file failing never undoes another; Replace removes the
-   * month's older files only once the first new file is saved.
+   * this one). One file failing never undoes another.
    */
-  const addFiles = async (m: YearMonth, list: File[], mode: UploadMode) => {
+  const addFiles = async (m: YearMonth, list: File[], replace?: SavedPvFile) => {
     if (!list.length) return;
     const k = keyOf(m);
     const label = `${monthName(m.month)} ${m.year}`;
     const startedIn = scopeId;
-    const cur = slotsRef.current[k] ?? EMPTY_SLOT;
-    setBusy(k);
+    setBusy(replace ? `${k}:${replace.id}` : k);
     setProblems([]);
     /** Said on the card, not a failure (a file already saved). */
     const info: string[] = [];
@@ -262,14 +285,9 @@ export default function ManualPvUpload({
     const refused: string[] = [];
     const ok: File[] = [];
     try {
-      const have = new Set(mode === 'add' ? (cur.saved?.files ?? []).map((x) => `${x.name}|${x.size}`) : []);
       try {
         const { pdfPages } = await import('@/lib/engine/pvPdfLoad');
-        for (const file of list) {
-          if (have.has(`${file.name}|${file.size}`)) {
-            info.push(`${file.name} is already saved for ${label} — not uploaded again.`);
-            continue;
-          }
+        for (const file of replace ? list.slice(0, 1) : list) {
           if (!/\.pdf$/i.test(file.name)) {
             refused.push(`${file.name} is not a PDF. Please upload the statement as PDF.`);
             continue;
@@ -292,7 +310,6 @@ export default function ManualPvUpload({
             }
           }
           ok.push(file);
-          have.add(`${file.name}|${file.size}`);
         }
       } catch (e) {
         refused.push(`The PDF reader could not start (${e instanceof Error ? e.message : String(e)}). Reload the page and try again.`);
@@ -300,12 +317,13 @@ export default function ManualPvUpload({
       if (scopeRef.current !== startedIn) return;
       const sent: string[] = [];
       const failed: string[] = [];
-      let first = true;
       for (const file of ok) {
         try {
-          await savePdf(crsId, m.year, m.month, file, first ? mode : 'add');
-          sent.push(file.name);
-          first = false;
+          const r = await savePdf(crsId, m.year, m.month, file, replace ? 'replace' : 'add', replace?.id);
+          if (r.duplicate) {
+            const same = r.file?.name && r.file.name !== file.name ? ` as ${r.file.name}` : '';
+            info.push(`${file.name} is already saved for ${label}${same} (the same file) — not stored twice.`);
+          } else sent.push(file.name);
         } catch (e) {
           failed.push(`${file.name}: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -317,8 +335,8 @@ export default function ManualPvUpload({
       const saved = after?.[k]?.saved;
       if (sent.length && saved && sent.every((n) => saved.files.some((x) => x.name === n))) {
         saveSuccess({
-          title: `${label} PDF Saved`,
-          detail: `✓ ${label}: ${sent.join(', ')} saved`,
+          title: replace ? `${label} PDF Replaced` : `${label} PDF Saved`,
+          detail: replace ? `✓ ${label}: ${replace.name} replaced by ${sent[0]}` : `✓ ${label}: ${sent.join(', ')} saved — ${saved.files.length} PDF${saved.files.length === 1 ? '' : 's'} for the month`,
           key: `pv-upload:${crsId}:${k}:${idsOf(saved)}`,
         });
       }
@@ -334,22 +352,21 @@ export default function ManualPvUpload({
     }
   };
 
-  const removeAll = async (m: YearMonth) => {
+  /** Remove ONE saved PDF — the month's others stay. */
+  const removeOne = async (m: YearMonth, f: SavedPvFile, n: number) => {
     const k = keyOf(m);
     const label = `${monthName(m.month)} ${m.year}`;
-    const s = slotsRef.current[k];
-    if (!s?.saved?.files.length) return;
     const yes = await appConfirm({
-      title: `Remove ${label}'s PDFs?`,
-      message: `${s.saved.files.map((f) => f.name).join(', ')} will be removed from CRS ${crsId}'s saved uploads. ${label} will need uploading again before the PV can be generated.`,
+      title: `Remove PDF ${n}?`,
+      message: `${f.name} will be removed from CRS ${crsId}'s saved ${label} uploads. The month's other PDFs stay.`,
       confirmLabel: 'Remove',
       tone: 'danger',
       defaultCancel: true,
     });
     if (!yes) return;
-    setBusy(k);
+    setBusy(`${k}:${f.id}`);
     try {
-      await removeSavedMonth(crsId, m.year, m.month);
+      await removeSavedFile(f);
     } catch (e) {
       await appAlert({ title: 'Not removed', tone: 'danger', message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -362,7 +379,16 @@ export default function ManualPvUpload({
   const monthReady = (m: YearMonth) =>
     kindOf(m) === 'system' ? !!systemStates[keyOf(m)]?.data : kindOf(m) === 'pdf' ? !!(slots[keyOf(m)]?.saved && slots[keyOf(m)]?.data) : false;
   const readyCount = period.months.filter(monthReady).length;
-  const missing = period.months.filter((m) => !isFuture(m) && !monthReady(m));
+  /**
+   * Three states, never mixed (office, 2026-10-06: "✓ August PDF Saved" over
+   * "Missing: August 2026"). MISSING = nothing to read from: no saved PDF and
+   * no system figures. A month whose PDF IS saved but whose figures could not
+   * all be read is "needs review" — saved, never missing.
+   */
+  const hasSavedPdf = (m: YearMonth) => !!slots[keyOf(m)]?.saved?.files.length;
+  const notReady = period.months.filter((m) => !isFuture(m) && !monthReady(m));
+  const missing = notReady.filter((m) => !(kindOf(m) === 'pdf' && hasSavedPdf(m)));
+  const toReview = notReady.filter((m) => kindOf(m) === 'pdf' && hasSavedPdf(m));
   const allReady = !checking && !(loadError && pdfMonths.length) && !future.length && readyCount === period.months.length;
 
   /** Build the PV from the PDFs saved NOW: the server is asked again first. */
@@ -373,7 +399,13 @@ export default function ManualPvUpload({
       if (!fresh && pdfMonths.length) return;
       const notReady = pdfMonths.filter((m) => !(fresh?.[keyOf(m)]?.saved && fresh?.[keyOf(m)]?.data));
       if (notReady.length) {
-        setProblems([`Not generated — ${notReady.map((m) => `${monthName(m.month)} ${m.year}`).join(', ')} ${notReady.length === 1 ? 'has' : 'have'} no saved CRS PAGE2 now.`]);
+        setProblems(
+          notReady.map((m) =>
+            fresh?.[keyOf(m)]?.saved?.files.length
+              ? `Not generated — ${monthName(m.month)} ${m.year}: the PDF is saved, but its CRS PAGE2 figures could not be read (see the card).`
+              : `Not generated — ${monthName(m.month)} ${m.year} has no saved CRS PAGE2 now.`,
+          ),
+        );
         return;
       }
       // Each month from its own source; a system month is worked out NOW, from the stores as saved.
@@ -396,24 +428,99 @@ export default function ManualPvUpload({
   const btn: React.CSSProperties = { display: 'block', textAlign: 'center', borderRadius: 7, padding: '8px 0', fontSize: 12, fontWeight: 700 };
   const line = (ok: boolean): React.CSSProperties => ({ color: ok ? '#15803D' : 'var(--muted)', fontWeight: ok ? 700 : 400 });
 
-  const picker = (m: YearMonth, mode: UploadMode, text: string, style: React.CSSProperties, disabled: boolean) => (
-    <label style={{ flex: 1, minWidth: 90, margin: 0 }} data-pv-upload={`${keyOf(m)}:${mode}`}>
+  /**
+   * A file button. Without `replace` it ADDS (several files at once is fine);
+   * with `replace` it takes one file, which replaces that saved PDF only.
+   */
+  const picker = (m: YearMonth, text: string, style: React.CSSProperties, disabled: boolean, replace?: SavedPvFile) => (
+    <label style={{ flex: 1, minWidth: 90, margin: 0 }} data-pv-upload={replace ? `${keyOf(m)}:replace:${replace.id}` : `${keyOf(m)}:add`}>
       <span style={{ ...btn, ...style, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.7 : 1 }}>{text}</span>
       <input
         type="file"
         accept=".pdf,application/pdf"
-        multiple
+        multiple={!replace}
         disabled={disabled}
         style={{ display: 'none' }}
         onChange={(e) => {
           // Copied out first: clearing the input (so the same file can be picked again) empties its list.
           const picked = Array.from(e.target.files ?? []);
           e.target.value = '';
-          void addFiles(m, picked, mode);
+          void addFiles(m, picked, replace);
         }}
       />
     </label>
   );
+
+  /**
+   * The month's saved PDFs, one line each (office, 2026-10-06): "✓ PDF n
+   * Saved", the name, when / who, its pages, what was read from it, and its
+   * own Replace and Remove — which act on that file only.
+   */
+  const fileList = (m: YearMonth, s: Slot, locked: boolean) => {
+    const k = keyOf(m);
+    const files = s.saved?.files ?? [];
+    if (!files.length) return null;
+    return (
+      <div data-pv-files style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {files.map((f, i) => {
+          const st = s.files[f.id];
+          const sum = st?.summary;
+          const mine = busy === `${k}:${f.id}`;
+          const needsReview = !!st?.error || !sum || !!sum.problems.length || !sum.sheets.length;
+          return (
+            <div
+              key={f.id}
+              data-pv-file={f.id}
+              data-pv-file-read={st ? (needsReview ? 'review' : 'ok') : 'reading'}
+              style={{ border: '1px solid #BBF7D0', background: '#fff', borderRadius: 8, padding: '6px 8px', fontSize: 11, lineHeight: 1.45 }}
+            >
+              <div style={{ fontWeight: 800, color: '#15803D' }} data-pv-file-status>
+                ✓ PDF {i + 1} Saved
+              </div>
+              <div style={{ wordBreak: 'break-all', fontWeight: 600 }} data-pv-file-name>📎 {f.name}</div>
+              <div style={{ color: 'var(--muted)', fontSize: 10.5 }}>
+                Saved {dmyTime(f.uploadedAt)}
+                {f.uploadedBy ? ` by ${f.uploadedBy}` : ''}
+                {sum ? ` · ${sum.pages} page${sum.pages === 1 ? '' : 's'}` : ''}
+              </div>
+              {!st ? (
+                <div style={{ color: 'var(--muted)' }}>Reading…</div>
+              ) : st.error ? (
+                <div style={{ color: '#92400E' }}>⚠ Data extraction needs review — the PDF is saved, but could not be read: {st.error}</div>
+              ) : (
+                <>
+                  <div style={{ color: sum!.sheets.length ? '#15803D' : '#92400E', fontWeight: 600 }}>
+                    {sum!.sheets.length
+                      ? `Read: ${sum!.sheets.join(' · ')}`
+                      : '⚠ No CRS PAGE2, GUNNY or CRS POLICE sheet read from this PDF'}
+                    {sum!.skipped ? <span style={{ color: 'var(--muted)', fontWeight: 400 }}> · {sum!.skipped} other page{sum!.skipped === 1 ? '' : 's'} stepped over</span> : null}
+                  </div>
+                  {sum!.problems.length ? (
+                    <div style={{ color: '#92400E' }}>
+                      ⚠ Data extraction needs review:
+                      {sum!.problems.map((p) => <div key={p}>• {p}</div>)}
+                    </div>
+                  ) : null}
+                </>
+              )}
+              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                {picker(m, mine ? 'Saving…' : 'Replace', { background: '#fff', color: 'var(--navy, #0369A1)', border: '1px solid var(--navy, #0369A1)', padding: '4px 0', fontSize: 11 }, locked, f)}
+                <button
+                  type="button"
+                  data-pv-remove={f.id}
+                  disabled={locked}
+                  onClick={() => void removeOne(m, f, i + 1)}
+                  style={{ ...btn, flex: 1, minWidth: 90, padding: '4px 0', fontSize: 11, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', cursor: locked ? 'default' : 'pointer' }}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="card mb-4">
@@ -442,7 +549,7 @@ export default function ManualPvUpload({
               const ok = !!st?.data;
               const s = slots[k] ?? EMPTY_SLOT;
               const official = s.saved?.files.length ? s.saved : null;
-              const isBusy = busy === k || checking || s.loading;
+              const isBusy = !!busy?.startsWith(k) || checking || s.loading;
               return (
                 <div key={k} data-pv-month={k} data-pv-state="system" style={{ ...card, borderColor: ok ? '#86EFAC' : '#FCA5A5', background: ok ? '#F0FDF4' : '#FEF2F2' }}>
                   <div style={{ fontWeight: 800, fontSize: 13, color: ok ? '#15803D' : '#B91C1C', textTransform: 'uppercase', letterSpacing: '.03em' }}>
@@ -461,21 +568,21 @@ export default function ManualPvUpload({
                     <div style={{ fontSize: 11, color: '#B91C1C', lineHeight: 1.5 }}>Could not load {monthName(m.month)}: {st?.error}</div>
                   )}
                   {official ? (
-                    <div style={{ fontSize: 11, lineHeight: 1.5 }} data-pv-files>
-                      {official.files.map((f) => <div key={f.id}>📎 {f.name}</div>)}
-                      <div style={{ color: 'var(--muted)' }}>Official PDF kept as the source document — the PV's figures come from the system's saved data.</div>
-                    </div>
+                    <>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }} data-pv-stored>
+                        ✓ {official.files.length} PDF{official.files.length === 1 ? '' : 's'} saved for {monthName(m.month)}
+                      </div>
+                      {fileList(m, s, isBusy)}
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+                        Official PDFs kept as the source documents — the PV&apos;s figures come from the system&apos;s saved data.
+                      </div>
+                    </>
                   ) : null}
                   {s.notices.map((n) => (
                     <div key={n} style={{ fontSize: 11, color: /already saved/.test(n) ? 'var(--muted)' : '#B91C1C', lineHeight: 1.5 }}>{n}</div>
                   ))}
                   <div style={{ display: 'flex', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
-                    {picker(m, 'replace', busy === k ? 'Saving…' : official ? 'Replace PDF' : 'Upload PDF', { background: '#fff', color: 'var(--navy, #0369A1)', border: '1px solid var(--navy, #0369A1)' }, isBusy)}
-                    {official ? (
-                      <button type="button" disabled={isBusy} onClick={() => void removeAll(m)} style={{ ...btn, flex: 1, minWidth: 90, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', cursor: isBusy ? 'default' : 'pointer' }}>
-                        Remove
-                      </button>
-                    ) : null}
+                    {picker(m, busy === k ? 'Saving…' : official ? '+ Add PDF' : 'Upload PDF', { background: '#fff', color: 'var(--navy, #0369A1)', border: '1px solid var(--navy, #0369A1)' }, isBusy)}
                   </div>
                 </div>
               );
@@ -497,35 +604,27 @@ export default function ManualPvUpload({
             const tone = waiting ? 'idle' : saved && d && !review.length ? 'ok' : saved ? 'pending' : s.error ? 'err' : 'idle';
             const border = { ok: '#86EFAC', err: '#FCA5A5', pending: '#FDE68A', idle: 'var(--border)' }[tone];
             const bg = { ok: '#F0FDF4', err: '#FEF2F2', pending: '#FFFBEB', idle: '#fff' }[tone];
-            const isBusy = busy === k || waiting;
-            const last = saved?.files[saved.files.length - 1];
+            const isBusy = !!busy?.startsWith(k) || waiting;
             return (
               <div key={k} data-pv-month={k} data-pv-state={waiting ? 'checking' : saved ? (d ? 'saved' : 'incomplete') : 'empty'} style={{ ...card, borderColor: border, background: bg }}>
                 <div style={{ fontWeight: 800, fontSize: 13, color: saved && d ? '#15803D' : !saved && s.error ? '#B91C1C' : 'var(--text)', textTransform: 'uppercase', letterSpacing: '.03em' }}>
                   {saved && d ? '✓' : '📄'} {monthName(m.month)} {m.year}
                 </div>
-                {waiting ? (
+                {waiting && !saved ? (
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>Checking saved PDF…</div>
                 ) : saved ? (
                   <>
-                    {/* Storage first: the PDF is saved, whatever its reading says. */}
+                    {/* Storage first: each PDF is saved, whatever its reading says. */}
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }} data-pv-stored>
-                      ✓ {monthName(m.month)} PDF Saved
+                      ✓ {monthName(m.month)} — {saved.files.length} PDF{saved.files.length === 1 ? '' : 's'} Saved
                     </div>
-                    <div style={{ fontSize: 11, wordBreak: 'break-all' }} data-pv-files>
-                      {saved.files.map((f) => <div key={f.id}>📎 {f.name}</div>)}
-                    </div>
-                    {last ? (
-                      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>
-                        Saved {dmyTime(last.uploadedAt)}{last.uploadedBy ? ` by ${last.uploadedBy}` : ''}
-                      </div>
-                    ) : null}
+                    {fileList(m, s, isBusy)}
                   </>
                 ) : (
                   <>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309' }} data-pv-source="manual">⚠ Manual upload required</div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
-                      CRS {crsId} has no {monthName(m.month)} {m.year} figures in the system — upload the office's statement PDF.
+                      CRS {crsId} has no {monthName(m.month)} {m.year} figures in the system — upload the office&apos;s statement PDF.
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
                       CRS PAGE2 (required) · GUNNY{hasPolice ? ' · CRS POLICE' : ''} when you have them — several PDFs at once is fine
@@ -533,7 +632,8 @@ export default function ManualPvUpload({
                   </>
                 )}
                 {!waiting && saved && d ? (
-                  <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 12, lineHeight: 1.6 }} data-pv-combined>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>All {saved.files.length} PDF{saved.files.length === 1 ? '' : 's'} together:</div>
                     <div style={line(true)}>✓ CRS PAGE2 · {Object.keys(d.rows).length} commodities</div>
                     <div style={line(!!d.gunny)}>{d.gunny ? '✓ GUNNY' : '– No GUNNY (optional)'}</div>
                     {hasPolice ? (
@@ -551,7 +651,7 @@ export default function ManualPvUpload({
                   </div>
                 ) : !waiting && saved && s.error ? (
                   <div style={{ fontSize: 11, color: '#92400E', lineHeight: 1.5 }} data-pv-review>
-                    <b>⚠ Data extraction needs review</b> — the PDF is saved, but its figures could not be read: {s.error}
+                    <b>⚠ Data extraction needs review</b> — the PDFs are saved, but the month&apos;s figures could not be read: {s.error}
                   </div>
                 ) : !waiting && s.error ? (
                   <div style={{ fontSize: 11, color: '#B91C1C', lineHeight: 1.5 }}>{s.error}</div>
@@ -562,17 +662,9 @@ export default function ManualPvUpload({
                   <div key={n} style={{ fontSize: 11, color: /already saved/.test(n) ? 'var(--muted)' : '#B91C1C', lineHeight: 1.5 }}>{n}</div>
                 ))}
                 <div style={{ display: 'flex', gap: 8, marginTop: 'auto', flexWrap: 'wrap' }}>
-                  {saved ? (
-                    <>
-                      {picker(m, 'replace', busy === k ? 'Saving…' : 'Replace PDF', { background: isBusy ? '#94A3B8' : 'var(--navy, #0369A1)', color: '#fff' }, isBusy)}
-                      {picker(m, 'add', 'Add PDF', { background: '#fff', color: 'var(--navy, #0369A1)', border: '1px solid var(--navy, #0369A1)' }, isBusy)}
-                      <button type="button" disabled={isBusy} onClick={() => void removeAll(m)} style={{ ...btn, flex: 1, minWidth: 90, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FCA5A5', cursor: isBusy ? 'default' : 'pointer' }}>
-                        Remove
-                      </button>
-                    </>
-                  ) : (
-                    picker(m, 'replace', busy === k ? 'Saving…' : waiting ? 'Checking…' : 'Browse PDF', { background: isBusy ? '#94A3B8' : 'var(--navy, #0369A1)', color: '#fff' }, isBusy)
-                  )}
+                  {saved
+                    ? picker(m, busy === k ? 'Saving…' : '+ Add PDF', { background: isBusy ? '#94A3B8' : 'var(--navy, #0369A1)', color: '#fff' }, isBusy)
+                    : picker(m, busy === k ? 'Saving…' : waiting ? 'Checking…' : 'Browse PDF', { background: isBusy ? '#94A3B8' : 'var(--navy, #0369A1)', color: '#fff' }, isBusy)}
                 </div>
               </div>
             );
@@ -599,6 +691,11 @@ export default function ManualPvUpload({
             {!checking && missing.length ? (
               <div data-pv-missing style={{ fontSize: 11.5, color: '#B45309', marginTop: 2 }}>
                 Missing: {missing.map((m) => `${monthName(m.month)} ${m.year}`).join(', ')}
+              </div>
+            ) : null}
+            {!checking && toReview.length ? (
+              <div data-pv-needs-review style={{ fontSize: 11.5, color: '#92400E', marginTop: 2 }}>
+                PDF saved — figures need review: {toReview.map((m) => `${monthName(m.month)} ${m.year}`).join(', ')}
               </div>
             ) : null}
           </div>
