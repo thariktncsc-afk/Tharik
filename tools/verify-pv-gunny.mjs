@@ -218,6 +218,21 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     check(`${label}: BRA Rice (Police) untouched`, PC.pvCommMapWithCorrection(crs, months, map11, 'auto') === map11 && PC.pvCommMapWithCorrection(crs, months, map11, 'manual') === map11);
   }
 
+  // CRS 30, the July – September 2026 PV, Manual and Automatic: BRA Rice (Police) Receipt +1 bag, Issues +1 bag.
+  const map30 = {
+    PB_BRA: police({ name: 'BRA Rice (Police)', open: 25, receipt: 110, total: 135, issues: 96.5, closing: 38.5 }),
+    PB_SUGAR: police({ name: 'Sugar (Police)', open: 2, receipt: 12, total: 14, issues: 10.5, closing: 3.5 }),
+  };
+  const snap30 = J(map30);
+  for (const kind of ['manual', 'auto']) {
+    const m = PC.pvCommMapWithCorrection(30, quarter.months, map30, kind);
+    const r = policeRow(m, 'BRA Rice (Police)');
+    check(`CRS 30 ${kind === 'manual' ? 'Manual' : 'Automatic'} PV, BRA Rice (Police) bags / kgs: Opening ${r.open.join(' / ')} · Receipt ${r.receipt.join(' / ')} · Total ${r.total.join(' / ')} · Issues ${r.issues.join(' / ')} · Balance ${r.balance.join(' / ')}`,
+      J(r) === J({ open: ['0', '25'], receipt: ['1', '110'], total: ['1', '135'], issues: ['1', '96.500'], balance: ['0', '38.500'] }));
+    check('  …Sugar (Police) untouched, the input map untouched', m.PB_SUGAR === map30.PB_SUGAR && J(map30) === snap30);
+  }
+  check('  CRS 30, Oct – Dec 2026: untouched', PC.pvCommMapWithCorrection(30, quarterByIndex(2026, 2).months, map30, 'auto') === map30);
+
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
   const wheat14 = police({ name: 'Wheat', open: 2400, receipt: 2620, total: 5020, issues: 2920, closing: 2100, bags: { open: 47, receipt: 52, total: 99, issues: 57, closing: 42 } });

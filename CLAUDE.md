@@ -2885,6 +2885,7 @@ verify:pv-gunny` §7).
   | CRS 7 | Manual | Wheat BAGS (O + R = T − I = CB) | 16 + 74 = 90 − 69 = 21 | 16 + 73 = 89 − 68 = 21 |
   | CRS 11 | Manual + Automatic | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 1 = 1 − 1 = 0 |
   | CRS 14 | Manual | Wheat BAGS (O + R = T − I = CB) | 47 + 52 = 99 − 57 = 42 | 47 + 78 = 125 − 83 = 42 (Receipt / Issues +26) |
+  | CRS 30 | Manual + Automatic | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 1 = 1 − 1 = 0 |
 
   - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
   - CRS 14's Wheat kgs (2344 / 3887 / 6231 / 4141 / 2090) are unchanged, and so is BRA Rice (65 / 529 / 594 / 553 / 41 bags). The office first asked for BRA and corrected that to Wheat the same day.
@@ -2897,6 +2898,7 @@ verify:pv-gunny` §7).
     Download PDF markup print Wheat as above. The Automatic PV still prints
     September's 14 / 27 / 41 / 20 / 21.
   - CRS 14, with the office's July / August PDFs and September from the system: the Manual PV generates, and Preview and the Download PDF markup print Wheat 47 / 78 / 125 / 83 / 42. The Automatic PV prints September's own 48 / 26 / 74 / 32 / 42.
+  - CRS 30, with the office's July / August PAGE2, GUNNY and POLICE PDFs: the Manual PV and its Download PDF markup print BRA Rice (Police) 0 / 1 / 1 / 1 / 0 bags beside kgs 25 / 110 / 135 / 96.500 / 38.500. The Automatic PV prints the same bags beside September's 25 / 45 / 70 / 31.500 / 38.500. The other police lines print 0 (office, 2026-10-07).
   - CRS 11 Automatic PV: BRA Rice (Police) 0 / 1 / 1 / 1 / 0 bags, and the
     Download PDF markup is the same. The four other police lines print 0
     bags, as does CRS 10's police BRA.
