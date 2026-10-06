@@ -2806,6 +2806,42 @@ Office, 2026-10-06 (`pvQuarter.ts` `periodBags` / `pvPeriodBags`,
     at once; Gunny SS Receipt 426 → 427; the PV's BRA Balance 53 and Gunny
     SS 874 + 427 = 1301 − 1000 = 301.
 
+### PV-only Gunny corrections
+
+Office, 2026-10-06 (`src/lib/engine/pvCorrections.ts`, `npm run
+verify:pv-gunny` §7).
+- **What**: figures the office sets for ONE shop's ONE PV, printed on that
+  PV and nowhere else.
+  - Keyed by the shop and the PV's first and last month.
+  - The figures are the PERIOD's, as the PV prints them: Receipt, Issues
+    and C.B over the whole period.
+  - Opening = C.B − Receipt + Issues, so TOTAL = OPENING + RECEIPT and
+    CB = TOTAL − SALES hold.
+- **Where it applies**: Reports (`pvGunnyWithCorrection`), for the Automatic
+  and the Manual 3-Month PV alike. So Preview, Print, Download PDF and the
+  all-shops ZIP (one markup) carry it.
+- **What it never touches**:
+  - Monthly / Daily Sales, Gunny Stock Management, the Receipt Register,
+    the DSS and the statements;
+  - the 3-Month PV's month-to-month chain check (pvQuarter.ts);
+  - the database: nothing is written.
+- **CRS 9, July – September 2026 PV**:
+
+  | | PV | System |
+  | --- | --- | --- |
+  | POLYTHENE (O / R / T / I / CB) | 0 / 49 / 49 / 38 / 11 | 46 / 35 / 11 (R / I / CB) |
+  | C.BOX (O / R / T / I / CB) | 0 / 145 / 145 / 145 / 0 | 144 / 144 / 0 (R / I / CB) |
+  | 50 KG SS | unchanged | |
+
+  - These are the 3-month PV's figures. September alone is POLY
+    2 + 18 − 9 = 11, so a September-only correction would have printed CB 13.
+  - Localhost, live copy, Automatic PV: CRS 9 Jul–Sep prints the above, and
+    the Download PDF markup carries it.
+  - CRS 8 Jul–Sep and CRS 9 Oct–Dec are unchanged.
+  - Gunny Stock Management CRS 9 September is still 2 / 18 / 20 / 9 / 11
+    and 0 / 48 / 48 / 48 / 0.
+  - 0 writes.
+
 ### The automatic PV's Gunny is Gunny Stock Management's
 
 Office, 2026-10-01 (`pvQuarter.ts` `pvPeriodGunny`, `npm run

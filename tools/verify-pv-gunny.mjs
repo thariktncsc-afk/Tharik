@@ -138,10 +138,46 @@ console.log('\n5. What the old reading printed');
   check(`the period's first month (July) has no stored record → the old PV printed ${J(printed(old)['50 kg SS GUNNY'].slice(1))} (after the Sl. No.)`, J(printed(old)['50 kg SS GUNNY'].slice(1)) === J([0, 0, 0, 0, 0]));
 }
 
+console.log('\n7. A PV-only correction: CRS 9, the July – September 2026 PV (office, 2026-10-06)');
+{
+  const PC = await imp('lib/engine/pvCorrections.ts');
+  // The PV as the office's screenshot shows it (period figures): SS 725 + 572 − 1025 = 272;
+  // POLY 0 + 46 − 35 = 11; C.BOX 0 + 144 − 144 = 0.
+  const flow = (opening, receipt, issues) => ({ opening, receipt, total: opening + receipt, issues, closing: opening + receipt - issues });
+  const system = { ss50: flow(725, 572, 1025), poly: flow(0, 46, 35), cbox: flow(0, 144, 144) };
+  const snapshot = J(system);
+  const pv = PC.pvGunnyWithCorrection(9, quarter.months, system);
+  check(`POLYTHENE on the PV: ${J(tuple(pv.poly))} = 0 + 49 = 49 − 38 = 11`, J(tuple(pv.poly)) === J([0, 49, 49, 38, 11]));
+  check(`C.BOX on the PV: ${J(tuple(pv.cbox))} = 0 + 145 = 145 − 145 = 0`, J(tuple(pv.cbox)) === J([0, 145, 145, 145, 0]));
+  check(`50 KG SS GUNNY exactly as before: ${J(tuple(pv.ss50))}`, J(tuple(pv.ss50)) === J([725, 572, 1297, 1025, 272]) && pv.ss50 === system.ss50);
+  check('the system\'s own figures are not changed (a new object; the input is untouched)', J(system) === snapshot && pv !== system);
+  check('every corrected row adds up: TOTAL = OPENING + RECEIPT, CB = TOTAL − SALES', ['poly', 'cbox'].every((k) => pv[k].total === pv[k].opening + pv[k].receipt && pv[k].closing === pv[k].total - pv[k].issues));
+  const p = printed(pv);
+  check(`printed on the PV sheet (Preview = Print = PDF, one markup): POLYTHENE ${J(p.POLYTHENE)}, C.BOX ${J(p['C.BOX'])}`,
+    J(p.POLYTHENE.slice(1)) === J([0, 49, 49, 38, 11]) && J(p['C.BOX'].slice(1)) === J([0, 145, 145, 145, 0]) && J(p['50 kg SS GUNNY'].slice(1)) === J([725, 572, 1297, 1025, 272]));
+  // Only this shop and this PV.
+  const other = [
+    ['CRS 8, same quarter', 8, quarter.months],
+    ['CRS 9, September alone', 9, [{ month: 9, year: 2026 }]],
+    ['CRS 9, Oct – Dec 2026', 9, quarterByIndex(2026, 2).months],
+    ['CRS 9, the year Apr 2026 – Mar 2027', 9, Array.from({ length: 12 }, (_, i) => ({ month: ((i + 3) % 12) + 1, year: i < 9 ? 2026 : 2027 }))],
+  ];
+  for (const [label, crs, months] of other) check(`${label}: untouched`, PC.pvGunnyWithCorrection(crs, months, system) === system);
+  // The PV's own figures from the stores are not where it is applied: pvPeriodGunny is unchanged.
+  const pvq = readFileSync(join(root, 'src/lib/engine/pvQuarter.ts'), 'utf8');
+  check('pvQuarter (the system figures, the 3-Month PV\'s chain check) does not apply it', !/pvCorrections|pvGunnyWithCorrection/.test(pvq));
+  const page = readFileSync(join(root, 'src/app/(app)/reports/page.tsx'), 'utf8');
+  check('Reports applies it to BOTH PVs: Automatic and Manual 3-Month',
+    /const gunny = pvGunnyWithCorrection\(crsId, pvPeriod\.months, pvPeriodGunny\(/.test(page) && /gunny: pvGunnyWithCorrection\(crsId, pvPeriod\.months, gunny\)/.test(page));
+  const { execSync } = await import('node:child_process');
+  const users = execSync('git grep -l -e pvCorrections -e pvGunnyWithCorrection -e PV_GUNNY_CORRECTIONS -- src', { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).sort();
+  check(`nothing but the PV reads it: ${users.join(', ')}`, J(users) === J(['src/app/(app)/reports/page.tsx', 'src/lib/engine/pvCorrections.ts']));
+}
+
 console.log('\n6. Wiring');
 {
   const page = readFileSync(join(root, 'src/app/(app)/reports/page.tsx'), 'utf8');
-  check('the automatic PV builds its Gunny with pvPeriodGunny over the period\'s months', /const gunny = pvPeriodGunny\(\s*crsId,\s*pvPeriod\.months,/.test(page));
+  check('the automatic PV builds its Gunny with pvPeriodGunny over the period\'s months', /const gunny = (pvGunnyWithCorrection\(crsId, pvPeriod\.months, )?pvPeriodGunny\(\s*crsId,\s*pvPeriod\.months,/.test(page));
   check('…and no longer reads the first month\'s stored record', !/meGunnyStore\[`\$\{crsId\}_\$\{first\.month\}_\$\{first\.year\}`\]/.test(page));
   const pvq = readFileSync(join(root, 'src/lib/engine/pvQuarter.ts'), 'utf8');
   check('the 3-month PV\'s current month uses the same function (gunnyOfMonth)', /const gunny = gunnyOfMonth\(crsId, month, year, stores, merged\)/.test(pvq) && /gunnyRowFor\(k,/.test(pvq));

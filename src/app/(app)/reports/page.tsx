@@ -28,6 +28,7 @@ import { fitPvSheet } from '@/lib/engine/pvFit';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
 import { pvPeriodBags, pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
+import { pvGunnyWithCorrection } from '@/lib/engine/pvCorrections';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 import OapStatement from './OapStatement';
@@ -241,7 +242,8 @@ export default function ReportsPage() {
       // with data, Receipt and Issues added up (pvQuarter.ts pvPeriodGunny). It
       // used to print the raw stored record of the period's FIRST month only —
       // a quarter starting on a month with no record printed every Gunny 0.
-      const gunny = pvPeriodGunny(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId));
+      // Then any PV-only correction the office set for this shop's PV (pvCorrections.ts).
+      const gunny = pvGunnyWithCorrection(crsId, pvPeriod.months, pvPeriodGunny(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId)));
       // Bag columns as Monthly Sales / Page 2 carry them, Closing = the latest
       // month's (pvQuarter.ts pvPeriodBags) — never kgs ÷ pack.
       const periodBagCounts = pvPeriodBags(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId));
@@ -279,7 +281,8 @@ export default function ReportsPage() {
         periodLabel: pvPeriod.rangeLabel,
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
-        gunny,
+        // The chained quarter's Gunny, then any PV-only correction (pvCorrections.ts).
+        gunny: pvGunnyWithCorrection(crsId, pvPeriod.months, gunny),
         gunnyNotes,
         staff: shopStaffNames(users, crsId),
         pvOfficer: pvOfficer.officer,
