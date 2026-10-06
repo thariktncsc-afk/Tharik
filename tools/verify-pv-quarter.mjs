@@ -292,7 +292,7 @@ console.log('\n2. Built pages — what a real file can throw');
   });
   const rows = P.readPage2(p);
   check('BAGS column read apart from KGS: B.RICE opens 1000 kg', rows.BRA.open === 1000 && rows.BRA.closing === 3450, J(rows.BRA));
-  check('an empty row reads as zeros, not the next row\'s figures', J(rows.AAY) === J({ open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0 }));
+  check('an empty row reads as zeros, not the next row\'s figures', J({ ...rows.AAY, bags: undefined }) === J({ open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0 }) && J(rows.AAY.bags) === J({ open: 0, receipt: 0, total: 0, sales: 0, closing: 0 }));
   check('EXCESS 5 read into Excess', rows.SUGAR.excess === 5 && rows.SUGAR.receipt === 0);
   check('SHORTAGE 10 read into Shortage', rows.WHEAT.shortage === 10);
   check('a TRANSFER that adds is inward (+30)', rows.TOOR.transfer === 30, J(rows.TOOR));
@@ -694,12 +694,33 @@ console.log('\n8. Empty Card+Box / Polythene Bag on this system\'s own Page 2');
   const flow = (o) => ({ open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0, ...o });
   const gunny = { ss50: { opening: 874, receipt: 426, total: 1300, issues: 1000, closing: 300 }, poly: { opening: 40, receipt: 32, total: 72, issues: 72, closing: 0 }, cbox: { opening: 1, receipt: 108, total: 109, issues: 109, closing: 0 } };
   const ours = Q.pdfQuarterMonth({ crsId: 20, month: 9, year: 2026, rows: { BRA: flow({ open: 10, total: 10, closing: 10 }), EMPTY_BAG: flow({ sales: 72, closing: -72 }), EMPTY_BOX: flow({ sales: 109, closing: -109 }) }, gunny, police: null, notes: [], skipped: [] });
-  check(`a sales-only row (0 − 72 = −72) takes the GUNNY sheet's POLY: ${J(ours.rows.EMPTY_BAG)}`, J(ours.rows.EMPTY_BAG) === J(flow({ open: 40, receipt: 32, total: 72, sales: 72, closing: 0 })));
+  check(`a sales-only row (0 − 72 = −72) takes the GUNNY sheet's POLY: ${J(ours.rows.EMPTY_BAG)}`, J({ ...ours.rows.EMPTY_BAG, bags: undefined }) === J(flow({ open: 40, receipt: 32, total: 72, sales: 72, closing: 0 })) && ours.rows.EMPTY_BAG.bags?.closing === 0);
   check(`…and C.BOX: 1 + 108 − 109 = 0`, ours.rows.EMPTY_BOX.open === 1 && ours.rows.EMPTY_BOX.closing === 0);
   const office = Q.pdfQuarterMonth({ crsId: 20, month: 8, year: 2026, rows: { EMPTY_BAG: flow({ open: 55, receipt: 31, total: 86, sales: 46, closing: 40 }) }, gunny: { ...gunny, poly: { opening: 9, receipt: 9, total: 18, issues: 9, closing: 9 } }, police: null, notes: [], skipped: [] });
   check('a row carrying stock of its own (the office\'s) is left as printed', office.rows.EMPTY_BAG.closing === 40 && office.rows.EMPTY_BAG.open === 55);
   const noGunny = Q.pdfQuarterMonth({ crsId: 20, month: 9, year: 2026, rows: { EMPTY_BAG: flow({ sales: 72, closing: -72 }) }, gunny: null, police: null, notes: [], skipped: [] });
   check('no GUNNY sheet uploaded: nothing to take, the row stays as printed', noGunny.rows.EMPTY_BAG.closing === -72);
+}
+
+
+// ── 9. The PV's bag columns are carried bags, never kgs ÷ pack ──────────
+// (office, 2026-10-06 — CRS 20 PHH FRK closed at 3585 kg: Page 2 72 bags,
+// the PV 71 = 3585 ÷ 50; the same for AAY FRK, AAY, Wheat, CYL.)
+console.log('\n9. Bag counts: carried from Page 2, Closing = the latest month\'s');
+{
+  const bf = (open, receipt, sales, closing = open + receipt - sales) => ({ open, receipt, total: open + receipt, sales, closing });
+  const p = Q.periodBags([bf(88, 0, 88), bf(0, 50, 0), bf(50, 40, 18)]);
+  check(`chained months: Opening 88 + Receipt 90 = 178 − Issues 106 = Closing 72 (${J(p)})`, J(p) === J({ open: 88, receipt: 90, total: 178, issues: 106, closing: 72 }));
+  const brk = Q.periodBags([bf(88, 0, 88), bf(0, 50, 0), bf(52, 40, 18)]); // September opens at 52 bags (typed), not August's 50
+  check(`a broken carry: Closing stays September's 74 and Issues absorbs it (${brk.issues}); Receipt is never touched (${brk.receipt})`, brk.closing === 74 && brk.receipt === 90 && brk.total - brk.issues === brk.closing);
+  check('a month with no bag counts → none for the period (kgs ÷ pack, as before)', Q.periodBags([bf(1, 1, 1), undefined]) === undefined);
+  const html = S.buildPVTable({ commMap: { PHH_FRK: { name: 'PHH FRK Rice', unit: 'KG', open: 4411.48, receipt: 4500, total: 8911.48, issues: 5326.48, closing: 3585, amount: 0, free: true, bags: p } }, periodLabel: 'Q', crsId: 20, crsName: '', gunny: {}, billClerk: '', pvOfficer: '', pvDate: '' });
+  const row = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1].replace(/<[^>]+>/g, '').trim())).find((c) => c.includes('PHH FRK Rice'));
+  check(`the PV prints the carried bags: 88 · 90 · 178 · 106 · 72 with the kgs untouched (${row?.filter(Boolean).join(' ')})`, !!row && ['88', '4411.480', '90', '4500', '178', '8911.480', '106', '5326.480', '72', '3585'].every((v) => row.includes(v)) && !row.includes('71'));
+  // Bags read off an uploaded PAGE2
+  const pg = P.readPage2(page2(20, 9, { 'PHH FRK': { open: [50, 2500], receipt: [40, 2000], total: [90, 4500], sales: [18, 915], closing: [72, 3585] }, 'P.GUNNY': { open: [40, ''], receipt: [32, ''], total: [72, ''], sales: [72, ''], closing: [0, ''] } }));
+  check(`an uploaded PAGE2's printed BAGS are read: ${J(pg.PHH_FRK.bags)}`, J(pg.PHH_FRK.bags) === J({ open: 50, receipt: 40, total: 90, sales: 18, closing: 72 }));
+  check('a pieces row (P.GUNNY) is its own count', pg.EMPTY_BAG.bags?.closing === 0 && pg.EMPTY_BAG.bags?.open === 40);
 }
 
 

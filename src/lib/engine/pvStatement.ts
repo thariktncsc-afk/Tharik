@@ -34,6 +34,12 @@ export type PvCommRow = {
   transfer?: number;
   shortage?: number;
   excess?: number;
+  /**
+   * The period's BAG counts as Monthly Sales / Page 2 carry them (office,
+   * 2026-10-06): Opening + Receipt = Total, Total − Issues = Balance. When
+   * present the bag columns print these; absent, kgs ÷ pack as before.
+   */
+  bags?: { open: number; receipt: number; total: number; issues: number; closing: number };
 };
 export type PvAggregate = {
   commMap: Record<string, PvCommRow>;
@@ -272,14 +278,15 @@ export function buildPVTable(opts: {
   const commodityRow = (sl: number, r: PvCommRow, div: number | null) => {
     // Police lines are kilos only: their bag columns print 0, as they always have.
     const b = (kgs: number) => (div === null ? '0' : fmtB(kgs, div));
+    const g = div === null ? undefined : r.bags;
     return dataRow(sl, r.name, r.unit, {
-      obB: b(r.open), obK: fmtN(r.open),
-      recB: b(r.receipt), recK: fmtN(r.receipt),
+      obB: g ? String(g.open) : b(r.open), obK: fmtN(r.open),
+      recB: g ? String(g.receipt) : b(r.receipt), recK: fmtN(r.receipt),
       tr: fmtT(r.transfer),
-      totB: b(r.total), totK: fmtN(r.total),
-      issB: b(r.issues), issK: fmtN(r.issues),
+      totB: g ? String(g.total) : b(r.total), totK: fmtN(r.total),
+      issB: g ? String(g.issues) : b(r.issues), issK: fmtN(r.issues),
       shB: r.shortage === undefined ? '' : b(r.shortage), shK: fmtT(r.shortage),
-      balB: b(r.closing), balK: fmtN(r.closing),
+      balB: g ? String(g.closing) : b(r.closing), balK: fmtN(r.closing),
       exB: r.excess === undefined ? '' : b(r.excess), exK: fmtT(r.excess),
     });
   };

@@ -24,7 +24,7 @@ import { commodityListsFor, useCommodityMaster, useShops } from '@/lib/masters';
 import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow } from '@/lib/engine/pvStatement';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
-import { pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
+import { pvPeriodBags, pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 import OapStatement from './OapStatement';
@@ -230,6 +230,16 @@ export default function ReportsPage() {
       (m) => !!monthlyStore[`${crsId}_${m.month}_${m.year}`] || !!meGunnyStore[`${crsId}_${m.month}_${m.year}`],
       commodityListsFor(commodityMaster, crsId),
     );
+    // Bag columns as Monthly Sales / Page 2 carry them, Closing = the latest
+    // month's (pvQuarter.ts pvPeriodBags) — never kgs ÷ pack.
+    const periodBagCounts = pvPeriodBags(
+      crsId,
+      pvPeriod.months,
+      { entryStore, inspectionStore, meManualStore, receiptStore: receiptStore as unknown[], meGunnyStore: meGunnyStore as never, salesCloseStore },
+      (m) => !!monthlyStore[`${crsId}_${m.month}_${m.year}`] || !!meGunnyStore[`${crsId}_${m.month}_${m.year}`],
+      commodityListsFor(commodityMaster, crsId),
+    );
+    for (const [id, b] of Object.entries(periodBagCounts)) if (agg.commMap[id]) agg.commMap[id].bags = b;
     return buildPVTable({
       commMap: agg.commMap,
       periodLabel: pvPeriod.rangeLabel,

@@ -27,7 +27,8 @@ import { DSS_A, DSS_B, entryListsFor, type Commodity } from '@/lib/engine/commod
 import { rebuildMonthlyFromDaily, type MonthlyBlock, type MonthlyRec } from '@/lib/engine/monthlyRollup';
 import { gunnyRowFor, type GunnyRec, type SalesClose } from '@/app/(app)/monthly-entry/lib';
 import { packTypesFor, salesBags } from '@/lib/engine/gunnyPack';
-import type { Flow, GunnyFlow, GunnyKey, PdfMonth } from '@/lib/engine/pvPdfParse';
+import type { BagFlow, Flow, GunnyFlow, GunnyKey, PdfMonth } from '@/lib/engine/pvPdfParse';
+import { carriedBagsFor, carriesBags, monthBags } from '@/lib/engine/bagChain';
 import type { PvCommRow } from '@/lib/engine/pvStatement';
 
 export type QuarterMonth = {
@@ -51,7 +52,37 @@ export type QuarterRow = {
   transfer: number;
   sales: number;
   closing: number;
+  /** The period's bag counts (periodBags) — absent when a month gave none. */
+  bags?: PeriodBags;
 };
+
+/** A period's bags: Opening + Receipt = Total, Total − Issues = Closing. */
+export type PeriodBags = { open: number; receipt: number; total: number; issues: number; closing: number };
+
+/**
+ * Months' bag counts → the period's (office, 2026-10-06). The PV's bag
+ * columns printed kgs ÷ pack (CRS 20 PHH FRK 3585 kg → 71 where Page 2 says
+ * 72). Now:
+ *   Opening  = the first month's Opening bags
+ *   Receipt  = the months' Receipt bags added
+ *   Closing  = the LAST month's Closing bags — what Page 2 shows now
+ *   Total    = Opening + Receipt
+ *   Issues   = Total − Closing
+ * Issues is the one figure worked out, so the period always balances and
+ * always closes at the latest saved Page 2. When the months chain, it IS the
+ * months' Sales bags added; when they do not (a month's Opening bags typed
+ * over the carry), the difference lands there — deterministically, never in
+ * Receipt, and never in the kgs.
+ */
+export function periodBags(months: (BagFlow | undefined)[]): PeriodBags | undefined {
+  const live = months.filter((m): m is BagFlow => !!m);
+  if (!live.length || live.length !== months.length) return undefined;
+  const open = live[0].open;
+  const receipt = live.reduce((t, m) => t + m.receipt, 0);
+  const closing = live[live.length - 1].closing;
+  const total = open + receipt;
+  return { open, receipt, total, issues: total - closing, closing };
+}
 
 export type QuarterResult =
   | { ok: false; problems: string[] }
@@ -94,7 +125,7 @@ export function pdfQuarterMonth(m: PdfMonth, hasPolice = true): QuarterMonth {
       const g = m.gunny[k];
       const salesOnly = !r || (!r.open && !r.receipt && !r.excess && !r.shortage && !r.transfer && !r.total && Math.abs(r.closing + r.sales) < 0.001);
       if (!salesOnly) continue;
-      rows[id] = { open: g.opening, receipt: g.receipt, excess: 0, shortage: 0, transfer: 0, total: g.total, sales: g.issues, closing: g.closing };
+      rows[id] = { open: g.opening, receipt: g.receipt, excess: 0, shortage: 0, transfer: 0, total: g.total, sales: g.issues, closing: g.closing, bags: { open: g.opening, receipt: g.receipt, total: g.total, sales: g.issues, closing: g.closing } };
     }
   }
   return { label: monthLabel(m.month, m.year), source: 'pdf', rows, gunny: m.gunny, police: hasPolice ? m.police : null, notes: m.notes };
@@ -196,6 +227,37 @@ export function pvPeriodGunny(
 }
 
 /**
+ * The automatic (Quarterly / Yearly) PV's bag counts per commodity (office,
+ * 2026-10-06): each month's bags as Monthly Sales / Page 2 show them
+ * (bagChain.monthBags, carried month to month), over the months that have
+ * data, put together by periodBags — Closing = the latest month's.
+ */
+export function pvPeriodBags(
+  crsId: number,
+  months: { month: number; year: number }[],
+  stores: Stores,
+  hasData: (m: { month: number; year: number }) => boolean,
+  lists?: { a: Commodity[]; b: Commodity[] },
+): Record<string, PeriodBags> {
+  const l = lists ?? entryListsFor(crsId);
+  const per: Record<string, BagFlow[]> = {};
+  for (const m of months) {
+    if (!hasData(m)) continue;
+    const mb = monthBags(stores as never, crsId, m.month, m.year, l, carriedBagsFor(stores as never, crsId, m.month, m.year, l));
+    for (const [id, b] of Object.entries(mb.a)) {
+      if (!carriesBags(id)) continue;
+      (per[id] ??= []).push({ open: b.open, receipt: b.receipt, total: b.total, sales: b.sales, closing: b.close });
+    }
+  }
+  const out: Record<string, PeriodBags> = {};
+  for (const [id, list] of Object.entries(per)) {
+    const p = periodBags(list);
+    if (p) out[id] = p;
+  }
+  return out;
+}
+
+/**
  * The current month from this system, worked out now from the stores —
  * exactly what Monthly Entry and the Gunny Stock screen show for it.
  */
@@ -215,7 +277,15 @@ export function systemQuarterMonth(
     lists, stores.receiptStore as never,
   );
   const rows: Record<string, Flow> = {};
-  for (const [id, r] of Object.entries(merged.a)) rows[id] = flowOf(r);
+  // Bag counts exactly as Monthly Sales / Page 2 show them (engine/
+  // bagChain.ts — carried Opening, typed counts, Total − Sales = Closing).
+  const bagLists = lists ?? entryListsFor(crsId);
+  const mb = monthBags(stores as never, crsId, month, year, bagLists, carriedBagsFor(stores as never, crsId, month, year, bagLists));
+  for (const [id, r] of Object.entries(merged.a)) {
+    rows[id] = flowOf(r);
+    const b = mb.a[id];
+    if (b && carriesBags(id)) rows[id].bags = { open: b.open, receipt: b.receipt, total: b.total, sales: b.sales, closing: b.close };
+  }
   const bIds = Object.keys(merged.b);
   const police: Record<string, Flow> | null = hasPolice && bIds.length ? Object.fromEntries(bIds.map((id) => [id, flowOf(merged.b[id])])) : null;
 
@@ -232,7 +302,7 @@ export function systemQuarterMonth(
   for (const [id, k] of [['EMPTY_BAG', 'poly'], ['EMPTY_BOX', 'cbox']] as const) {
     const g = gunny[k];
     if (!rows[id] && !g.opening && !g.receipt && !g.issues && !g.closing) continue;
-    rows[id] = { open: g.opening, receipt: g.receipt, excess: 0, shortage: 0, transfer: 0, total: g.total, sales: g.issues, closing: g.closing };
+    rows[id] = { open: g.opening, receipt: g.receipt, excess: 0, shortage: 0, transfer: 0, total: g.total, sales: g.issues, closing: g.closing, bags: { open: g.opening, receipt: g.receipt, total: g.total, sales: g.issues, closing: g.closing } };
   }
   return { label: monthLabel(month, year), source: 'system', rows, gunny, police, notes: [] };
 }
@@ -267,6 +337,7 @@ export function quarterPvInputs(q: Extract<QuarterResult, { ok: true }>): {
       shortage: r.shortage,
       // Its own column (green), never folded into Receipt; TOTAL above includes it.
       excess: r.excess,
+      ...(r.bags ? { bags: r.bags } : {}),
     };
   }
   return { commMap, gunny: q.gunny, gunnyNotes: q.notes };
@@ -303,11 +374,13 @@ function chainFlows(
   }
   q.closing = prev!.closing;
   const c = nameOf(id);
+  const bags = periodBags(live.map((m) => m.flow!.bags));
   return {
     name: c?.en ?? id,
     unit: c?.unit ?? 'KG',
     open: r3(q.open), receipt: r3(q.receipt), excess: r3(q.excess), shortage: r3(q.shortage),
     transfer: r3(q.transfer), sales: r3(q.sales), closing: r3(q.closing),
+    ...(bags ? { bags } : {}),
   };
 }
 
