@@ -514,29 +514,39 @@ console.log('\n4. The current month from the stores');
 }
 
 // ── 5. The sheet, and the paper it prints on ─────────────────────────────
-// Office, 2026-09-28: the PV is filed on LEGAL landscape (its own workbook is
-// paperSize 5, landscape, fit to one page; every PV PDF it sent is 355.6 ×
-// 215.9 mm, one page). The old sheet had 36 columns under title rows that
-// spanned 39 and a number row that ran to 38 — the numbers and section rows
-// stuck out past the commodity rows — and it printed a 1400px screen table
-// onto A4, squeezed.
-console.log('\n5. The sheet: Annexure-I, one Legal landscape page');
+// Office, 2026-09-28: Annexure-I, 38 columns (the old sheet had 36 under
+// title rows spanning 39). Office, 2026-10-06: printed on A4 or LEGAL
+// landscape as chosen, 6 mm margins, the whole sheet SCALED to fill the
+// printable box (pvFit.ts) — it used to be a fixed 8.5 px Legal table, which
+// an A4 printer shrank, with wide margins and blank space round it. The NOTE
+// row is as tall as its notes. Printed by Chrome and read back from the PDF.
+console.log('\n5. The sheet: Annexure-I, one A4 or Legal landscape page, filled');
 {
   const A = await imp('src/lib/engine/commodities.ts');
-  const commMap = {};
+  const wide = {};
   for (const c of [...A.DSS_A, ...A.DSS_B]) {
     // Every commodity there is, at the widest figures a shop has printed.
-    commMap[c.id] = { name: c.en, unit: c.unit, open: 13312, receipt: 11376.5, total: 23242.5, issues: 10927.22, closing: 12299.78, amount: 0, free: !!c.free, transfer: -1456, shortage: 15.5, excess: 10 };
+    wide[c.id] = { name: c.en, unit: c.unit, open: 13312, receipt: 11376.5, total: 23242.5, issues: 10927.22, closing: 12299.78, amount: 0, free: !!c.free, transfer: -1456, shortage: 15.5, excess: 10 };
   }
-  commMap.WHEAT = { ...commMap.WHEAT, shortage: 0, excess: 0, total: 23232.5, closing: 12305.28 };
-  const html = S.buildPVTable({ commMap, periodLabel: '1.07.2026 TO 30.09.2026', crsId: 30, crsName: 'CRS 30', gunny: { ss50: { opening: 162, receipt: 605, total: 767, issues: 0, closing: 767 } }, gunnyNotes: ['WHEAT 46 CONSIDER AS GUNNY'], staff: { bc: 'BC' } });
-  const css = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
+  wide.WHEAT = { ...wide.WHEAT, shortage: 0, excess: 0, total: 23232.5, closing: 12305.28 };
+  const typical = {};
+  for (const c of A.DSS_A.slice(0, 19)) typical[c.id] = { name: c.en, unit: c.unit, open: 950, receipt: 4282, total: 5232, issues: 4790, closing: 442, amount: 0, free: !!c.free };
+  const gunny = { ss50: { opening: 665, receipt: 1260, total: 1925, issues: 1625, closing: 300 }, poly: { opening: 33, receipt: 95, total: 128, issues: 128, closing: 0 }, cbox: { opening: 86, receipt: 324, total: 390, issues: 390, closing: 0 } };
+  const build = (commMap, paper, extra = {}) => S.buildPVTable({ commMap, periodLabel: '1.07.2026 TO 30.09.2026', crsId: 20, crsName: 'CRS 20', gunny, gunnyNotes: ['WHEAT CONSIDER AS GUNNY'], staff: { bc: 'Alagarsamy', packer: 'Prakash' }, paper, ...extra });
+  const cssOf = (html) => /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
+  const a4 = build(wide, 'A4');
+  const legal = build(wide, 'Legal');
   check('38 columns, as the office\'s Annexure-I (B:AM)', S.PV_COLS === 38);
-  check('the columns add up to the printed table: Legal less 18 mm each side', Math.abs(S.PV_TABLE_MM - (355.6 - 36)) < 0.01);
-  check('printed on LEGAL landscape with the office\'s side margins', /@page\{size:legal landscape;margin:12mm 18mm\}/.test(css), css.slice(0, 120));
-  check('on screen the sheet is a Legal page in millimetres — never the window\'s width',
-    /\.pv-paper\{box-sizing:border-box;width:355\.6mm;min-height:215\.9mm/.test(css) && !/vw|min-width:1400px/.test(html));
-  check('the print area is absolute, not fixed — a fixed one prints page 1 and no more', /#pv-print-area\{position:absolute/.test(css) && !/position:fixed/.test(css));
+  check('A4 is the default; A4 prints on A4 landscape, Legal on legal landscape, 6 mm margins',
+    /@page\{size:A4 landscape;margin:6mm\}/.test(cssOf(build(wide))) && /@page\{size:A4 landscape;margin:6mm\}/.test(cssOf(a4)) && /@page\{size:legal landscape;margin:6mm\}/.test(cssOf(legal)));
+  check('on screen the sheet is the chosen page in millimetres (297 × 210 / 355.6 × 215.9), never the window\'s width',
+    /\.pv-paper\{box-sizing:border-box;width:297mm;height:210mm;padding:6mm/.test(cssOf(a4)) && /\.pv-paper\{box-sizing:border-box;width:355\.6mm;height:215\.9mm/.test(cssOf(legal)) && !/vw|min-width:1400px/.test(a4));
+  check('the print area is absolute, not fixed — a fixed one prints page 1 and no more', /#pv-print-area\{position:absolute/.test(cssOf(a4)) && !/position:fixed/.test(cssOf(a4)));
+  check('the title reads TAMIL NADU CIVIL SUPPLIES CORPORATION – MADURAI REGION, larger and bold', /class="t1">TAMIL NADU CIVIL SUPPLIES CORPORATION – MADURAI REGION</.test(a4) && /\.t1\{font-weight:800;font-size:15px/.test(cssOf(a4)));
+  check('the NOTE row has no fixed height', !/td\.note\{[^}]*[;{]height:/.test(cssOf(a4)));
+  const three = build(typical, 'A4', { note: 'Stack 4 re-counted.\nTwo torn POLY bags set aside.' });
+  check('several notes are numbered, one per line', /<b>NOTE:<\/b> <span class="note-text">1\. WHEAT CONSIDER AS GUNNY<br>2\. Stack 4 re-counted\.<br>3\. Two torn POLY bags set aside\.<\/span>/.test(three));
+  check('one note stays on the NOTE line, unnumbered', /<b>NOTE:<\/b> <span class="note-text">WHEAT CONSIDER AS GUNNY<\/span>/.test(a4));
 
   const puppeteer = createRequire(join(root, 'package.json'))('puppeteer-core');
   const chrome = [process.env.CHROME_PATH, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find((p) => p && existsSync(p));
@@ -544,51 +554,66 @@ console.log('\n5. The sheet: Annexure-I, one Legal landscape page');
   else {
     const pdfjs = await imp('node_modules/pdfjs-dist/legacy/build/pdf.mjs');
     const printCss = readFileSync(join(root, 'src/app/print.css'), 'utf8');
+    // pvFit.ts as the browser runs it: its TypeScript stripped, its export a global.
+    const { stripTypeScriptTypes } = await import('node:module');
+    const fitJs = stripTypeScriptTypes(readFileSync(join(root, 'src/lib/engine/pvFit.ts'), 'utf8')).replace(/export /g, '');
     // The Reports screen as it prints: the app around it, printArea()'s body class.
-    const doc = (bodyCls) => `<!doctype html><html><head><meta charset="utf-8"><style>${printCss}</style></head><body class="${bodyCls}"><div id="sidebar" style="height:100vh;width:240px">SIDEBAR</div><main id="main"><div id="content"><div class="card"><div style="overflow-x:auto"><div class="print-area">${html}</div></div></div></div></main></body></html>`;
+    const doc = (html) => `<!doctype html><html><head><meta charset="utf-8"><style>${printCss}</style><script>${fitJs};window.fitPvSheet=fitPvSheet;</script></head><body><div id="sidebar" style="height:100vh;width:240px">SIDEBAR</div><main id="main"><div id="content"><div class="card"><p>Upload cards and the rest of the screen</p><div style="height:900px">tall screen content</div><div style="overflow-x:auto"><div class="print-area">${html}</div></div></div></div></main></body></html>`;
     const browser = await puppeteer.launch({ executablePath: chrome, headless: true });
+    const PT = 25.4 / 72;
+    const mm = (px) => (px / 96) * 25.4;
     try {
       const page = await browser.newPage();
-      const mm = (px) => (px / 96) * 25.4;
-      for (const vw of [800, 1920]) {
-        await page.setViewport({ width: vw, height: 900 });
-        await page.setContent(doc(''));
-        const s = await page.evaluate(() => ({ p: document.querySelector('.pv-paper').getBoundingClientRect().width, t: document.getElementById('pv-tbl').getBoundingClientRect().width }));
-        check(`a ${vw}px window: the page is 355.6 mm, the table ${S.PV_TABLE_MM.toFixed(1)} mm`, Math.abs(mm(s.p) - 355.6) < 0.3 && Math.abs(mm(s.t) - S.PV_TABLE_MM) < 0.3, `${mm(s.p)} / ${mm(s.t)}`);
+      const cases = [
+        ['A4', 'every commodity, widest figures', build(wide, 'A4'), 297, 210],
+        ['A4', 'a typical shop, three notes', three, 297, 210],
+        ['Legal', 'every commodity, widest figures', build(wide, 'Legal'), 355.6, 215.9],
+        ['Legal', 'a typical shop, three notes', build(typical, 'Legal', { note: 'Stack 4 re-counted.\nTwo torn POLY bags set aside.' }), 355.6, 215.9],
+      ];
+      for (const [paper, what, html, W, H] of cases) {
+        await page.emulateMediaType('screen');
+        await page.setViewport({ width: 1280, height: 900 });
+        await page.setContent(doc(html));
+        const fit = await page.evaluate(() => window.fitPvSheet(document));
+        const scr = await page.evaluate(() => ({ p: document.querySelector('.pv-paper').getBoundingClientRect().width }));
+        await page.evaluate(() => document.body.classList.add('printing-area'));
+        await page.emulateMediaType('print');
+        const g = await page.evaluate((cols) => {
+          const tbl = document.getElementById('pv-tbl');
+          const span = (tr) => [...tr.cells].reduce((a, td) => a + (td.colSpan || 1), 0);
+          const all = [...tbl.tBodies[0].rows, ...tbl.tFoot.rows].every((tr) => span(tr) === cols) && [0, 1, 2, 3, 4, 7].every((i) => span(tbl.tHead.rows[i]) === cols);
+          const cut = [...tbl.querySelectorAll('td')].filter((td) => td.textContent.trim() && td.scrollWidth > td.clientWidth + 1).map((td) => td.textContent.trim());
+          const col = (td) => getComputedStyle(td).color;
+          const coloured = [...tbl.querySelectorAll('td')].filter((td) => col(td) !== 'rgb(0, 0, 0)').map((td) => `${td.className}:${td.textContent}`);
+          const note = tbl.querySelector('td.note');
+          const lh = parseFloat(getComputedStyle(note).lineHeight);
+          return { all, cut, coloured, noteLines: Math.round((note.clientHeight - 6) / lh), sections: [...tbl.querySelectorAll('td.sec')].map((t) => t.textContent.trim()), gunnyRows: [...tbl.tBodies[0].rows].map((tr) => tr.cells[1]?.textContent.trim()).filter((t) => /SS GUNNY|POLYTHENE|C\.BOX/.test(t ?? '')) };
+        }, S.PV_COLS);
+        const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+        const d = await pdfjs.getDocument({ data: new Uint8Array(pdf), verbosity: 0 }).promise;
+        const pg = await d.getPage(1);
+        const vp = pg.getViewport({ scale: 1 });
+        const it = (await pg.getTextContent()).items.filter((i) => i.str?.trim());
+        const w = vp.width * PT, h = vp.height * PT;
+        const x0 = Math.min(...it.map((i) => i.transform[4])) * PT, x1 = Math.max(...it.map((i) => i.transform[4] + i.width)) * PT;
+        const top = Math.min(...it.map((i) => vp.height - i.transform[5] - Math.abs(i.transform[3]))) * PT;
+        const bottom = Math.max(...it.map((i) => vp.height - i.transform[5])) * PT;
+        const size = (re) => { const i = it.find((x) => re.test(x.str)); return i ? Math.abs(i.transform[3]) : 0; };
+        const text = it.map((i) => i.str).join(' ');
+        const label = `${paper}, ${what}`;
+        check(`${label}: on screen the page is ${mm(scr.p).toFixed(1)} mm wide; fitted ×${fit.scale.toFixed(2)} (+${fit.xpad.toFixed(1)} px a row)`, Math.abs(mm(scr.p) - W) < 0.3 && fit.scale > 0.5);
+        check(`${label}: PDF ${d.numPages} page, ${w.toFixed(1)} × ${h.toFixed(1)} mm`, d.numPages === 1 && Math.abs(w - W) < 0.6 && Math.abs(h - H) < 0.6);
+        check(`${label}: across the page — text ${x0.toFixed(1)} → ${x1.toFixed(1)} mm (margins 6 mm)`, x0 >= 5.5 && x0 <= 10 && W - x1 >= 5.5 && W - x1 <= 10);
+        check(`${label}: down the page — top ${top.toFixed(1)} mm, last line ${bottom.toFixed(1)} mm of ${H}`, top >= 5.5 && top <= 10 && bottom <= H - 6 && bottom >= H - 6 - 20);
+        const tSize = size(/^TAMIL NADU CIVIL SUPPLIES/), cSize = size(/^BRA Rice$|^B\.?R\.?A/), nSize = size(/^NOTE:$/), sSize = size(/SIGNATURE OF BILL CLERK/);
+        check(`${label}: type — title ${tSize.toFixed(1)} pt, commodity ${cSize.toFixed(1)} pt, NOTE ${nSize.toFixed(1)} pt, signature ${sSize.toFixed(1)} pt (A4 was ≈ 5.3 pt)`, tSize >= 10 && cSize >= (paper === 'A4' ? 6.2 : 7) && nSize >= cSize && sSize >= cSize && tSize > cSize * 1.5);
+        check(`${label}: every row spans 38 columns; no cell cut (${g.cut.slice(0, 3).join(' | ') || 'none'})`, g.all && !g.cut.length);
+        check(`${label}: Gunny printed — ${g.gunnyRows.join(' / ')}; sections ${g.sections.join(', ')}`, g.gunnyRows.length === 3 && g.sections.includes('Gunny') && /50 kg SS GUNNY/.test(text) && /POLYTHENE/.test(text) && /C\.BOX/.test(text) && /WHEAT CONSIDER AS GUNNY/.test(text));
+        check(`${label}: NOTE ${g.noteLines} line${g.noteLines === 1 ? '' : 's'} tall for ${what.includes('three') ? 3 : 1} note${what.includes('three') ? 's' : ''}; both signatures on the page, nothing of the app`,
+          g.noteLines === (what.includes('three') ? 3 : 1) && /SIGNATURE OF BILL CLERK WITH SEAL/.test(text) && /SIGNATURE OF THE PHYSICAL VERIFICATION OFFICER/.test(text) && !/SIDEBAR|tall screen content/.test(text));
+        if (what.includes('widest')) check(`${label}: Shortage red, Excess green, the figure only`, g.coloured.length > 0 && g.coloured.every((c) => /^short:(15\.500|1)$|^excess:(10|1)$/.test(c)), g.coloured.slice(0, 4).join(', '));
+        await d.destroy();
       }
-      await page.emulateMediaType('print');
-      await page.setContent(doc('printing-area'));
-      const g = await page.evaluate((cols) => {
-        const tbl = document.getElementById('pv-tbl');
-        const span = (tr) => [...tr.cells].reduce((a, td) => a + (td.colSpan || 1), 0);
-        const body = [...tbl.tBodies[0].rows].every((tr) => span(tr) === cols);
-        const foot = [...tbl.tFoot.rows].every((tr) => span(tr) === cols);
-        const head = [0, 1, 2, 3, 4, 7].every((i) => span(tbl.tHead.rows[i]) === cols);
-        const cut = [...tbl.querySelectorAll('td')].filter((td) => td.textContent.trim() && td.scrollWidth > td.clientWidth + 0.5).map((td) => td.textContent.trim());
-        const col = (td) => getComputedStyle(td).color;
-        const coloured = [...tbl.querySelectorAll('td')].filter((td) => col(td) !== 'rgb(0, 0, 0)').map((td) => `${td.className}:${td.textContent}:${col(td)}`);
-        const wheat = [...tbl.tBodies[0].rows].find((tr) => /^Wheat$/.test(tr.cells[1]?.textContent ?? ''));
-        return { body, foot, head, cut, coloured, wheatShort: wheat ? col(wheat.cells[20]) : '' };
-      }, S.PV_COLS);
-      check('every commodity, section, note and footer row spans the same 38 columns as the headings', g.body && g.foot && g.head);
-      check('no heading or figure is cut or spills into the next cell', !g.cut.length, g.cut.slice(0, 6).join(' | '));
-      check('Shortage red and Excess green, the figure only', g.coloured.length > 0 && g.coloured.every((c) => /^short:15\.500:rgb\(220, 38, 38\)$|^short:1:rgb\(220, 38, 38\)$|^excess:10:rgb\(21, 128, 61\)$|^excess:1:rgb\(21, 128, 61\)$/.test(c)), g.coloured.filter((c) => !/15\.500|:10:|:1:/.test(c)).slice(0, 5).join(', '));
-      check('…a zero stays black (Wheat\'s shortage 0)', g.wheatShort === 'rgb(0, 0, 0)', g.wheatShort);
-      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
-      const d = await pdfjs.getDocument({ data: new Uint8Array(pdf), verbosity: 0 }).promise;
-      const pg = await d.getPage(1);
-      const vp = pg.getViewport({ scale: 1 });
-      const it = (await pg.getTextContent()).items.filter((i) => i.str?.trim());
-      const PT = 25.4 / 72;
-      const w = vp.width * PT, h = vp.height * PT;
-      const x0 = Math.min(...it.map((i) => i.transform[4])) * PT, x1 = Math.max(...it.map((i) => i.transform[4] + i.width)) * PT;
-      const text = it.map((i) => i.str).join(' ');
-      check(`the PDF: ${d.numPages} page, ${w.toFixed(1)} × ${h.toFixed(1)} mm — Legal landscape, ONE page with every commodity on it`,
-        d.numPages === 1 && Math.abs(w - 355.6) < 0.5 && Math.abs(h - 215.9) < 0.5);
-      check(`…the sheet inside the margins on both sides (text ${x0.toFixed(1)} → ${x1.toFixed(1)} mm)`, x0 >= 18 && w - x1 >= 18);
-      check('…with nothing of the app on it, and its rightmost headings and both signatures',
-        !/SIDEBAR/.test(text) && /Excess/.test(text) && /\b18\b/.test(text) && /SIGNATURE OF BILL CLERK/.test(text) && /PHYSICAL VERIFICATION OFFICER/.test(text));
-      await d.destroy();
     } finally {
       await browser.close();
     }
@@ -740,12 +765,12 @@ console.log('\n10. The PV\'s commodity rows and its NOTE row');
   check(`numbering runs on with no gap: ${sls.join(', ')}`, sls.every((n, i) => n === i + 1));
   const noteTd = html.match(/<tr class="pv-note"><td colspan="(\d+)" class="l f note">([\s\S]*?)<\/td><\/tr>/);
   check(`the NOTE row is one cell across all ${S.PV_COLS} columns`, !!noteTd && Number(noteTd[1]) === S.PV_COLS);
-  check('"NOTE:" bold, then the note, its lines kept, its text escaped', /^<b>NOTE:<\/b> <span class="note-text">Stack 4 re-counted on site\.<br>Wheat consider as gunny &lt;ok&gt;<\/span>$/.test(noteTd?.[2] ?? ''), noteTd?.[2]);
-  check('the NOTE cell wraps, sits at the top and has room for about four lines', /td\.note\{white-space:normal;vertical-align:top;height:15mm;/.test(html));
+  check('"NOTE:" bold, then the notes numbered, one a line, their text escaped', /^<b>NOTE:<\/b> <span class="note-text">1\. Stack 4 re-counted on site\.<br>2\. Wheat consider as gunny &lt;ok&gt;<\/span>$/.test(noteTd?.[2] ?? ''), noteTd?.[2]);
+  check('the NOTE cell wraps, sits at the top, and is only as tall as its notes', /td\.note\{white-space:normal;vertical-align:top;padding:/.test(html) && !/td\.note\{[^}]*[;{]height:/.test(html));
   const blank = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, staff: {} });
   check('no note typed → "NOTE:" alone, the space left for a hand-written note', /<td colspan="\d+" class="l f note"><b>NOTE:<\/b><\/td>/.test(blank));
   const both = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, staff: {}, gunnyNotes: ['WHEAT CONSIDER AS GUNNY'], note: 'wheat consider as gunny\nStack 4 re-counted.' });
-  check('Gunny\'s note and a typed note share the NOTE row: Gunny\'s first, a repeat dropped', /<b>NOTE:<\/b> <span class="note-text">WHEAT CONSIDER AS GUNNY<br>Stack 4 re-counted\.<\/span>/.test(both) && (both.match(/consider as gunny/gi) ?? []).length === 1);
+  check('Gunny\'s note and a typed note share the NOTE row: Gunny\'s first, a repeat dropped', /<b>NOTE:<\/b> <span class="note-text">1\. WHEAT CONSIDER AS GUNNY<br>2\. Stack 4 re-counted\.<\/span>/.test(both) && (both.match(/consider as gunny/gi) ?? []).length === 1);
   check('the Gunny section ends at C.BOX: no note row inside it', !/pv-gunny-note/.test(both) && /C\.BOX[\s\S]*?<\/tr>(<tr><td colspan="\d+" class="l sec">Police|<\/tbody>)/.test(both));
 }
 

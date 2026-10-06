@@ -15,14 +15,16 @@
  * Receipt totals count item quantities (the legacy sum over item objects
  * was always 0 — noted in pvStatement.ts too).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/authClient';
 import { crsData, useStore, useUsers } from '@/lib/dataStore';
 import { shopStaffNames } from '@/lib/engine/staffAssignment';
-import { appAlert } from '@/components/dialog';
+import { appAlert, appConfirm } from '@/components/dialog';
+import { pvFileName, pvZipName } from '@/lib/pvPdf';
 import { CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
 import { commodityListsFor, useCommodityMaster, useShops } from '@/lib/masters';
-import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow } from '@/lib/engine/pvStatement';
+import { buildPVTable, pvAggregatePeriod, pvCommodityScope, type PvCommRow, type PvPaperSize } from '@/lib/engine/pvStatement';
+import { fitPvSheet } from '@/lib/engine/pvFit';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
 import { pvPeriodBags, pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
@@ -90,6 +92,25 @@ export default function ReportsPage() {
   const [pvSource, setPvSource] = useState<'auto' | 'manual'>('auto');
   /** The PV's NOTE row, typed here; it is printed, never stored. */
   const [pvNote, setPvNote] = useState('');
+  // The paper the PV prints on, A4 or Legal (landscape). Remembered in this
+  // browser only — a convenience; the sheet is the same document either way.
+  const [pvPaper, setPvPaperState] = useState<PvPaperSize>('A4');
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('pv.paper') === 'Legal') setPvPaperState('Legal');
+    } catch {
+      /* storage blocked: A4 */
+    }
+  }, []);
+  const setPvPaper = (p: PvPaperSize) => {
+    setPvPaperState(p);
+    try {
+      localStorage.setItem('pv.paper', p);
+    } catch {
+      /* not remembered — still used for this print */
+    }
+  };
+  const pvAreaRef = useRef<HTMLDivElement>(null);
   /**
    * Who verified this shop and on what day. Resolved from the group assignment
    * (src/lib/engine/pvOfficer.ts) so it reaches every PV the same way —
@@ -205,6 +226,43 @@ export default function ReportsPage() {
     return { have, missing };
   }, [pvPeriod, crsVal, monthlyStore]);
 
+  /**
+   * One shop's AUTOMATIC PV for the period — the sheet on screen, and each
+   * sheet of "Download All Shops", so the two can never differ.
+   */
+  const autoPvHtml = useCallback(
+    (crsId: number, note: string, paper: PvPaperSize): string => {
+      if (!pvPeriod) return '';
+      const stores = { entryStore, inspectionStore, meManualStore, receiptStore: receiptStore as unknown[], meGunnyStore: meGunnyStore as never, salesCloseStore };
+      const hasMonth = (m: YearMonth) => !!monthlyStore[`${crsId}_${m.month}_${m.year}`] || !!meGunnyStore[`${crsId}_${m.month}_${m.year}`];
+      const agg = pvAggregatePeriod([crsId], pvPeriod.months, { entryStore, receiptStore, monthlyStore }, pvCommodityScope(crsId));
+      // Gunny exactly as Gunny Stock Management shows it, month by month, put
+      // together like the commodity rows: Opening from the period's first month
+      // with data, Receipt and Issues added up (pvQuarter.ts pvPeriodGunny). It
+      // used to print the raw stored record of the period's FIRST month only —
+      // a quarter starting on a month with no record printed every Gunny 0.
+      const gunny = pvPeriodGunny(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId));
+      // Bag columns as Monthly Sales / Page 2 carry them, Closing = the latest
+      // month's (pvQuarter.ts pvPeriodBags) — never kgs ÷ pack.
+      const periodBagCounts = pvPeriodBags(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId));
+      for (const [id, b] of Object.entries(periodBagCounts)) if (agg.commMap[id]) agg.commMap[id].bags = b;
+      const officer = resolveForStatement(pvOfficerStore, crsId);
+      return buildPVTable({
+        commMap: agg.commMap,
+        periodLabel: pvPeriod.rangeLabel,
+        crsId,
+        crsName: shops[crsId - 1]?.name ?? '',
+        gunny,
+        staff: shopStaffNames(users, crsId),
+        pvOfficer: officer.officer,
+        pvDate: officer.date,
+        note,
+        paper,
+      });
+    },
+    [pvPeriod, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, users, pvOfficerStore, shops],
+  );
+
   const pvHtml = useMemo(() => {
     if (!isPV || !crsVal || !pvPeriod) return '';
     const crsId = Number(crsVal);
@@ -227,44 +285,110 @@ export default function ReportsPage() {
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,
         note: pvNote,
+        paper: pvPaper,
       });
     }
-    const agg = pvAggregatePeriod([crsId], pvPeriod.months, { entryStore, receiptStore, monthlyStore }, pvCommodityScope(crsId));
-    // Gunny exactly as Gunny Stock Management shows it, month by month, put
-    // together like the commodity rows: Opening from the period's first month
-    // with data, Receipt and Issues added up (pvQuarter.ts pvPeriodGunny). It
-    // used to print the raw stored record of the period's FIRST month only —
-    // a quarter starting on a month with no record printed every Gunny 0.
-    const gunny = pvPeriodGunny(
-      crsId,
-      pvPeriod.months,
-      { entryStore, inspectionStore, meManualStore, receiptStore: receiptStore as unknown[], meGunnyStore: meGunnyStore as never, salesCloseStore },
-      (m) => !!monthlyStore[`${crsId}_${m.month}_${m.year}`] || !!meGunnyStore[`${crsId}_${m.month}_${m.year}`],
-      commodityListsFor(commodityMaster, crsId),
-    );
-    // Bag columns as Monthly Sales / Page 2 carry them, Closing = the latest
-    // month's (pvQuarter.ts pvPeriodBags) — never kgs ÷ pack.
-    const periodBagCounts = pvPeriodBags(
-      crsId,
-      pvPeriod.months,
-      { entryStore, inspectionStore, meManualStore, receiptStore: receiptStore as unknown[], meGunnyStore: meGunnyStore as never, salesCloseStore },
-      (m) => !!monthlyStore[`${crsId}_${m.month}_${m.year}`] || !!meGunnyStore[`${crsId}_${m.month}_${m.year}`],
-      commodityListsFor(commodityMaster, crsId),
-    );
-    for (const [id, b] of Object.entries(periodBagCounts)) if (agg.commMap[id]) agg.commMap[id].bags = b;
-    return buildPVTable({
-      commMap: agg.commMap,
-      periodLabel: pvPeriod.rangeLabel,
-      crsId,
-      crsName: shops[crsId - 1]?.name ?? '',
-      gunny,
-      staff: shopStaffNames(users, crsId),
-        pvOfficer: pvOfficer.officer,
-        pvDate: pvOfficer.date,
-        note: pvNote,
-    });
+    return autoPvHtml(crsId, pvNote, pvPaper);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, generated, users]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, pvPaper, autoPvHtml, generated, users]);
+
+  /**
+   * The PV as a PDF FILE (office, 2026-10-06), on the paper chosen above:
+   * /api/pv/pdf draws the sheet in headless Chrome, fitted exactly as the
+   * screen and the print are. "All shops" asks once per shop (a PV PDF is
+   * ~250 KB; thirty in one answer would be too large) and zips them here.
+   */
+  const [pvDownload, setPvDownload] = useState<string | null>(null);
+  const fetchPvPdf = async (crsId: number, html: string): Promise<Uint8Array> => {
+    const res = await fetch('/api/pv/pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crsId, paper: pvPaper, period: pvPeriod?.label ?? '', html }),
+    });
+    if (!res.ok) {
+      const b = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(b.error || `The PDF could not be made (${res.status}).`);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const saveFile = (data: Uint8Array, name: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([data as BlobPart], { type }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  };
+  /** Shops with something keyed in the period — the ones a PV can be made for. */
+  const pvShopsWithData = useMemo(() => {
+    if (!pvPeriod) return [] as number[];
+    return shopIds.filter((id) => pvPeriod.months.some((m) => !!monthlyStore[`${id}_${m.month}_${m.year}`] || !!meGunnyStore[`${id}_${m.month}_${m.year}`]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pvPeriod, monthlyStore, meGunnyStore, shops]);
+  const downloadPv = async () => {
+    if (!pvHtml || !pvPeriod || !crsVal) {
+      void appAlert('Generate a PV Statement first.');
+      return;
+    }
+    setPvDownload('Making the PDF…');
+    try {
+      const pdf = await fetchPvPdf(Number(crsVal), pvHtml);
+      saveFile(pdf, pvFileName(Number(crsVal), pvPeriod.label, pvPaper), 'application/pdf');
+    } catch (e) {
+      await appAlert({ title: 'PDF not downloaded', tone: 'danger', message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setPvDownload(null);
+    }
+  };
+  const downloadAllPv = async () => {
+    if (!pvPeriod) return;
+    const ids = pvShopsWithData;
+    if (!ids.length) {
+      void appAlert(`No shop has a published month in ${pvPeriod.label}.`);
+      return;
+    }
+    const left = shopIds.length - ids.length;
+    const ok = await appConfirm({
+      title: 'Download every shop\'s PV?',
+      message: `${ids.length} shop${ids.length === 1 ? '' : 's'} — ${pvPeriod.label}, Automatic PV, ${pvPaper} landscape — one PDF each, in one ZIP file.${left ? ` ${left} shop${left === 1 ? ' has' : 's have'} nothing keyed in this period and ${left === 1 ? 'is' : 'are'} left out.` : ''} The NOTE typed above is not put on them.`,
+      confirmLabel: 'Download',
+    });
+    if (!ok) return;
+    const files: Record<string, [Uint8Array, { level: 0 }]> = {};
+    const failed: string[] = [];
+    try {
+      for (const [i, id] of ids.entries()) {
+        setPvDownload(`Making PDFs… ${i + 1} / ${ids.length} (CRS ${id})`);
+        try {
+          files[pvFileName(id, pvPeriod.label, pvPaper)] = [await fetchPvPdf(id, autoPvHtml(id, '', pvPaper)), { level: 0 }];
+        } catch (e) {
+          failed.push(`CRS ${id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      if (Object.keys(files).length) {
+        const { zipSync } = await import('fflate');
+        saveFile(zipSync(files), pvZipName(pvPeriod.label, pvPaper), 'application/zip');
+      }
+      if (failed.length) {
+        await appAlert({ title: `${failed.length} PV${failed.length === 1 ? '' : 's'} not included`, tone: 'warning', message: failed.join('\n') });
+      }
+    } finally {
+      setPvDownload(null);
+    }
+  };
+
+  // The sheet scaled to its page (pvFit.ts) whenever it is drawn again — new
+  // figures, a note, another paper — and once more as the browser prints.
+  useLayoutEffect(() => {
+    if (pvHtml) fitPvSheet(pvAreaRef.current);
+  }, [pvHtml]);
+  useEffect(() => {
+    const before = () => fitPvSheet(pvAreaRef.current);
+    window.addEventListener('beforeprint', before);
+    return () => window.removeEventListener('beforeprint', before);
+  }, []);
 
   /**
    * The current month of a manual 3-month PV, worked out from the stores as
@@ -517,7 +641,7 @@ export default function ReportsPage() {
           ) : null}
 
           {isPV ? (
-            <div style={{ display: 'flex', marginTop: 12, gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', marginTop: 12, gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 onClick={() => {
                   if (!pvHtml) {
@@ -530,13 +654,43 @@ export default function ReportsPage() {
                   }
                   // The PV alone on the paper — printing the screen put the
                   // sidebar down every sheet (office, 2026-09-27; app/print.css).
+                  fitPvSheet(pvAreaRef.current);
                   printArea();
                 }}
                 style={{ background: 'linear-gradient(135deg,#1B3A6B,#2563EB)', color: '#fff', border: 'none', padding: '9px 20px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
               >
                 🖨️ Print PV Statement
               </button>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Prints on Legal paper, landscape · By Counting and By 100 % are left blank for the PV officer to fill on-site</span>
+              <button
+                type="button"
+                data-pv-download="one"
+                disabled={!!pvDownload}
+                onClick={() => void downloadPv()}
+                style={{ background: '#fff', color: '#1B3A6B', border: '1px solid #1B3A6B', padding: '8px 16px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: pvDownload ? 'default' : 'pointer' }}
+              >
+                📥 Download PDF
+              </button>
+              {isAdmin && pvSource === 'auto' ? (
+                <button
+                  type="button"
+                  data-pv-download="all"
+                  disabled={!!pvDownload}
+                  onClick={() => void downloadAllPv()}
+                  title="Every shop with something keyed in this period: one PDF each, in one ZIP"
+                  style={{ background: '#fff', color: '#1B3A6B', border: '1px solid #1B3A6B', padding: '8px 16px', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: pvDownload ? 'default' : 'pointer' }}
+                >
+                  📥 Download All Shops ({pvShopsWithData.length})
+                </button>
+              ) : null}
+              {pvDownload ? <span data-pv-download-status style={{ fontSize: 12, fontWeight: 700, color: '#1B3A6B' }}>{pvDownload}</span> : null}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, margin: 0 }}>
+                Paper
+                <select aria-label="PV paper size" value={pvPaper} onChange={(e) => setPvPaper(e.target.value === 'Legal' ? 'Legal' : 'A4')} style={{ border: '1px solid var(--border)', borderRadius: 7, padding: '6px 8px', fontSize: 12, fontWeight: 600 }}>
+                  <option value="A4">A4 · landscape</option>
+                  <option value="Legal">Legal · landscape</option>
+                </select>
+              </label>
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>Prints on {pvPaper} paper, landscape, filling the page · By Counting and By 100 % are left blank for the PV officer to fill on-site</span>
             </div>
           ) : null}
           {isPV ? (
@@ -679,7 +833,7 @@ export default function ReportsPage() {
                     <strong>All {pvPeriod?.months.length} months published.</strong> This PV is complete for {pvPeriod?.label}.
                   </div>
                 )}
-                <div className={PRINT_AREA_CLASS} dangerouslySetInnerHTML={{ __html: pvHtml }} />
+                <div ref={pvAreaRef} className={PRINT_AREA_CLASS} dangerouslySetInnerHTML={{ __html: pvHtml }} />
               </>
             ) : (
               <div style={{ textAlign: 'center', padding: 24, color: 'var(--muted)' }}>Please select a specific CRS shop to generate a PV Statement.</div>
