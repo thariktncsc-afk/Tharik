@@ -2830,9 +2830,27 @@ verify:pv-gunny`).
     - a 40-line NOTE downloads as one page with every line and both
       signatures;
     - the page counter agrees with pdf.js.
-  - **Not yet on the PDF**: the shop's Tamil name. Vercel's Chrome has no
-    Tamil font, so the downloaded PDF reads "NAME OF THE CRS : 20 —"; the
-    browser print has it.
+  - **Tamil on the server's PDFs** (office, 2026-10-06, `pdfFonts.ts`).
+    - Vercel's Chrome has no Tamil font: the downloaded PV read "NAME OF
+      THE CRS : 20 —" with no shop name, and CRS 29's Tamil commodity names
+      were missing from statement PDFs.
+    - **Noto Sans Tamil** (`@fontsource/noto-sans-tamil`, SIL OFL,
+      regular / bold woff2, ~15 KB each) now travels with every server PDF —
+      the PV (`pvSheetToPdf`) and the statements (`htmlToPdf`) — as data.
+      It is registered for Tamil characters only (`unicode-range`) under
+      every family the sheets name: Arial, Calibri, Carlito, Latha, Nirmala
+      UI and Arial Unicode MS.
+    - English letters keep the machine's own faces under the same names:
+      `local()` by full and PostScript name, regular / bold / italic. The PV
+      is the exception: its Arial is Liberation Sans (the same widths).
+    - Shipped with both PDF routes (`outputFileTracingIncludes`).
+    - **The proof is the embedded font** (`verify:pv-pdf`), since this PC
+      has its own Tamil fonts. The PV's Tamil name and a statement's
+      "புழுங்கல் அரிசி / சீனி / மொத்தம்" are drawn in NotoSansTamil, never
+      Nirmala UI or Latha, and English stays Calibri / Calibri-Bold /
+      Calibri-Italic.
+    - A PDF's text layer splits Tamil syllables, so the text is compared by
+      its consonants.
 - **Laid out in millimetres, never against the window**: on screen the sheet
   is the chosen page (its scroller scrolls on a narrow window); in print the
   same table at the same width. The old one was a `min-width:1400px` screen
