@@ -2472,9 +2472,8 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
 - The same file picked again (name + size) is not read twice; the same sheet
   twice with identical figures counts once; with different figures it is
   refused. A wrong shop or month, or an unknown commodity row, refuses it.
-- Uploads survive a refresh: the pages read are kept in sessionStorage per
-  shop and quarter, restored after mount (restoring during the first render
-  broke hydration). Nothing is written to the database.
+- **Uploads are SAVED per shop and month** — see "The Manual PV's uploads are
+  saved", below. (They used to live in this tab's sessionStorage only.)
 - **Police only where `__crsMaster[].police`** says so — the system month
   drops its (zero) police rows otherwise, and a police sheet uploaded for a
   shop without it is left out, so no empty police section prints. Police and
@@ -2513,9 +2512,9 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   (`print.css`), not just `visibility`. Content hidden by `visibility` still
   takes up its space, so in Manual mode the upload cards pushed out a second,
   blank Legal page (office, 2026-10-06). Now it is one page in both modes.
-- Nothing uploaded is saved anywhere. The generated quarter is tagged with its
-  shop and period, and a PDF still being read when the shop changes is
-  dropped, so one shop's figures can never print under another's name.
+- The generated quarter is tagged with its shop and period, and an answer
+  still on its way when the shop changes is dropped, so one shop's figures
+  can never print under another's name.
 - **CRS 1, Q2 2026 (dry run, 2026-09-22):** July and August read in full and
   carry July → August exactly, but Generate refuses on six commodities because
   the Initial Openings typed on 01-09-2026 ("admin (office instruction)")
@@ -2523,6 +2522,61 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   1500, AAY FRK 350 vs 50 + AAY 0 vs 300 (each pair sums the same), TAN 0 vs
   150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
   worked around in code. Still so on 2026-09-28.
+
+### The Manual PV's uploads are saved
+
+Office, 2026-10-06 (`src/lib/pvUploads/`, `/api/pv-uploads`, migration
+**0009**, `npm run verify:pv-uploads`).
+- **The problem**: the uploaded PDFs lived only in the browser tab
+  (sessionStorage). A new tab, another computer or signing in again showed
+  every month as "Browse PDF", and the office uploaded the same files again.
+- **Saved now**: `pv_upload_files` holds one row per file — CRS, year,
+  month, FY (`2026-27`), file name, size, sha256, the PDF itself (base64),
+  when and who.
+  - A month's active set is every row for that (crs, year, month).
+  - **Replace PDF** saves the new file, THEN removes the month's others: one
+    active set, no history, and a failed save leaves the month as it was.
+  - **Add PDF** keeps the others (a GUNNY beside its PAGE2).
+  - The same file twice in a month (sha256) is stored once.
+  - **Remove** clears the month.
+- **The screen asks the server**, on opening and on every change of shop or
+  quarter. It downloads the saved PDFs and reads them; it never uploads by
+  itself.
+  - A saved month says "✓ September PDF Uploaded", with its files and when /
+    who.
+  - The counter is the months whose saved files hold a PAGE2, with
+    "Missing: …" under it.
+  - Generate is on only when all are saved.
+- **Saving**: a PDF is read in the browser first, so a wrong shop or month
+  is refused before anything is sent. Then each file is POSTed raw (one per
+  request, ≤ 4 MB — a Vercel body is at most 4.5 MB; the office's PDFs run
+  24 KB – 1 MB).
+  - The card, the counter and the ✓ tick (`saveSuccess`) follow the
+    server's answer.
+  - A refused save shows "PDF not saved" and no tick.
+- **Generate asks the server again** and reads any file that changed since,
+  so a PDF replaced in another tab or by another person is what the PV is
+  built from. A month left without a PAGE2 refuses with "has no saved CRS
+  PAGE2 now".
+- **Isolated by CRS**: every query is filtered by `crs_id`. A shop user
+  reaches their own shop only (403); another shop's file id answers 404.
+  The administrator reaches any shop. Each save, replace and remove is an
+  activity-log row (Reports).
+- **Until 0009 is run** the route answers 503 "run …0009_pv_uploads.sql";
+  the screen shows it and saves nothing. Checked read only against live on
+  2026-10-06: the table did not exist yet.
+- **Localhost** (`npm run dev`), with the real handlers on an in-memory store
+  and the office's CRS 20 PDFs:
+  - Upload July / August / September → 1, 2, 3 / 3.
+  - The months stayed saved through a refresh, Dashboard and back, and a new
+    browser profile, with no upload on opening.
+  - Replace September → one row; it stayed after a refresh. Generate built
+    the PV.
+  - Replaced elsewhere without a PAGE2 → this page's Generate re-read it and
+    refused; Add fixed it and Generate worked.
+  - A DB failure gave no tick and left the month unchanged. July's PAGE2 for
+    August was refused unsent.
+  - CRS 23 (admin and its BC) sees none of CRS 20's; CRS 20's BC sees them.
 
 ### PV: no Empty Card+Box / Polythene Bag rows; a real NOTE row
 
@@ -2705,6 +2759,7 @@ npm run verify:gunny-rows    Gunny statement: three rows, no spare line, every f
 npm run verify:page1-card-allot  CRS Page 1: saved card counts by id + total, saved allotment only (never receipts), per shop and month
 npm run verify:pv-gunny        the automatic PV's Gunny = Gunny Stock Management (gunnyRowFor) per month; first-month Opening, Receipt / Issues added; latest saved data
 npm run verify:pv-quarter      3-month PV: office PDFs read by position, July → August → September chain, police/notes, dev parity
+npm run verify:pv-uploads      Manual PV uploads saved per CRS + month: save / list / read back, Replace = one active set, duplicates, refusals, shop isolation, screen wiring
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
@@ -2786,6 +2841,8 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 - `0005_notifications.sql`, then `0007_notification_dedupe.sql`, too. Unlike 0004 nothing breaks without it — every
   approval proceeds and notifications are silently skipped — which is exactly
   why it is easy to forget: the bell just stays at zero forever
+- `0009_pv_uploads.sql` — until it is run, the Manual 3-Month PV cannot save
+  an upload (it says so; nothing else is affected)
 - Supabase free tier **pauses after 7 days idle and has no backups** — upgrade
   before real users depend on it
 

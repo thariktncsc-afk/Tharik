@@ -46,6 +46,7 @@
     "verify:staff-posts": "node tools/verify-staff-posts.mjs",
     "verify:daily-date-nav": "node tools/verify-daily-date-nav.mjs",
     "verify:pv-quarter": "node tools/verify-pv-quarter.mjs",
+    "verify:pv-uploads": "node tools/verify-pv-uploads.mjs",
     "verify:pv-gunny": "node tools/verify-pv-gunny.mjs",
     "verify:coll-advance": "node tools/verify-coll-advance.mjs",
     "verify:dss-rates": "node tools/verify-dss-rates.mjs",
