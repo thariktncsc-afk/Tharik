@@ -19,7 +19,7 @@
  *    the server on opening, never keeps the pages in sessionStorage, saves
  *    before it ticks, and asks the server again before it generates.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -152,15 +152,22 @@ const save = (store, who, crsId, month, name, bytes, mode = 'replace') => V.save
   const route = readFileSync(join(root, 'src/app/api/pv-uploads/route.ts'), 'utf8');
   const file = readFileSync(join(root, 'src/app/api/pv-uploads/[id]/route.ts'), 'utf8');
   const ui = readFileSync(join(root, 'src/app/(app)/reports/ManualPvUpload.tsx'), 'utf8');
-  check('the route answers through listUploads / saveUpload / removeMonth on the Supabase store', /listUploads\(supabasePvStore\(\)/.test(route) && /saveUpload\(supabasePvStore\(\)/.test(route) && /removeMonth\(supabasePvStore\(\)/.test(route));
-  check('the file route checks the shop through fileBytes', /fileBytes\(supabasePvStore\(\)/.test(file));
+  check('the route answers through listUploads / saveUpload / removeMonth on the storage store', /listUploads\(storagePvStore\(\)/.test(route) && /saveUpload\(storagePvStore\(\)/.test(route) && /removeMonth\(storagePvStore\(\)/.test(route));
+  check('the file route checks the shop through fileBytes', /fileBytes\(storagePvStore\(\)/.test(file));
   check('the screen keeps nothing in sessionStorage / localStorage', !/sessionStorage|localStorage/.test(ui));
   check('on opening it asks the server (refresh in the scope effect)', /useEffect\(\(\) => \{[\s\S]{0,200}void refresh\(\)/.test(ui));
   check('the tick only after the server answers with the file saved', /await refresh\(\[m\][\s\S]*saveSuccess\(/.test(ui) && !/saveSuccess\([\s\S]*savePdf\(/.test(ui));
   check('Generate asks the server again before building', /const generate = async \(\) => \{[\s\S]{0,200}await refresh\(\)/.test(ui));
   check('Replace PDF and Browse PDF on the card', /'Replace PDF'/.test(ui) && /'Browse PDF'/.test(ui));
-  const mig = readFileSync(join(root, 'supabase/migrations/0009_pv_uploads.sql'), 'utf8');
-  check('migration 0009: RLS on, no grants to anon / authenticated', /enable row level security/.test(mig) && /revoke all on table pv_upload_files from anon, authenticated/.test(mig));
+  const store = readFileSync(join(root, 'src/lib/pvUploads/storageStore.ts'), 'utf8');
+  const kit = readFileSync(join(root, 'src/lib/pvUploads/routeKit.ts'), 'utf8');
+  check('no migration needed: files in a private Storage bucket the server creates, details in crs_state under scope pv_upload',
+    !existsSync(join(root, 'supabase/migrations/0009_pv_uploads.sql')) && /createBucket\(PV_BUCKET, \{ public: false/.test(store) && /PV_SCOPE = 'pv_upload'/.test(store) && /\.eq\('version', version\)/.test(store));
+  check('the routes use that store, and tell the person a plain sentence (the detail goes to the server log)',
+    /storagePvStore\(\)/.test(route) && /storagePvStore\(\)/.test(file) && /Unable to save the PDF\. Please try again\./.test(kit) && !/migration|0009|table/i.test(kit.split('const PLAIN')[1]));
+  // Nothing else in the app reads crs_state outside scope 'global', so these records stay out of every store load.
+  const reads = ['src/app/api/state/route.ts', 'src/app/api/sync/route.ts', 'src/lib/clearExecute.ts', 'src/app/api/activity/route.ts'].map((f) => readFileSync(join(root, f), 'utf8'));
+  check("the app's own crs_state reads stay on scope global", reads.every((s) => /\.eq\('scope', 'global'\)/.test(s)));
 }
 
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');

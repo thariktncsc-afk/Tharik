@@ -19,8 +19,8 @@
  * a month that does not open where the last one closed stops the PV with the
  * difference, commodity by commodity, rather than printing it.
  *
- * THE UPLOADS ARE SAVED, per shop and month (office, 2026-10-06; migration
- * 0009, /api/pv-uploads). They used to live only in this browser tab, so a
+ * THE UPLOADS ARE SAVED, per shop and month (office, 2026-10-06;
+ * /api/pv-uploads — files in Storage, details in crs_state, no migration). They used to live only in this browser tab, so a
  * new tab, another computer or signing in again showed every month as never
  * uploaded. Now:
  *   - opening the screen asks the server what is saved and reads those PDFs —

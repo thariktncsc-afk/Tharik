@@ -5,7 +5,8 @@
  * A past month of the quarter is read from the office's own PDFs (CRS PAGE2,
  * GUNNY, CRS POLICE). They used to live only in the browser tab, so a new tab,
  * another computer or signing in again showed every month as never uploaded.
- * They are now saved per SHOP and MONTH (migration 0009, pv_upload_files):
+ * They are now saved per SHOP and MONTH (storageStore.ts: the files in a
+ * private Storage bucket, the details in crs_state — no migration to run):
  *
  *   - a month's active set is every saved file for that (crs, year, month);
  *   - "Replace PDF" saves the new file and removes the month's others — one
@@ -29,7 +30,7 @@ export type SavedPvFile = {
 /** A month's saved files, keyed `2026-9`. */
 export type SavedPvMonth = { year: number; month: number; fy: string; files: SavedPvFile[] };
 
-/** The stored row (pv_upload_files), without data_b64. */
+/** One saved file as the store holds it, without its bytes. */
 export type PvUploadRow = {
   id: number;
   crs_id: number;
