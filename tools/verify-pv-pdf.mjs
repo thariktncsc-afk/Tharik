@@ -114,6 +114,28 @@ console.log('\n3. The PDF the server makes');
         /Alagarsamy/.test(text) && /Prakash/.test(text) && /K\. Sivakumar/.test(text) && /SIGNATURE OF THE PHYSICAL VERIFICATION OFFICER/.test(text));
       await d.destroy();
     }
+    // ONE PAGE, ALWAYS (office, 2026-10-06): the page count the server checks is the real one,
+    // and even a sheet far taller than usual (a 40-line NOTE) comes out on one page, whole.
+    {
+      const many = Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of a long note — stack ${i + 1} re-counted`).join('\n');
+      for (const paper of ['A4', 'Legal']) {
+        const pdf = await R.pvSheetToPdf(sheet(paper, 20, { note: many }), F.fitPvSheet.toString());
+        const d = await pdfjs.getDocument({ data: new Uint8Array(pdf), verbosity: 0 }).promise;
+        const text = (await (await d.getPage(1)).getTextContent()).items.map((i) => i.str).join(' ');
+        check(`${paper}, a 40-line NOTE: ${d.numPages} page (server counted ${R.pdfPageCount(pdf)}); first and last note line, Police, signatures all on it`,
+          d.numPages === 1 && R.pdfPageCount(pdf) === 1 && /1\. WHEAT CONSIDER AS GUNNY/.test(text) && /41\. Line 40 of a long note/.test(text) && /Palm Oil \(Police\)/.test(text) && /SIGNATURE OF BILL CLERK WITH SEAL/.test(text) && /PHYSICAL VERIFICATION OFFICER/.test(text));
+        await d.destroy();
+      }
+      // The page counter against pdf.js, on a document that really has three pages.
+      const b = await (await import('puppeteer-core')).default.launch({ executablePath: chrome, headless: true });
+      const p = await b.newPage();
+      await p.setContent('<style>@page{size:A4}</style>' + '<div style="height:290mm">a</div>'.repeat(3));
+      const three = await p.pdf({ preferCSSPageSize: true });
+      await b.close();
+      const d3 = await pdfjs.getDocument({ data: new Uint8Array(three), verbosity: 0 }).promise;
+      check(`the server's page counter: ${R.pdfPageCount(three)} for a ${d3.numPages}-page PDF`, R.pdfPageCount(three) === d3.numPages && d3.numPages === 3);
+      await d3.destroy();
+    }
     // The drawing page reaches no network, even for markup the route would have refused.
     let hits = 0;
     const srv = http.createServer((q, r) => { hits++; r.end('x'); });
@@ -134,7 +156,8 @@ console.log('\n4. Route and screen');
   check('signed in only (401), a shop user their own shop only (403)', /Not signed in\.' \}, \{ status: 401/.test(route) && /session\.role !== 'ADMIN' && Number\(session\.crsId\) !== crsId[\s\S]{0,160}status: 403/.test(route));
   check('the sheet is checked before it is drawn, and drawn with the screen\'s fit', route.indexOf('pvSheetProblem(') < route.indexOf('pvSheetToPdf(') && /fitPvSheet\.toString\(\)/.test(route));
   check('each download is an activity-log row (Reports · exported)', /module: 'Reports',\s*action: 'exported'/.test(route));
-  check('Chrome is shipped with /api/pv/pdf on Vercel; 60 s allowed', /'\/api\/pv\/pdf': \['\.\/node_modules\/@sparticuz\/chromium\/bin\/\*\*'\]/.test(cfg) && /maxDuration = 60/.test(route));
+  check('Chrome and the Arial-metric font are shipped with /api/pv/pdf on Vercel; 60 s allowed',
+    /'\/api\/pv\/pdf': \['\.\/node_modules\/@sparticuz\/chromium\/bin\/\*\*', '\.\/node_modules\/pdfjs-dist\/standard_fonts\/LiberationSans-\*\.ttf'\]/.test(cfg) && /maxDuration = 60/.test(route));
   check('Reports: 📥 Download PDF for the PV on screen; 📥 Download All Shops for an administrator (Automatic)',
     /data-pv-download="one"/.test(page) && /isAdmin && pvSource === 'auto' \? \([\s\S]{0,80}data-pv-download="all"/.test(page));
   check('All Shops: one request per shop, the same sheet builder as the screen, zipped in the browser', /autoPvHtml\(id, '', pvPaper\)/.test(page) && /return autoPvHtml\(crsId, pvNote, pvPaper\)/.test(page) && /zipSync\(files\)/.test(page));
