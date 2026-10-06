@@ -2559,15 +2559,32 @@ Beside 🖨️ Print PV Statement:
 
 ### The Manual PV's uploads are saved
 
-Office, 2026-10-06 (`src/lib/pvUploads/`, `/api/pv-uploads`, migration
-**0009**, `npm run verify:pv-uploads`).
+Office, 2026-10-06 (`src/lib/pvUploads/`, `/api/pv-uploads`, `npm run
+verify:pv-uploads`). **No migration to run.**
 - **The problem**: the uploaded PDFs lived only in the browser tab
   (sessionStorage). A new tab, another computer or signing in again showed
   every month as "Browse PDF", and the office uploaded the same files again.
-- **Saved now**: `pv_upload_files` holds one row per file — CRS, year,
-  month, FY (`2026-27`), file name, size, sha256, the PDF itself (base64),
-  when and who.
-  - A month's active set is every row for that (crs, year, month).
+- **Where they are saved** (`storageStore.ts`):
+  - **The PDF files** go to a PRIVATE Supabase Storage bucket, `pv-uploads`,
+    at `<crs>/<year>-<month>/<id>.pdf`. The server creates the bucket itself
+    the first time it is needed (a Storage API call, not SQL).
+  - **The details** — CRS, month, FY (`2026-27`), each file's name, size,
+    sha256, path, who and when — are ONE small record per shop-month in the
+    existing `crs_state` table. It uses its own scope `pv_upload`, key
+    `pvupload:<crs>_<month>_<year>`, is written under `version` (two uploads
+    at once both land) and is audited like every store.
+  - Every other crs_state reader filters on `scope = 'global'`, so these
+    records never reach /api/state, live sync, clears or the backfill.
+  - **Why not a table**: the first version used `pv_upload_files`
+    (migration 0009). Migrations are not run on deploy, so on the live site
+    every upload failed with "the PV uploads table does not exist". 0009 was
+    dropped; the files never go through crs_state's audit, so no PDF is
+    stored twice.
+  - **Errors**: the person is told "Unable to save the PDF. Please try
+    again." (or read / remove / open). The technical detail goes to the
+    server log (`[api/pv-uploads] … failed:`), never to the screen.
+- **What a month holds**:
+  - A month's active set is every file in its record.
   - **Replace PDF** saves the new file, THEN removes the month's others: one
     active set, no history, and a failed save leaves the month as it was.
   - **Add PDF** keeps the others (a GUNNY beside its PAGE2).
@@ -2592,15 +2609,22 @@ Office, 2026-10-06 (`src/lib/pvUploads/`, `/api/pv-uploads`, migration
   so a PDF replaced in another tab or by another person is what the PV is
   built from. A month left without a PAGE2 refuses with "has no saved CRS
   PAGE2 now".
-- **Isolated by CRS**: every query is filtered by `crs_id`. A shop user
-  reaches their own shop only (403); another shop's file id answers 404.
-  The administrator reaches any shop. Each save, replace and remove is an
+- **Isolated by CRS**: every record is keyed by shop. A shop user reaches
+  their own shop only (403); another shop's file id answers 404. The
+  administrator reaches any shop. Each save, replace and remove is an
   activity-log row (Reports).
-- **Until 0009 is run** the route answers 503 "run …0009_pv_uploads.sql";
-  the screen shows it and saves nothing. Checked read only against live on
-  2026-10-06: the table did not exist yet.
-- **Localhost** (`npm run dev`), with the real handlers on an in-memory store
-  and the office's CRS 20 PDFs:
+- **Live, 2026-10-06** (the real handlers on `storagePvStore`, CRS 20's
+  nine office PDFs):
+  - saved Jul / Aug / Sep, and every file read back byte for byte;
+  - the record held no bytes, and the bucket is private;
+  - Replace removed the old files from the bucket, and their ids answer 404;
+  - two saves at the same moment were both kept;
+  - CRS 23 was isolated (403 / 404);
+  - then everything was removed again. Left on live: the bucket, empty
+    `pvupload:*` records and their audit rows.
+- **Localhost** (`npm run dev`), with the real handlers on the LIVE storage
+  store (2026-10-06; the test's uploads removed afterwards) and the office's
+  CRS 20 PDFs:
   - Upload July / August / September → 1, 2, 3 / 3.
   - The months stayed saved through a refresh, Dashboard and back, and a new
     browser profile, with no upload on opening.
@@ -2900,8 +2924,6 @@ of 22 shops' figures. Sheet names vary too (`CRS PAGE2`, `CRS PAGE2 `,
 - `0005_notifications.sql`, then `0007_notification_dedupe.sql`, too. Unlike 0004 nothing breaks without it — every
   approval proceeds and notifications are silently skipped — which is exactly
   why it is easy to forget: the bell just stays at zero forever
-- `0009_pv_uploads.sql` — until it is run, the Manual 3-Month PV cannot save
-  an upload (it says so; nothing else is affected)
 - Supabase free tier **pauses after 7 days idle and has no backups** — upgrade
   before real users depend on it
 

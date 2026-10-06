@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { SESSION_COOKIE, decodeSession, type Session } from '@/lib/session';
-import { MissingTableError, type Actor } from './server';
+import type { Actor } from './server';
 
 export async function actorOf(): Promise<{ session: Session | null; actor: Actor | null }> {
   const jar = await cookies();
@@ -28,9 +28,20 @@ export function todayIst(): { year: number; month: number } {
   return { year: Number(p.find((x) => x.type === 'year')!.value), month: Number(p.find((x) => x.type === 'month')!.value) };
 }
 
-export function failure(e: unknown) {
-  if (e instanceof MissingTableError) return NextResponse.json({ error: e.message }, { status: 503 });
-  console.error('[api/pv-uploads]', e);
-  return NextResponse.json({ error: 'The PDF could not be saved to the database. Nothing was changed — please try again.' }, { status: 500 });
+/** What the person is told when the database or storage fails — never its internals. */
+const PLAIN = {
+  list: 'Unable to read the saved PDFs. Please try again.',
+  save: 'Unable to save the PDF. Please try again.',
+  remove: 'Unable to remove the PDF. Please try again.',
+  file: 'Unable to open the saved PDF. Please try again.',
+} as const;
+
+/**
+ * A failure: the technical detail goes to the server log (Vercel → Logs) for
+ * whoever maintains the system; the person gets a plain sentence.
+ */
+export function failure(e: unknown, what: keyof typeof PLAIN) {
+  console.error(`[api/pv-uploads] ${what} failed:`, e instanceof Error ? e.message : e);
+  return NextResponse.json({ error: PLAIN[what] }, { status: 500 });
 }
 

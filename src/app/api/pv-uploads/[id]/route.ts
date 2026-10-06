@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 import { supabaseConfigured } from '@/lib/supabaseAdmin';
 import { fileBytes } from '@/lib/pvUploads/server';
 import { actorOf, failure } from '@/lib/pvUploads/routeKit';
-import { supabasePvStore } from '@/lib/pvUploads/supabaseStore';
+import { storagePvStore } from '@/lib/pvUploads/storageStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +18,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const { id } = await ctx.params;
     const { actor } = await actorOf();
-    const f = await fileBytes(supabasePvStore(), actor, Number(id));
+    const f = await fileBytes(storagePvStore(), actor, Number(id));
     if (f.status !== 200) return NextResponse.json({ error: f.error }, { status: f.status });
     return new NextResponse(Buffer.from(f.bytes!), {
       status: 200,
@@ -29,6 +29,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       },
     });
   } catch (e) {
-    return failure(e);
+    return failure(e, 'file');
   }
 }
