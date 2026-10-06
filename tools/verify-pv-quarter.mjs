@@ -595,5 +595,113 @@ console.log('\n5. The sheet: Annexure-I, one Legal landscape page');
   }
 }
 
+// ── 6. Our own Page 2 as a PDF, and the office's OAP FRK row ─────────────
+// (office, 2026-10-02 — CRS 20's July / August PDFs and the system's own
+// September workbook were all refused on the 3-Month PV upload.)
+console.log('\n6. Page 2 layouts the reader must know');
+{
+  // Our own printed Page 2: EXCESS / SHORT·AGE / TRANS·FER are headings with
+  // NO BAGS / KGS leaf under them (their figure sits straight below), and two
+  // of them break over two lines; the sheet ends with a summary box and a
+  // signature line; SUGAR(AAY) is spelt "SUGAR AAY". It was refused as
+  // "6 column headings but 5 sets of BAGS / KGS under them".
+  const sys = (rows) => {
+    const items = [
+      at('TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION', 200, 20),
+      at("Monthly report for the month of SEPTEMBER'2026", 240, 34),
+      at('NAME OF THE B.C : SOMEONE', 60, 48), at('CRS NO: 23', 500, 48),
+      at('OPENING', 125, 70), at('BALANCE', 126, 79),
+      at('RECEIPT', 215, 74),
+      at('EXCESS', 290, 79),
+      at('SHORT', 330, 74), at('AGE', 334, 83),
+      at('TRANS', 372, 74), at('FER', 376, 83),
+      at('TOTAL', 440, 74),
+      at('SALES', 560, 74),
+      at('CLOSING', 690, 70), at('BALANCE', 689, 79),
+      at('BAGS', 105, 90), at('KGS', 150, 90), at('BAGS', 195, 90), at('KGS', 240, 90),
+      at('BAGS', 420, 90), at('KGS', 465, 90), at('BAGS', 510, 90), at('KGS', 555, 90), at('RATE', 600, 90), at('AMOUNT', 640, 90),
+      at('BAGS', 680, 90), at('KGS', 725, 90),
+    ];
+    // right edges per field: a BAGS/KGS pair, or the one KGS cell under a leafless heading.
+    const E = { open: [128, 173], receipt: [218, 263], excess: [318], shortage: [358], transfer: [400], total: [443, 488], sales: [533, 578], closing: [703, 748] };
+    let y = 110;
+    let sl = 1;
+    for (const [label, v] of Object.entries(rows)) {
+      items.push(at(String(sl++), 22, y), at(label, 40, y));
+      for (const [f, val] of Object.entries(v)) {
+        const pair = Array.isArray(val) ? val : [val];
+        const e = E[f].length === 2 && pair.length === 1 ? [E[f][1]] : E[f];
+        pair.forEach((n, i) => { if (n !== '' && n !== undefined) items.push(rightAt(n, e[i], y)); });
+      }
+      y += 14;
+    }
+    items.push(at('Sales Amount', 560, y + 10), rightAt('73275.41', 748, y + 10), at('TOTAL', 560, y + 24), rightAt('73490.51', 748, y + 24), at('EXCESS', 560, y + 38), rightAt('8.49', 748, y + 38));
+    items.push(at('BILL CLERK : SOMEONE', 40, y + 70), at('AREA SUPERVISOR', 640, y + 70));
+    return items;
+  };
+  const rows = sys({
+    'B.RICE': { open: [47, 2316.998], receipt: [109, 5494], total: [156, 7810.998], sales: [114, 5706.998], closing: [42, 2104] },
+    SUGAR: { open: [14, 695.996], receipt: [24, 1230], excess: 0.006, total: [38, 1926.002], sales: [25, 1253.502], closing: [13, 672.5] },
+    'SUGAR AAY': { open: [0, 3], receipt: [0, 5], total: [0, 8], sales: [0, 5], closing: [0, 3] },
+    'NPHH FRK RRA': { open: [0, 0.004], total: [0, 0.004], closing: [0, 0.004] },
+    "PALM JAGGERY'S": {}, POLICE: {}, 'C.BOX': { sales: [71, ''], closing: [-71, ''] }, 'P.GUNNY': {},
+  });
+  const r = P.readPage2(rows);
+  const f = (id) => { const x = r[id]; return [x.open, x.receipt, x.excess, x.total, x.sales, x.closing].join('/'); };
+  check('the system\'s own Page 2 reads: headings with no leaf, split over two lines', !!r.BRA, J(Object.keys(r)));
+  check('B.RICE 2316.998 / 5494 / 0 / 7810.998 / 5706.998 / 2104', f('BRA') === '2316.998/5494/0/7810.998/5706.998/2104', f('BRA'));
+  check('SUGAR\'s EXCESS 0.006 lands in EXCESS, not in a bags column', f('SUGAR') === '695.996/1230/0.006/1926.002/1253.502/672.5', f('SUGAR'));
+  check('"SUGAR AAY" is SUGAR(AAY)', r.AAY_SUGAR?.total === 8, J(r.AAY_SUGAR));
+  check('the summary box and the signature line are not read as rows', !('TOTAL' in r) && !('EXCESS' in r) && Object.keys(r).length === 6, J(Object.keys(r)));
+
+  // The office's July sheet carries stock on its OAP FRK line — a commodity
+  // on the master — and was refused as "not a commodity this reader knows".
+  const office = page2(20, 7, { 'B.RICE': { open: [10, 500], receipt: [0, 0], total: [10, 500], sales: [2, 100], closing: [8, 400] }, 'OAP FRK': { open: [0, 20], total: [0, 20], closing: [0, 20] }, 'APS FRK': {}, 'PONGAL GIFT': {} });
+  const o = P.readPage2(office);
+  check('OAP FRK reads as OAP_FRK: 20 / 0 / 20 / 0 / 20', !!o.OAP_FRK && [o.OAP_FRK.open, o.OAP_FRK.total, o.OAP_FRK.closing].join('/') === '20/20/20', J(o.OAP_FRK));
+  check('APS FRK and PONGAL GIFT, printed empty, are stepped over', !('APS_FRK' in o) && Object.keys(o).length === 3, J(Object.keys(o)));
+  const bad = refused(() => P.readPage2(page2(20, 7, { 'B.RICE': { open: [10, 500], total: [10, 500], closing: [10, 500] }, 'APS FRK': { open: [0, 5], total: [0, 5], closing: [0, 5] } })));
+  check('a figure on a ruled-empty line (APS FRK) is refused, not dropped', !!bad && /"APS FRK" carries a figure/.test(bad), bad);
+}
+
+
+// ── 7. A TOTAL shown without decimals ────────────────────────────────────
+// (office, 2026-10-03 — CRS 20 JULY'26 PHH FRK 4411.48 printed as 4411,
+// NPHH FRK 4580.046 + transfer 20 as 4600; AUG'26 1.538 + 2500 as 2502.)
+console.log('\n7. A Total the workbook shows rounded to the kilo');
+{
+  const read = (row) => P.readPage2(page2(20, 7, { 'B.RICE': { open: [1, 50], total: [1, 50], closing: [1, 50] }, 'PHH FRK': row }));
+  const a = read({ open: [88, 4411.48], receipt: [0, 0], total: [88, 4411], sales: [88, 4409.942], closing: [0, 1.538] }).PHH_FRK;
+  check(`4411.48 printed as 4411 → the exact 4411.48 (the row proves it: − 4409.942 = 1.538)`, a.total === 4411.48 && a.closing === 1.538, J(a));
+  const b = read({ open: [0, 1.538], receipt: [50, 2500], total: [50, 2502], sales: [0, 1.538], closing: [50, 2500] }).PHH_FRK;
+  check(`1.538 + 2500 printed as 2502 → 2501.538`, b.total === 2501.538, J(b));
+  const c = read({ open: [91, 4580.046], transfer: 20, total: [91, 4600], sales: [90, 4579.874], closing: [1, 20.172] }).PHH_FRK;
+  check(`with a transfer: 4580.046 + 20 printed as 4600 → 4600.046, transfer in`, c.total === 4600.046 && c.transfer === 20, J(c));
+  const d = refused(() => read({ open: [88, 4411.48], total: [88, 4411], sales: [88, 4409.942], closing: [0, 1] }));
+  check('still refused when the Closing does not follow from the exact sum', !!d && /does not add up/.test(d), d);
+  const e = refused(() => read({ open: [88, 4411.48], total: [88, 4412], sales: [88, 4409.942], closing: [0, 2.058] }));
+  check('still refused when the printed Total is not the sum rounded (4412 for 4411.48)', !!e && /does not add up/.test(e), e);
+  const g = refused(() => read({ open: [88, 4411.48], total: [88, 4411.5], sales: [88, 4409.942], closing: [0, 1.558] }));
+  check('a Total printed WITH decimals is taken as printed, and refused if wrong', !!g && /does not add up/.test(g), g);
+}
+
+
+// ── 8. This system's own statements PDF as an uploaded month ────────────
+// (office, 2026-10-03 — CRS 20 September 2026: "Empty Polythene Bag: August
+// closes at 40, but September opens at 0".)
+console.log('\n8. Empty Card+Box / Polythene Bag on this system\'s own Page 2');
+{
+  const flow = (o) => ({ open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0, ...o });
+  const gunny = { ss50: { opening: 874, receipt: 426, total: 1300, issues: 1000, closing: 300 }, poly: { opening: 40, receipt: 32, total: 72, issues: 72, closing: 0 }, cbox: { opening: 1, receipt: 108, total: 109, issues: 109, closing: 0 } };
+  const ours = Q.pdfQuarterMonth({ crsId: 20, month: 9, year: 2026, rows: { BRA: flow({ open: 10, total: 10, closing: 10 }), EMPTY_BAG: flow({ sales: 72, closing: -72 }), EMPTY_BOX: flow({ sales: 109, closing: -109 }) }, gunny, police: null, notes: [], skipped: [] });
+  check(`a sales-only row (0 − 72 = −72) takes the GUNNY sheet's POLY: ${J(ours.rows.EMPTY_BAG)}`, J(ours.rows.EMPTY_BAG) === J(flow({ open: 40, receipt: 32, total: 72, sales: 72, closing: 0 })));
+  check(`…and C.BOX: 1 + 108 − 109 = 0`, ours.rows.EMPTY_BOX.open === 1 && ours.rows.EMPTY_BOX.closing === 0);
+  const office = Q.pdfQuarterMonth({ crsId: 20, month: 8, year: 2026, rows: { EMPTY_BAG: flow({ open: 55, receipt: 31, total: 86, sales: 46, closing: 40 }) }, gunny: { ...gunny, poly: { opening: 9, receipt: 9, total: 18, issues: 9, closing: 9 } }, police: null, notes: [], skipped: [] });
+  check('a row carrying stock of its own (the office\'s) is left as printed', office.rows.EMPTY_BAG.closing === 40 && office.rows.EMPTY_BAG.open === 55);
+  const noGunny = Q.pdfQuarterMonth({ crsId: 20, month: 9, year: 2026, rows: { EMPTY_BAG: flow({ sales: 72, closing: -72 }) }, gunny: null, police: null, notes: [], skipped: [] });
+  check('no GUNNY sheet uploaded: nothing to take, the row stays as printed', noGunny.rows.EMPTY_BAG.closing === -72);
+}
+
+
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');
 process.exit(failures ? 1 : 0);
