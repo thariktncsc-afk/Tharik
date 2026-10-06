@@ -306,9 +306,21 @@ console.log('\n2. Built pages — what a real file can throw');
   const bad2 = page2(9, 7, { 'B.RICE': { open: 1000, total: 1000, sales: 50, closing: 900 } });
   const r2 = refused(() => P.readPage2(bad2));
   check('a row whose Closing is not Total − Sales is refused', !!r2 && /Closing says 900/.test(r2), r2);
-  const bad3 = page2(9, 7, { 'MYSTERY DAL': { open: 1, total: 1, closing: 1 } });
-  const r3 = refused(() => P.readPage2(bad3));
-  check('an unknown row stops the read rather than being dropped', !!r3 && /MYSTERY DAL/.test(r3), r3);
+  // Office, 2026-10-06: an unknown row no longer refuses the sheet. Text without figures (a
+  // name, a caption) is stepped over; a row WITH figures is left out AND listed for review —
+  // never dropped without a word.
+  const bad3 = page2(9, 7, { 'B.RICE': { open: 100, total: 100, closing: 100 }, 'MYSTERY DAL': { open: 1, total: 1, closing: 1 } });
+  const rev3 = [];
+  const read3 = P.readPage2(bad3, rev3);
+  check(`an unknown row WITH figures: the sheet is still read (${Object.keys(read3).join(', ')}), the row listed for review — "${rev3[0]}"`, !!read3.BRA && rev3.length === 1 && /MYSTERY DAL/.test(rev3[0]));
+  const foot = page2(19, 9, { 'B.RICE': { open: 100, total: 100, closing: 100 }, 'PACKER : RAHAMATHULLAKHAN': {}, 'SUGAR': { open: 5, total: 5, closing: 5 } });
+  const rev4 = [];
+  const read4 = P.readPage2(foot, rev4);
+  check(`"PACKER : RAHAMATHULLAKHAN" (our own Page 2 for a Packer-only shop) ends the table — not a commodity, no error, nothing for review (${Object.keys(read4).join(', ')})`, !!read4.BRA && rev4.length === 0);
+  const txt = page2(9, 7, { 'B.RICE': { open: 100, total: 100, closing: 100 }, 'SOME CAPTION': {}, 'SUGAR': { open: 5, total: 5, closing: 5 } });
+  const rev5 = [];
+  const read5 = P.readPage2(txt, rev5);
+  check(`a line of text without figures inside the table is stepped over (${Object.keys(read5).join(', ')}), nothing for review`, !!read5.BRA && !!read5.SUGAR && rev5.length === 0);
 
   const g = gunnySheet(9, 7, {
     '50KG SS': { OPENING: 100, RECEIPT: 50, TOTAL: 150, ISSUES: 40, CLOSING: 110 },
@@ -352,8 +364,11 @@ console.log('\n2. Built pages — what a real file can throw');
   const twice = P.readMonthPages([...pages(9, 7), pages(9, 7)[0], pages(9, 7)[1]], JUL);
   check('the same sheets uploaded twice count once', twice.rows.BRA.open === 1000 && twice.gunny.ss50.opening === 1);
   const other = { file: 'p2-other.pdf', items: page2(9, 7, { 'B.RICE': { open: 900, total: 900, closing: 900 } }) };
-  const r7 = refused(() => P.readMonthPages([...pages(9, 7), other], JUL));
-  check('two PAGE2s for one month with DIFFERENT figures are refused', !!r7 && /second CRS PAGE2 for July 2026 with different figures/.test(r7), r7);
+  // Office, 2026-10-06: "the latest successfully uploaded PDF is the active one" — the later
+  // PAGE2 is used and the difference is put up for review; nothing is refused.
+  const m7 = P.readMonthPages([...pages(9, 7), other], JUL);
+  check(`two PAGE2s for one month with DIFFERENT figures: the later one is used (BRA open ${m7.rows.BRA.open}), the difference listed for review — "${m7.review[0]}"`,
+    m7.rows.BRA.open === 900 && m7.review.length === 1 && /p2-other\.pdf: its CRS PAGE2 differs from an earlier PDF's; the latest upload is used/.test(m7.review[0]));
   const r8 = refused(() => P.readMonthPages([...pages(9, 7).slice(0, 2), pages(10, 7)[2]], JUL));
   check('another shop\'s Police sheet among CRS 9\'s is refused — no mixing', !!r8 && /CRS 10's statement, not CRS 9's/.test(r8), r8);
   const r9 = refused(() => P.readMonthPages(pages(9, 8), JUL));
@@ -711,8 +726,9 @@ console.log('\n6. Page 2 layouts the reader must know');
   const o = P.readPage2(office);
   check('OAP FRK reads as OAP_FRK: 20 / 0 / 20 / 0 / 20', !!o.OAP_FRK && [o.OAP_FRK.open, o.OAP_FRK.total, o.OAP_FRK.closing].join('/') === '20/20/20', J(o.OAP_FRK));
   check('APS FRK and PONGAL GIFT, printed empty, are stepped over', !('APS_FRK' in o) && Object.keys(o).length === 3, J(Object.keys(o)));
-  const bad = refused(() => P.readPage2(page2(20, 7, { 'B.RICE': { open: [10, 500], total: [10, 500], closing: [10, 500] }, 'APS FRK': { open: [0, 5], total: [0, 5], closing: [0, 5] } })));
-  check('a figure on a ruled-empty line (APS FRK) is refused, not dropped', !!bad && /"APS FRK" carries a figure/.test(bad), bad);
+  const revA = [];
+  const readA = P.readPage2(page2(20, 7, { 'B.RICE': { open: [10, 500], total: [10, 500], closing: [10, 500] }, 'APS FRK': { open: [0, 5], total: [0, 5], closing: [0, 5] } }), revA);
+  check(`a figure on a ruled-empty line (APS FRK) is not dropped silently: the sheet is read, the line listed for review — "${revA[0]}"`, !!readA.BRA && revA.length === 1 && /"APS FRK" carries a figure/.test(revA[0]));
 }
 
 

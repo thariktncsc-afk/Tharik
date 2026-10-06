@@ -2470,8 +2470,25 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   Sales (July C.BOX 398 → August opens 398). A printed Closing, 0 included,
   is still read and checked.
 - The same file picked again (name + size) is not read twice; the same sheet
-  twice with identical figures counts once; with different figures it is
-  refused. A wrong shop or month, or an unknown commodity row, refuses it.
+  twice with identical figures counts once. A wrong shop or month refuses it.
+- **A reading problem never refuses a PDF** (office, 2026-10-06,
+  `verify:pv-quarter` §2 / §6).
+  - **The fault**: CRS 19's own September statement was refused with "the
+    row 'PACKER : RAHAMATHULLAKHAN' is not a commodity". Our Page 2 for a
+    Packer-only shop ends "PACKER : …", and the reader stopped only at
+    "BILL CLERK :".
+  - **Where a table ends** (`FOOT`, Page 2 and Police): BILL CLERK, PACKER,
+    P.K.R, B.C, NAME OF THE…, AREA SUPERVISOR, CONTACT, MOBILE, PHONE,
+    SIGNATURE, DATE, NOTE, CERTIFIED, PAGE n, the summary box.
+  - **A line that is not a commodity**: without figures it is text and is
+    stepped over. With figures it is left out and listed in
+    `PdfMonth.review`, so a real figure is never dropped without a word. A
+    figure on a ruled-empty line (APS FRK, PONGAL …) is treated the same.
+    Neither refuses the sheet any more.
+  - **Two PDFs with different figures for the same sheet**: the LATEST
+    upload is used (pages are read oldest first), and the difference is
+    listed for review. It used to be refused.
+  - Only `PdfReadError.code` 'wrong-shop' / 'wrong-month' refuse a file.
 - **Uploads are SAVED per shop and month** — see "The Manual PV's uploads are
   saved", below. (They used to live in this tab's sessionStorage only.)
 - **Police only where `__crsMaster[].police`** says so — the system month
@@ -2626,13 +2643,29 @@ verify:pv-uploads`). **No migration to run.**
   - The counter is the months whose saved files hold a PAGE2, with
     "Missing: …" under it.
   - Generate is on only when all are saved.
-- **Saving**: a PDF is read in the browser first, so a wrong shop or month
-  is refused before anything is sent. Then each file is POSTed raw (one per
-  request, ≤ 4 MB — a Vercel body is at most 4.5 MB; the office's PDFs run
-  24 KB – 1 MB).
-  - The card, the counter and the ✓ tick (`saveSuccess`) follow the
-    server's answer.
-  - A refused save shows "PDF not saved" and no tick.
+- **Saving: storage first, reading second** (office, 2026-10-06).
+  - **Refused before sending, and only these**: not a PDF, a file that will
+    not open, or another shop's or month's statement.
+  - **Everything else is saved**, each file on its own: one POST per file,
+    raw, ≤ 4 MB (a Vercel body is at most 4.5 MB; the office's PDFs run
+    24 KB – 1 MB). One failing never undoes another. Replace removes the
+    month's older files only once the first new file is saved.
+  - **The card**: a saved month says "✓ September PDF Saved" with its files
+    and when / who. Then the reading: the sheets read, or amber "⚠ Data
+    extraction needs review" with what was left out — never red, never
+    "PDF not saved".
+  - The ✓ tick (`saveSuccess`) follows the server's answer. "PDF not saved"
+    appears only for a file actually refused or failed, and names the
+    others that were saved.
+  - **Localhost, CRS 19 September as a manual month** (its system data
+    taken out of the test's copy), the office's five statement PDFs added
+    one by one, including the one that failed live:
+    - each saved: 1 → 5 on the server, no error dialog;
+    - (2).pdf read (21 commodities), the differing Page 2s up for review;
+    - after a refresh, 5 still there;
+    - with CRS 19's July / August, the PV built;
+    - CRS 20's PDF refused, the five untouched;
+    - Replace → 1, Remove → none.
 - **Generate asks the server again** and reads any file that changed since,
   so a PDF replaced in another tab or by another person is what the PV is
   built from. A month left without a PAGE2 refuses with "has no saved CRS

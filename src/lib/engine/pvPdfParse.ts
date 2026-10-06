@@ -73,9 +73,35 @@ export type PdfMonth = {
   notes: string[];
   /** Other sheets of the workbook that were stepped over (Page 1, RBI, B6…). */
   skipped: string[];
+  /**
+   * Rows the reader left out and wants a person to look at — a row it does
+   * not know that CARRIES FIGURES (office, 2026-10-06). The month is still
+   * read; the card says "Data extraction needs review".
+   */
+  review: string[];
 };
 
-export class PdfReadError extends Error {}
+/**
+ * A reading problem. `code` marks the two that refuse a file outright — it
+ * is another shop's or another month's statement; anything else is the
+ * extraction's, and the PDF is still saved (office, 2026-10-06).
+ */
+export class PdfReadError extends Error {
+  code?: 'wrong-shop' | 'wrong-month';
+  constructor(message: string, code?: 'wrong-shop' | 'wrong-month') {
+    super(message);
+    this.code = code;
+  }
+}
+
+/**
+ * Where a sheet's table ends: its foot — the summary box, the staff and
+ * signature lines (our own Page 2 prints "BILL CLERK : …", or "PACKER : …"
+ * for a shop with only a Packer), dates, notes, page numbers. None is a
+ * commodity; reading stops there (office, 2026-10-06: CRS 19's "PACKER :
+ * RAHAMATHULLAKHAN" was taken for an unknown commodity and the page refused).
+ */
+const FOOT = /^(BILL CLERK|PACKER|P\.?\s?K\.?\s?R\b|B\.?\s?C\b|AREA SUPERVISOR|AREA SUPERINTENDENT|SALES AMOUNT|REMITTANCE AMOUNT|NAME OF THE|CONTACT|MOBILE|PHONE|SIGNATURE|SIGN\b|DATE\b|NOTE\b|CERTIFIED|PAGE \d|TOTAL$|EXCESS$)/;
 
 const EPS = 0.001;
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -188,7 +214,7 @@ function labelOf(l: TextItem[], firstColX: number): string {
   return norm(text).replace(/^\d+[A-Z]?\s+/, '').replace(/^\d+[A-Z]?$/, '').trim();
 }
 
-export function readPage2(items: TextItem[]): Record<string, Flow> {
+export function readPage2(items: TextItem[], review: string[] = []): Record<string, Flow> {
   const ls = lines(items);
   // The sub-heading line: the one carrying the BAGS / KGS leaves.
   const leafLineIdx = ls.findIndex((l) => l.filter((i) => /^(BAGS|KGS)$/i.test(i.str.trim())).length >= 4);
@@ -276,12 +302,20 @@ export function readPage2(items: TextItem[]): Record<string, Flow> {
     if (!label) continue;
     // The table ends where the sheet's foot begins — the summary box and the
     // signature line (our own Page 2 prints "BILL CLERK : …" there).
-    if (/^(BILL CLERK|AREA SUPERVISOR|AREA SUPERINTENDENT|SALES AMOUNT|REMITTANCE AMOUNT|NAME OF THE|B.C|P.K.R|TOTAL$|EXCESS$)/.test(label)) break;
-    if (!(label in PAGE2_LABELS)) throw new PdfReadError(`CRS PAGE2: the row "${label}" is not a commodity this reader knows — nothing was read.`);
+    // (FOOT: also the staff lines, e.g. "PACKER : ..." for a shop with only a Packer.)
+    if (FOOT.test(label)) break;
+    const hasFigure = l.some((it) => it.x >= firstColX - 4 && NUMBER.test(it.str.trim()) && Number(it.str) !== 0);
+    // A line that is not a commodity is text, not data: a name, a heading,
+    // a stray caption, stepped over. Only one that CARRIES FIGURES is
+    // listed for review, so a real figure is never dropped without a word.
+    if (!(label in PAGE2_LABELS)) {
+      if (hasFigure) review.push(`CRS PAGE2: the row "${label}" has figures but is not a commodity this reader knows; left out.`);
+      continue;
+    }
     const id = PAGE2_LABELS[label];
     if (!id) {
-      if (PAGE2_PLACEHOLDERS.has(label) && l.some((it) => it.x >= firstColX - 4 && NUMBER.test(it.str.trim()) && Number(it.str) !== 0)) {
-        throw new PdfReadError(`CRS PAGE2: the row "${label}" carries a figure, but this reader has no commodity to place it in — nothing was read.`);
+      if (PAGE2_PLACEHOLDERS.has(label) && hasFigure) {
+        review.push(`CRS PAGE2: the row "${label}" carries a figure, but there is no commodity to place it in; left out.`);
       }
       continue;
     }
@@ -424,7 +458,7 @@ export function readGunny(items: TextItem[]): { gunny: Record<GunnyKey, GunnyFlo
 const POLICE_LABELS: Record<string, string> = { 'B.R.A': 'PB_BRA', BRA: 'PB_BRA', SUGAR: 'PB_SUGAR', WHEAT: 'PB_WHEAT', 'T.DHALL': 'PB_TOOR', 'T.DAL': 'PB_TOOR', 'P.OIL': 'PB_PALM' };
 const POLICE_COLS: Record<string, string> = { 'O.B': 'open', RECEIPT: 'receipt', TOTAL: 'total', SALES: 'sales', RATE: 'rate', AMOUNT: 'amount', 'C.B': 'closing' };
 
-export function readPolice(items: TextItem[]): Record<string, Flow> {
+export function readPolice(items: TextItem[], review: string[] = []): Record<string, Flow> {
   const ls = lines(items);
   const hdrIdx = ls.findIndex((l) => l.filter((i) => norm(i.str) in POLICE_COLS).length >= 5);
   if (hdrIdx < 0) throw new PdfReadError('CRS POLICE: the O.B / RECEIPT / TOTAL / SALES / C.B headings were not found.');
@@ -436,8 +470,15 @@ export function readPolice(items: TextItem[]): Record<string, Flow> {
   for (const l of ls.slice(hdrIdx + 1)) {
     const label = norm(l.filter((i) => i.x < firstColX - 4).map((i) => i.str).join(' ')).replace(/^\d+\s+/, '');
     if (!label || /TOTAL/.test(label)) continue;
+    if (FOOT.test(label)) break;
     const id = POLICE_LABELS[label];
-    if (!id) throw new PdfReadError(`CRS POLICE: the row "${label}" is not a police commodity this reader knows — nothing was read.`);
+    if (!id) {
+      // Text, not data — unless it carries figures, which a person should see.
+      if (l.some((it) => it.x >= firstColX - 4 && NUMBER.test(it.str.trim()) && Number(it.str) !== 0)) {
+        review.push(`CRS POLICE: the row "${label}" has figures but is not a police commodity this reader knows — left out.`);
+      }
+      continue;
+    }
     const v: Record<string, number> = {};
     for (const it of l) {
       if (it.x < firstColX - 4 || !NUMBER.test(it.str.trim())) continue;
@@ -458,7 +499,7 @@ export function readPolice(items: TextItem[]): Record<string, Flow> {
 // ── A page, and a month ───────────────────────────────────────────────────
 
 /** One page: which sheet, whose, which month — then its table. */
-export function readPage(items: TextItem[]): PageRead {
+export function readPage(items: TextItem[], review: string[] = []): PageRead {
   const kind = pageKindOf(items);
   if (!kind) throw new PdfReadError('This page is not a CRS PAGE2, GUNNY STOCK or CRS POLICE sheet.');
   const titleText = lines(items).slice(0, 8).map(lineText).join(' ');
@@ -467,8 +508,8 @@ export function readPage(items: TextItem[]): PageRead {
   const name = kind === 'page2' ? 'CRS PAGE2' : kind === 'gunny' ? 'GUNNY' : 'CRS POLICE';
   if (!my) throw new PdfReadError(`${name}: the month was not found in its title.`);
   if (!crsId) throw new PdfReadError(`${name}: the CRS number was not found in its title.`);
-  if (kind === 'page2') return { kind, crsId, ...my, rows: readPage2(items) };
-  if (kind === 'police') return { kind, crsId, ...my, rows: readPolice(items) };
+  if (kind === 'page2') return { kind, crsId, ...my, rows: readPage2(items, review) };
+  if (kind === 'police') return { kind, crsId, ...my, rows: readPolice(items, review) };
   const g = readGunny(items);
   return { kind, crsId, ...my, gunny: g.gunny, notes: g.notes };
 }
@@ -495,6 +536,7 @@ export function readMonthPages(
   let police: Record<string, Flow> | null = null;
   let notes: string[] = [];
   const skipped: string[] = [];
+  const review: string[] = [];
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   for (const p of pages) {
     if (!p.items.some((i) => i.str.trim())) continue; // a blank page
@@ -503,22 +545,24 @@ export function readMonthPages(
       continue;
     }
     let r: PageRead;
+    const pageReview: string[] = [];
     try {
-      r = readPage(p.items);
+      r = readPage(p.items, pageReview);
     } catch (e) {
       throw new PdfReadError(`${p.file} could not be read — ${e instanceof Error ? e.message : String(e)} Please upload the correct PDF.`);
     }
-    if (r.crsId !== want.crsId) throw new PdfReadError(`${p.file}: this is CRS ${r.crsId}'s statement, not CRS ${want.crsId}'s.`);
-    if (r.month !== want.month || r.year !== want.year) throw new PdfReadError(`${p.file}: this is ${MN[r.month]} ${r.year}, not ${mon}.`);
+    for (const w of pageReview) if (!review.includes(`${p.file}: ${w}`)) review.push(`${p.file}: ${w}`);
+    if (r.crsId !== want.crsId) throw new PdfReadError(`${p.file}: this is CRS ${r.crsId}'s statement, not CRS ${want.crsId}'s.`, 'wrong-shop');
+    if (r.month !== want.month || r.year !== want.year) throw new PdfReadError(`${p.file}: this is ${MN[r.month]} ${r.year}, not ${mon}.`, 'wrong-month');
     if (r.kind === 'page2') {
-      if (page2 && !same(page2, r.rows)) throw new PdfReadError(`${p.file}: a second CRS PAGE2 for ${mon} with different figures — remove the wrong one.`);
+      if (page2 && !same(page2, r.rows)) review.push(`${p.file}: its CRS PAGE2 differs from an earlier PDF's; the latest upload is used.`);
       page2 = r.rows;
     } else if (r.kind === 'gunny') {
-      if (gunny && !same(gunny, r.gunny)) throw new PdfReadError(`${p.file}: a second GUNNY sheet for ${mon} with different figures — remove the wrong one.`);
+      if (gunny && !same(gunny, r.gunny)) review.push(`${p.file}: its GUNNY sheet differs from an earlier PDF's; the latest upload is used.`);
       gunny = r.gunny;
       notes = r.notes;
     } else {
-      if (police && !same(police, r.rows)) throw new PdfReadError(`${p.file}: a second CRS POLICE for ${mon} with different figures — remove the wrong one.`);
+      if (police && !same(police, r.rows)) review.push(`${p.file}: its CRS POLICE differs from an earlier PDF's; the latest upload is used.`);
       police = r.rows;
     }
   }
@@ -529,5 +573,5 @@ export function readMonthPages(
     if (likely.length) throw new PdfReadError(`${mon} CRS PAGE2 could not be read — ${likely.join(', ')} is not laid out as a CRS PAGE2. Please upload the correct PDF.`);
     throw new PdfReadError(`${mon}: still needs CRS PAGE2.`);
   }
-  return { crsId: want.crsId, month: want.month, year: want.year, rows: page2, gunny, police, notes, skipped };
+  return { crsId: want.crsId, month: want.month, year: want.year, rows: page2, gunny, police, notes, skipped, review };
 }
