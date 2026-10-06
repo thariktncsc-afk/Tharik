@@ -410,12 +410,12 @@ const gun = (a, b, c) => ({ ss50: a, poly: b, cbox: c });
 
   const { commMap, gunny, gunnyNotes } = Q.quarterPvInputs(q);
   check('PV TOTAL = Opening + Receipt + Transfer + Excess (TOOR 400 + 20 + 20)', commMap.TOOR.total === 440 && commMap.TOOR.issues === 140);
-  const html = S.buildPVTable({ commMap, gunny, gunnyNotes, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'X', billClerk: 'B' });
+  const html = S.buildPVTable({ commMap, gunny, gunnyNotes, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'X', staff: { bc: 'B' } });
   check('the Gunny note prints in the NOTE row at the foot, once — not under the Gunny rows', /<b>NOTE:<\/b> <span class="note-text">WHEAT CONSIDER AS GUNNY<\/span>/.test(html) && (html.match(/WHEAT CONSIDER AS GUNNY/gi) ?? []).length === 1 && !/pv-gunny-note/.test(html));
   const POLICE_HEAD = /class="l sec">Police<\/td>/;
   check('the police section prints for a police shop, with its rows', POLICE_HEAD.test(html) && /BRA Rice \(Police\)/.test(html));
   check('Preview and Print are one document: the same builder, the same bytes',
-    html === S.buildPVTable({ commMap, gunny, gunnyNotes, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'X', billClerk: 'B' }));
+    html === S.buildPVTable({ commMap, gunny, gunnyNotes, periodLabel: 'JUL-2026 TO SEP-2026', crsId: 9, crsName: 'X', staff: { bc: 'B' } }));
 
   // Mismatch: August opens at something other than July's closing.
   const augBad = { ...aug, rows: { ...aug.rows, BRA: F(3400, 0, 350) } };
@@ -432,7 +432,7 @@ const gun = (a, b, c) => ({ ss50: a, poly: b, cbox: c });
   // No police shop.
   const np = Q.chainQuarter(10, [{ ...jul, police: null }, { ...aug, police: null }, { ...sep, police: null }]);
   check('a shop without police: no police rows at all', np.ok && np.police === null);
-  const npHtml = S.buildPVTable({ ...Q.quarterPvInputs(np), periodLabel: 'P', crsId: 10, crsName: 'X', billClerk: 'B' });
+  const npHtml = S.buildPVTable({ ...Q.quarterPvInputs(np), periodLabel: 'P', crsId: 10, crsName: 'X', staff: { bc: 'B' } });
   check('…and no police section on its PV — not even an empty heading', !POLICE_HEAD.test(npHtml) && !/\(Police\)/.test(npHtml));
 
   // Police ration given in August: the police section starts there.
@@ -455,7 +455,7 @@ const gun = (a, b, c) => ({ ss50: a, poly: b, cbox: c });
 
   // No note anywhere: no note line.
   const nn = Q.chainQuarter(9, [{ ...jul, notes: [] }, { ...aug, notes: [] }, sep]);
-  const nnHtml = S.buildPVTable({ ...Q.quarterPvInputs(nn), periodLabel: 'P', crsId: 9, crsName: 'X', billClerk: 'B' });
+  const nnHtml = S.buildPVTable({ ...Q.quarterPvInputs(nn), periodLabel: 'P', crsId: 9, crsName: 'X', staff: { bc: 'B' } });
   check('no note in the PDFs: the NOTE row stands empty', /<b>NOTE:<\/b><\/td>/.test(nnHtml) && !/pv-gunny-note/.test(nnHtml));
 }
 
@@ -529,7 +529,7 @@ console.log('\n5. The sheet: Annexure-I, one Legal landscape page');
     commMap[c.id] = { name: c.en, unit: c.unit, open: 13312, receipt: 11376.5, total: 23242.5, issues: 10927.22, closing: 12299.78, amount: 0, free: !!c.free, transfer: -1456, shortage: 15.5, excess: 10 };
   }
   commMap.WHEAT = { ...commMap.WHEAT, shortage: 0, excess: 0, total: 23232.5, closing: 12305.28 };
-  const html = S.buildPVTable({ commMap, periodLabel: '1.07.2026 TO 30.09.2026', crsId: 30, crsName: 'CRS 30', gunny: { ss50: { opening: 162, receipt: 605, total: 767, issues: 0, closing: 767 } }, gunnyNotes: ['WHEAT 46 CONSIDER AS GUNNY'], billClerk: 'BC' });
+  const html = S.buildPVTable({ commMap, periodLabel: '1.07.2026 TO 30.09.2026', crsId: 30, crsName: 'CRS 30', gunny: { ss50: { opening: 162, receipt: 605, total: 767, issues: 0, closing: 767 } }, gunnyNotes: ['WHEAT 46 CONSIDER AS GUNNY'], staff: { bc: 'BC' } });
   const css = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
   check('38 columns, as the office\'s Annexure-I (B:AM)', S.PV_COLS === 38);
   check('the columns add up to the printed table: Legal less 18 mm each side', Math.abs(S.PV_TABLE_MM - (355.6 - 36)) < 0.01);
@@ -714,7 +714,7 @@ console.log('\n9. Bag counts: carried from Page 2, Closing = the latest month\'s
   const brk = Q.periodBags([bf(88, 0, 88), bf(0, 50, 0), bf(52, 40, 18)]); // September opens at 52 bags (typed), not August's 50
   check(`a broken carry: Closing stays September's 74 and Issues absorbs it (${brk.issues}); Receipt is never touched (${brk.receipt})`, brk.closing === 74 && brk.receipt === 90 && brk.total - brk.issues === brk.closing);
   check('a month with no bag counts → none for the period (kgs ÷ pack, as before)', Q.periodBags([bf(1, 1, 1), undefined]) === undefined);
-  const html = S.buildPVTable({ commMap: { PHH_FRK: { name: 'PHH FRK Rice', unit: 'KG', open: 4411.48, receipt: 4500, total: 8911.48, issues: 5326.48, closing: 3585, amount: 0, free: true, bags: p } }, periodLabel: 'Q', crsId: 20, crsName: '', gunny: {}, billClerk: '', pvOfficer: '', pvDate: '' });
+  const html = S.buildPVTable({ commMap: { PHH_FRK: { name: 'PHH FRK Rice', unit: 'KG', open: 4411.48, receipt: 4500, total: 8911.48, issues: 5326.48, closing: 3585, amount: 0, free: true, bags: p } }, periodLabel: 'Q', crsId: 20, crsName: '', gunny: {}, staff: {}, pvOfficer: '', pvDate: '' });
   const row = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1].replace(/<[^>]+>/g, '').trim())).find((c) => c.includes('PHH FRK Rice'));
   check(`the PV prints the carried bags: 88 · 90 · 178 · 106 · 72 with the kgs untouched (${row?.filter(Boolean).join(' ')})`, !!row && ['88', '4411.480', '90', '4500', '178', '8911.480', '106', '5326.480', '72', '3585'].every((v) => row.includes(v)) && !row.includes('71'));
   // Bags read off an uploaded PAGE2
@@ -731,7 +731,7 @@ console.log('\n10. The PV\'s commodity rows and its NOTE row');
   const row = (name, unit = 'KG') => ({ name, unit, open: 1, receipt: 0, total: 1, issues: 0, closing: 1, amount: 0, free: true });
   const commMap = { BRA: row('BRA Rice'), TAN: row('TAN', 'PKT'), EMPTY_BOX: row('Empty Card+Box', 'NOS'), EMPTY_BAG: row('Empty Polythene Bag', 'NOS'), PB_BRA: row('BRA Rice (Police)') };
   const gunny = { ss50: { opening: 1, receipt: 0, total: 1, issues: 0, closing: 1 }, poly: { opening: 33, receipt: 95, total: 128, issues: 128, closing: 0 }, cbox: { opening: 66, receipt: 324, total: 390, issues: 390, closing: 0 } };
-  const html = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, billClerk: '', note: 'Stack 4 re-counted on site.\nWheat consider as gunny <ok>' });
+  const html = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, staff: {}, note: 'Stack 4 re-counted on site.\nWheat consider as gunny <ok>' });
   const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1].replace(/<[^>]+>/g, '').trim()));
   const named = (n) => rows.find((c) => c[1] === n);
   check('Empty Card+Box and Empty Polythene Bag are not commodity rows', !named('Empty Card+Box') && !named('Empty Polythene Bag'));
@@ -742,11 +742,37 @@ console.log('\n10. The PV\'s commodity rows and its NOTE row');
   check(`the NOTE row is one cell across all ${S.PV_COLS} columns`, !!noteTd && Number(noteTd[1]) === S.PV_COLS);
   check('"NOTE:" bold, then the note, its lines kept, its text escaped', /^<b>NOTE:<\/b> <span class="note-text">Stack 4 re-counted on site\.<br>Wheat consider as gunny &lt;ok&gt;<\/span>$/.test(noteTd?.[2] ?? ''), noteTd?.[2]);
   check('the NOTE cell wraps, sits at the top and has room for about four lines', /td\.note\{white-space:normal;vertical-align:top;height:15mm;/.test(html));
-  const blank = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, billClerk: '' });
+  const blank = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, staff: {} });
   check('no note typed → "NOTE:" alone, the space left for a hand-written note', /<td colspan="\d+" class="l f note"><b>NOTE:<\/b><\/td>/.test(blank));
-  const both = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, billClerk: '', gunnyNotes: ['WHEAT CONSIDER AS GUNNY'], note: 'wheat consider as gunny\nStack 4 re-counted.' });
+  const both = S.buildPVTable({ commMap, periodLabel: 'Q', crsId: 20, crsName: '', gunny, staff: {}, gunnyNotes: ['WHEAT CONSIDER AS GUNNY'], note: 'wheat consider as gunny\nStack 4 re-counted.' });
   check('Gunny\'s note and a typed note share the NOTE row: Gunny\'s first, a repeat dropped', /<b>NOTE:<\/b> <span class="note-text">WHEAT CONSIDER AS GUNNY<br>Stack 4 re-counted\.<\/span>/.test(both) && (both.match(/consider as gunny/gi) ?? []).length === 1);
   check('the Gunny section ends at C.BOX: no note row inside it', !/pv-gunny-note/.test(both) && /C\.BOX[\s\S]*?<\/tr>(<tr><td colspan="\d+" class="l sec">Police|<\/tbody>)/.test(both));
+}
+
+// ─── 11. The PV names the shop's own BC and Packer (office, 2026-10-06) ─────
+{
+  console.log("\n§11  NAME OF THE BILL CLERK / P.K.R — the selected shop's staff, never the signed-in user");
+  const A = await imp('src/lib/engine/staffAssignment.ts');
+  const u = (id, fullName, role, crsId, active = true) => ({ id, fullName, username: 'crs' + crsId, phone: '', role, crsId, active });
+  const roster = [
+    u(1, 'Administrator', 'ADMIN', null),
+    u(2, 'Saravanan', 'BC', 23), u(3, 'RamaMoorthy', 'Packer', 23),
+    u(4, 'Anand', 'Packer', 8),
+    u(5, 'Old Clerk', 'BC', 8, false),
+    u(6, 'Kumar', 'BC', 9),
+  ];
+  const at = (crsId) => S.buildPVTable({ commMap: {}, periodLabel: 'Q', crsId, crsName: '', gunny: {}, staff: A.shopStaffNames(roster, crsId) });
+  const head = (h) => (h.match(/<tr><td colspan="21" class="l t2">((?:(?!<\/td>).)*NAME OF THE (?:BILL CLERK|P\.K\.R)(?:(?!<\/td>).)*)<\/td>/) ?? [])[1] ?? '';
+  const sig = (h) => (h.match(/SIGNATURE OF ([A-Z. ]+?) WITH SEAL/) ?? [])[1];
+  const h23 = at(23), h8 = at(8), h9 = at(9), h4 = at(4);
+  check('CRS 23, both posts: BILL CLERK Saravanan, then P.K.R RamaMoorthy', head(h23) === '<b>NAME OF THE BILL CLERK :</b> Saravanan<br><b>NAME OF THE P.K.R :</b> RamaMoorthy', head(h23));
+  check('CRS 8, a Packer only (its inactive BC left out): the P.K.R line alone, signed by the P.K.R', head(h8) === '<b>NAME OF THE P.K.R :</b> Anand' && sig(h8) === 'P.K.R', head(h8));
+  check('CRS 9, a Bill Clerk only: the BILL CLERK line alone', head(h9) === '<b>NAME OF THE BILL CLERK :</b> Kumar' && sig(h9) === 'BILL CLERK', head(h9));
+  check('CRS 4, nobody assigned: the Bill Clerk line with its ruled blank', head(h4) === '<b>NAME OF THE BILL CLERK :</b> ____________', head(h4));
+  check("no shop's PV names the administrator or another shop's staff", ![h23, h8, h9, h4].some((h) => /Administrator/.test(h)) && !/Anand|Kumar/.test(h23) && !/Saravanan|Kumar/.test(h8));
+  roster[1].role = 'Packer'; roster[2].role = 'BC';
+  check('a role swapped on the Users screen swaps the lines on the next build', head(at(23)) === '<b>NAME OF THE BILL CLERK :</b> RamaMoorthy<br><b>NAME OF THE P.K.R :</b> Saravanan');
+  check('a name is escaped', /NAME OF THE BILL CLERK :<\/b> A &amp; B/.test(S.buildPVTable({ commMap: {}, periodLabel: 'Q', crsId: 1, crsName: '', gunny: {}, staff: { bc: 'A & B' } })));
 }
 
 
