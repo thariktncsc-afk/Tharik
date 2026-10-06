@@ -2802,6 +2802,37 @@ verify:pv-gunny`).
     at 15 px (before the fit).
   - **NOTE is as tall as its notes**: no fixed height. One note stays on the
     NOTE line; several are numbered, one a line.
+- **ONE SHEET, ALWAYS** (office, 2026-10-06, `verify:pv-quarter` §5,
+  `verify:pv-pdf` §3).
+  - **The fault**: the office's Chrome print AND the downloaded PDF (Vercel's
+    Linux Chrome) put the NOTE, certificate and signatures on a SECOND sheet
+    under a repeated heading — with room left on the first. It never
+    happened in Chrome here, at any screen scaling.
+  - **The cause**: the sheet was enlarged with CSS `zoom`, which a print
+    lays out afresh, and Chrome versions paginate a zoomed table (and its
+    repeating `<thead>` / `<tfoot>`) differently.
+  - **The fix**:
+    - **The scale is a `transform`** (`pvFit.ts`), never `zoom`. A transform
+      is painted, not laid out again, so the paper is exactly the screen.
+    - **In print the page is ONE box** of the printable size (1 mm spare)
+      that clips. The heading and footer print as ordinary rows
+      (`display:table-row-group`), so nothing can repeat or be carried
+      over, and no row breaks.
+    - **The server** (`pvSheetToPdf`) fits the sheet in PRINT media and
+      counts the PDF's pages (`pdfPageCount`). If it is ever more than one,
+      it shrinks the sheet 4 % and draws again (up to 6 times). It embeds
+      Liberation Sans as Arial (pdf.js's standard font, OFL, same widths),
+      so Vercel measures text as an office PC does; the font is shipped with
+      the route (`outputFileTracingIncludes`).
+  - **Checked**:
+    - a print laid out ~20 % taller than the screen measured is still one
+      sheet (A4 and Legal);
+    - a 40-line NOTE downloads as one page with every line and both
+      signatures;
+    - the page counter agrees with pdf.js.
+  - **Not yet on the PDF**: the shop's Tamil name. Vercel's Chrome has no
+    Tamil font, so the downloaded PDF reads "NAME OF THE CRS : 20 —"; the
+    browser print has it.
 - **Laid out in millimetres, never against the window**: on screen the sheet
   is the chosen page (its scroller scrolls on a narrow window); in print the
   same table at the same width. The old one was a `min-width:1400px` screen

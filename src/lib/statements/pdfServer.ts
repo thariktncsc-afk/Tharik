@@ -84,21 +84,62 @@ export async function pvSheetToPdf(sheet: string, fitSource: string): Promise<Ui
     await page.setRequestInterception(true);
     page.on('request', (r) => {
       if (r.isInterceptResolutionHandled()) return;
-      void r.abort('blockedbyclient');
+      // Only the fonts this function embeds (data: URLs); nothing else, anywhere.
+      if (r.url().startsWith('data:')) void r.continue();
+      else void r.abort('blockedbyclient');
     });
     await page.setViewport({ width: 1600, height: 1000 });
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#fff}</style></head><body>${sheet}</body></html>`;
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><style>${await pvFontCss()}html,body{margin:0;background:#fff}</style></head><body>${sheet}</body></html>`;
     await page.setContent(doc, { waitUntil: 'load', timeout: 30000 });
     await page.evaluate(async () => {
       await document.fonts?.ready;
     });
-    const fit = await page.evaluate(`(${fitSource})(document)`);
-    if (!fit) throw new Error('The PV sheet could not be laid out.');
-    const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false, timeout: 45000 });
-    return pdf;
+    // Measured in PRINT, as the paper will lay it out; then printed, and the
+    // pages counted. One page, always: if a PDF ever came out longer, the
+    // sheet is taken down a little and drawn again (office, 2026-10-06).
+    await page.emulateMediaType('print');
+    for (let attempt = 0, shrink = 1; attempt < 6; attempt++, shrink *= 0.96) {
+      const fit = await page.evaluate(`(${fitSource})(document, { shrink: ${shrink} })`);
+      if (!fit) throw new Error('The PV sheet could not be laid out.');
+      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false, timeout: 45000 });
+      if (pdfPageCount(pdf) === 1) return pdf;
+    }
+    throw new Error('The PV would not fit on one page.');
   } finally {
     await page.close().catch(() => undefined);
   }
+}
+
+/** How many pages a PDF from Chrome has (its page objects, `/Type /Page`). */
+export function pdfPageCount(pdf: Uint8Array): number {
+  const text = Buffer.from(pdf).toString('latin1');
+  return (text.match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? []).length;
+}
+
+let fontCss: Promise<string> | null = null;
+/**
+ * Liberation Sans (SIL OFL, shipped with pdf.js) standing in for Arial — the
+ * same character widths, so a server without Arial (Vercel's Linux Chrome)
+ * measures and prints the PV exactly as an office PC does.
+ */
+function pvFontCss(): Promise<string> {
+  if (!fontCss) {
+    fontCss = (async () => {
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      const dir = path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts');
+      const face = async (file: string, weight: number) => {
+        try {
+          const b64 = (await fs.readFile(path.join(dir, file))).toString('base64');
+          return `@font-face{font-family:Arial;font-weight:${weight};font-style:normal;src:url(data:font/ttf;base64,${b64}) format('truetype')}`;
+        } catch {
+          return ''; // the machine's own fonts, then
+        }
+      };
+      return (await face('LiberationSans-Regular.ttf', 400)) + (await face('LiberationSans-Bold.ttf', 700)) + (await face('LiberationSans-Bold.ttf', 800));
+    })();
+  }
+  return fontCss;
 }
 
 /**

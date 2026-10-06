@@ -445,7 +445,9 @@ export function buildPVTable(opts: {
     // The sheet. Its own rules, scoped to it, so the app's table styles
     // (globals.css) cannot reach a cell and the paper is the same everywhere.
     `#pv-print-area .pv-paper{box-sizing:border-box;width:${P.wMm}mm;height:${P.hMm}mm;padding:${M}mm;` +
-    'margin:0 auto;background:#fff;color:#000;box-shadow:0 1px 6px rgba(15,23,42,.18)}' +
+    'margin:0 auto;background:#fff;color:#000;box-shadow:0 1px 6px rgba(15,23,42,.18);overflow:hidden}' +
+    // The scaled sheet (pvFit.ts: a transform from its top-left corner).
+    '#pv-print-area .pv-fit{transform-origin:0 0}' +
     '#pv-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-family:Arial,sans-serif;color:#000}' +
     // The fitted width (pvFit.ts) is the table's own: print.css's
     // `max-width:100%` for wide screen tables must not undo it.
@@ -477,12 +479,20 @@ export function buildPVTable(opts: {
     // top-left of the chosen page inside its margins, at exactly the width and
     // scale it has on screen. ABSOLUTE, not fixed: a fixed element prints its
     // first page and nothing after it.
+    //
+    // ONE SHEET, ALWAYS (office, 2026-10-06): the page is ONE box of the
+    // printable size (a millimetre spare) that clips, and the table's heading
+    // and footer print as ordinary rows — a <thead> / <tfoot> is what Chrome
+    // repeats and carries to a next sheet. Nothing is left that a browser
+    // could put on a second page; the fit keeps everything inside the box.
     '@media print{' +
     `@page{size:${P.css};margin:${M}mm}` +
     'body *{visibility:hidden}#pv-print-area,#pv-print-area *{visibility:visible}' +
-    '#pv-print-area{position:absolute;top:0;left:0;width:100%;z-index:9999;padding:0}' +
-    '#pv-print-area .pv-scroll{overflow:visible!important}' +
-    `#pv-print-area .pv-paper{width:${box.wMm}mm;height:auto;padding:0;margin:0;box-shadow:none;overflow:visible}` +
+    `#pv-print-area{position:absolute;top:0;left:0;width:100%;height:${box.hMm - 1}mm;overflow:hidden;z-index:9999;padding:0;break-inside:avoid;page-break-inside:avoid}` +
+    '#pv-print-area .pv-scroll{overflow:hidden!important;padding:0!important}' +
+    `#pv-print-area .pv-paper{width:${box.wMm}mm;height:${box.hMm - 1}mm;padding:0;margin:0;box-shadow:none;overflow:hidden;break-inside:avoid;page-break-inside:avoid}` +
+    '#pv-tbl thead,#pv-tbl tfoot{display:table-row-group}' +
+    '#pv-tbl tr{break-inside:avoid;page-break-inside:avoid}' +
     '#pv-tbl td{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     '}';
 
