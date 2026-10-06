@@ -78,7 +78,26 @@ const GZERO: GunnyFlow = { opening: 0, receipt: 0, total: 0, issues: 0, closing:
  * prints no police section, so a police sheet uploaded for it is left out.
  */
 export function pdfQuarterMonth(m: PdfMonth, hasPolice = true): QuarterMonth {
-  return { label: monthLabel(m.month, m.year), source: 'pdf', rows: m.rows, gunny: m.gunny, police: hasPolice ? m.police : null, notes: m.notes };
+  // This system's own Page 2 prints Empty Card+Box / Empty Polythene Bag as
+  // SALES ONLY (Opening 0, Closing −sales): their stock is Gunny Stock
+  // Management's C.BOX / POLY (office, 2026-09-26/27). The office's workbook
+  // carries that stock on the same rows. So a statements PDF printed from
+  // this system (CRS 20 September 2026) chained as "August closes at 40,
+  // September opens at 0" (office, 2026-10-03). When the month's GUNNY sheet
+  // was uploaded and the PAGE2 row is sales-only, the row is the Gunny row —
+  // exactly what systemQuarterMonth does for the system's own month. A row
+  // that carries stock of its own (the office's) is left as printed.
+  const rows = { ...m.rows };
+  if (m.gunny) {
+    for (const [id, k] of [['EMPTY_BAG', 'poly'], ['EMPTY_BOX', 'cbox']] as const) {
+      const r = rows[id];
+      const g = m.gunny[k];
+      const salesOnly = !r || (!r.open && !r.receipt && !r.excess && !r.shortage && !r.transfer && !r.total && Math.abs(r.closing + r.sales) < 0.001);
+      if (!salesOnly) continue;
+      rows[id] = { open: g.opening, receipt: g.receipt, excess: 0, shortage: 0, transfer: 0, total: g.total, sales: g.issues, closing: g.closing };
+    }
+  }
+  return { label: monthLabel(m.month, m.year), source: 'pdf', rows, gunny: m.gunny, police: hasPolice ? m.police : null, notes: m.notes };
 }
 
 type Stores = {
