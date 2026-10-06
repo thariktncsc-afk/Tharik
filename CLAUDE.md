@@ -2518,6 +2518,44 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
   150, Empty Polythene Bag 15 vs 0. That is the office's to settle — not
   worked around in code. Still so on 2026-09-28.
 
+### The PV's bag columns are carried bags, never kgs ÷ pack
+
+Office, 2026-10-06 (`pvQuarter.ts` `periodBags` / `pvPeriodBags`,
+`verify:pv-quarter` §9).
+- **The bug**: CRS 20's PV printed its bag columns as kgs ÷ pack, so its
+  Balance said 71 where Page 2 says 72 (PHH FRK 3585 kg). AAY FRK 12 vs
+  13, AAY 0 vs 1, Wheat 11 vs 12 and CYL 11 vs 12 were wrong the same way.
+- **Now** each month brings its own bag counts:
+  - an uploaded PAGE2: the BAGS it prints (`Flow.bags`; a blank bag cell is
+    0, a blank Closing is Total − Sales, pieces rows are their counts);
+  - the system's month and the automatic PV: Monthly Sales' own
+    (`bagChain.monthBags`, carried from last month).
+- **The period**: Opening = the first month's; Receipt added up; Closing =
+  the LAST month's, which is what Page 2 shows now; Total = Opening +
+  Receipt; Issues = Total − Closing.
+  - Issues is the one derived figure. When the months chain, it equals the
+    Sales bags added up. When they don't (an Opening bag typed over the
+    carry), the difference lands there and nowhere else: never in Receipt,
+    and **never in the kgs**.
+- The C.Box / Poly rows of an uploaded month that take the GUNNY sheet
+  (§8) carry those pieces as their bags. Police lines print no bags, as
+  before.
+- **Read only, 2026-10-06, 20 shops, 300 rows**: the automatic PV's
+  Closing bags equal Page 2 as the server prints it, and every row
+  balances.
+  - Every Gunny Receipt (SS / POLY / C.BOX) equals an independent sum of
+    Monthly Sales' Sales bags by pack, with the Receipt-page switch (CRS 5
+    is now 230 / 28 / 62 from its current sales).
+  - Police BRA counts into SS. Police sugar / wheat / dhall / palm have no
+    bag box on Monthly Sales (`NO_GUNNY`, 2026-09-30) and are not counted;
+    no live police sale fills a pack.
+- **Localhost** (CRS 20):
+  - The Manual PV from the office's nine PDFs and the Automatic PV both
+    show Balance bags = Page 2 on all 12 rows, with the kgs untouched.
+  - BRA Sales bags 100 → 101 on Monthly Sales, saved, gave: Closing 54 → 53
+    at once; Gunny SS Receipt 426 → 427; the PV's BRA Balance 53 and Gunny
+    SS 874 + 427 = 1301 − 1000 = 301.
+
 ### The automatic PV's Gunny is Gunny Stock Management's
 
 Office, 2026-10-01 (`pvQuarter.ts` `pvPeriodGunny`, `npm run
