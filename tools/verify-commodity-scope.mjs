@@ -170,6 +170,29 @@ console.log('\n9. A shop\'s own commodity at its Order, everywhere (office, 2026
   check('ownListsFor: CRS 10 gets its list (= the screens\'), every other shop null (built-in lists, output unchanged)',
     J(ids(S.ownListsFor(m, 10).a)) === J(l10) && [...Array(30).keys()].map((i) => i + 1).filter((n) => n !== 10).every((n) => S.ownListsFor(m, n) === null));
 
+  // The chain: a commodity first on a sheet AFTER the shop's first sheet held none before it — a receipt on a
+  // day between (CRS 10: R/2026/087, 2 kg OAP FRK on 25-09; first OAP FRK row 30-09) is carried in, not lost.
+  const C = await imp('lib/engine/stockChain.ts');
+  const day = (rows) => ({ a: rows, b: {} });
+  const es = {
+    '10_2026-09-01': day({ OAP: { open: 3, receipt: 0, sales: 0, total: 3, close: 3 } }),
+    '10_2026-09-30': day({ OAP: { open: 3, receipt: 0, sales: 3, total: 3, close: 0 }, OAP_FRK: { open: 0, receipt: 0, sales: 0, total: 0, close: 0 } }),
+    '10_2026-10-01': day({ OAP: { open: 0, receipt: 0, sales: 0, total: 0, close: 0 }, OAP_FRK: { open: 0, receipt: 0, sales: 0, total: 0, close: 0 } }),
+  };
+  const rs = [{ crsId: 10, date: '2026-09-25', receiptNo: 'R/2026/087', type: 'advance', items: { OAP_FRK: { qty: 2 } } }];
+  const ix = C.buildChainIndex(es, {}, rs, 10);
+  check(`chain: OAP FRK 30-09 opens at ${C.openingFor(ix, '2026-09-30', 'OAP_FRK', 'a').value} (0 + the 2 kg of 25-09), closes ${ix.closes['2026-09-30']['a:OAP_FRK']}, 01-10 opens ${C.openingFor(ix, '2026-10-01', 'OAP_FRK', 'a').value}`,
+    C.openingFor(ix, '2026-09-30', 'OAP_FRK', 'a').value === 2 && ix.closes['2026-09-30']['a:OAP_FRK'] === 2 && C.openingFor(ix, '2026-10-01', 'OAP_FRK', 'a').value === 2);
+  check(`  OAP itself unchanged: 30-09 opens ${C.openingFor(ix, '2026-09-30', 'OAP', 'a').value}, closes ${ix.closes['2026-09-30']['a:OAP']}`, C.openingFor(ix, '2026-09-30', 'OAP', 'a').value === 3 && ix.closes['2026-09-30']['a:OAP'] === 0);
+  check('  the shop\'s first sheet is still the start of its chain (nothing to carry into it)', C.openingFor(ix, '2026-09-01', 'OAP_FRK', 'a').value === null && C.openingFor(ix, '2026-09-01', 'OAP', 'a').value === null);
+  const fixedEs = JSON.parse(J(es)); fixedEs['10_2026-09-30'].a.OAP_FRK = { open: 50, receipt: 0, sales: 0, total: 50, close: 50, openFixed: true };
+  check('  an administrator\'s fixed Opening still wins (50)', C.buildChainIndex(fixedEs, {}, rs, 10).closes['2026-09-30']['a:OAP_FRK'] === 50);
+  const { rebuildMonthlyFromDaily: rollup } = await imp('lib/engine/monthlyRollup.ts');
+  const repaired = JSON.parse(J(es));
+  for (const ds of ['2026-09-30', '2026-10-01']) Object.assign(repaired[`10_${ds}`].a.OAP_FRK, { open: 2, total: 2, close: 2 });
+  const sep = rollup(10, 9, 2026, repaired, {}, undefined, S.ownListsFor(m, 10), rs).merged.a.OAP_FRK;
+  check(`  September once the sheets carry it: ${sep.open} + ${sep.receipt} = ${sep.total} − ${sep.sales} = ${sep.close} (was −2 + 2 = 0)`, sep.open === 0 && sep.receipt === 2 && sep.total === 2 && sep.close === 2);
+
   // The PV: rows in the shop's order, a commodity outside the built-in list under the master's name.
   const { buildPVTable } = await imp('lib/engine/pvStatement.ts');
   const flow = (name) => ({ name, unit: 'KG', open: 0, receipt: 100, total: 100, issues: 12, closing: 88, amount: 0, free: true });
@@ -179,6 +202,16 @@ console.log('\n9. A shop\'s own commodity at its Order, everywhere (office, 2026
   const named = commodityListsFor(m, 10).a.map((c) => ({ ...c, en: c.id === 'OAP_FRK' ? 'OAP FRK' : c.en }));
   const pv10 = pvNames(buildPVTable({ commMap, periodLabel: 'Q', crsId: 10, crsName: '', gunny, staff: {}, commodities: named }));
   check(`PV, CRS 10: ${pv10.join(' · ')}`, J(pv10) === J(['BRA Rice', 'OAP Rice', 'OAP FRK', 'APS Rice', 'Wheat']));
+  // No OAP FRK figures in the period (CRS 10 today): its row still prints, at 0, right after OAP — never skipped.
+  const noFrk = { BRA: flow('BRA Rice'), OAP: flow('OAP Rice'), APS: flow('APS Rice'), WHEAT: flow('Wheat') };
+  const pvZeroHtml = buildPVTable({ commMap: noFrk, periodLabel: 'Q', crsId: 10, crsName: '', gunny, staff: {}, commodities: named });
+  const pvZero = pvNames(pvZeroHtml);
+  const zeroRow = [...pvZeroHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'OAP FRK') ?? [];
+  check(`PV, CRS 10 with no OAP FRK figures: ${pvZero.join(' · ')}; OAP FRK row ${zeroRow.slice(0, 3).join(' ')} … all 0`,
+    J(pvZero) === J(['BRA Rice', 'OAP Rice', 'OAP FRK', 'APS Rice', 'Wheat']) && zeroRow[2] === 'KG' && zeroRow.slice(3).filter(Boolean).every((v) => v === '0') && J(noFrk) === J({ BRA: flow('BRA Rice'), OAP: flow('OAP Rice'), APS: flow('APS Rice'), WHEAT: flow('Wheat') }));
+  const camp = commodityListsFor(m, 29).a;
+  const pv29 = pvNames(buildPVTable({ commMap: { BRA: flow('BRA Rice') }, periodLabel: 'Q', crsId: 29, crsName: '', gunny, staff: {}, commodities: camp }));
+  check(`PV, CRS 29: its camp lines are built-in — no zero row added (${pv29.join(' · ')})`, J(pv29) === J(['BRA Rice']) && ids(camp).includes('KERO'));
   const pvOld = pvNames(buildPVTable({ commMap: { BRA: flow('BRA Rice'), OAP: flow('OAP Rice'), APS: flow('APS Rice') }, periodLabel: 'Q', crsId: 1, crsName: '', gunny, staff: {} }));
   check(`PV without a list: the built-in order, as before (${pvOld.join(' · ')})`, J(pvOld) === J(['BRA Rice', 'OAP Rice', 'APS Rice']));
   const pvKept = pvNames(buildPVTable({ commMap, periodLabel: 'Q', crsId: 1, crsName: '', gunny, staff: {}, commodities: commodityListsFor(m, 1).a }));

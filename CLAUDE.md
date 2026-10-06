@@ -459,6 +459,21 @@ role.
   `node tools/repair-stock-chain.mjs [--crs=N]` (dry run) then `--write`, which
   backs up the rows to `backups/` first and writes under version.
 
+- **A commodity added after the chain began starts at 0** (office,
+  2026-10-07; `buildChainIndex`, `walk`; `verify:commodity-scope` §9).
+  - The sheets saved before it was on the shop's list held none of it. Its
+    first row opens at 0 plus what was received or adjusted from the
+    shop's first sheet on. This is the roll-up's reading too.
+  - Before, those receipts were lost. CRS 10 received 2 kg of OAP FRK on
+    25-09 (R/2026/087), its first OAP FRK row is 30-09, and the month
+    read −2 + 2 = 0.
+  - Unchanged:
+    - the shop's first sheet is the start of its chain;
+    - an administrator's fixed Opening wins;
+    - every commodity already on the sheets is unchanged. Live, 291
+      sheets: the only figure that moves is CRS 10's OAP FRK, 0 → 2 from
+      30-09 on.
+
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
 
@@ -508,6 +523,10 @@ CRS.
   - **The PV** prints its rows in the shop's own list and Order
     (`buildPVTable`'s `commodities`, both PVs). A row carrying figures that
     the list lacks (an uploaded PDF's OAP FRK) still prints, after them.
+    A commodity the master ADDED to the shop's list prints even with no
+    figures in the period, at 0, like every other line, never skipped
+    (CRS 10's Jul–Sep PV, office 2026-10-07). The built-in and camp lines
+    are unchanged: CRS 29 gains no Kerosene row.
   - **The statements** (`src/legacy/46-shop-commodities.js`,
     `stmtWithOwnRows`): a shop's OWN (scope 'shop') commodity gets a row of
     its own. It sits after the row of the commodity the shop's Order has
