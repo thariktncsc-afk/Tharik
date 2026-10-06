@@ -2948,6 +2948,21 @@ verify:pv-gunny` §7).
   - CRS 11's police BRA kgs are unchanged: 2 / 54 / 56 / 54 / 2 on the
     Manual PV. On the Automatic PV they are September's alone, 2 / 18 / 20
     / 18 / 2, beside the same 1 bag (the office chose both PVs).
+- **A police line printing its OWN bags** (`PV_POLICE_OWN_BAGS`,
+  `pvPoliceOwnBags`; office, 2026-10-07).
+  - A police line prints 0 bags on every PV. For a shop named in this
+    list, the listed lines print the bag counts Monthly Sales shows for
+    them (`pvPeriodBags(…, 'b')`) on every PV of that shop, Manual and
+    Automatic.
+  - Not a correction: the figures are the stored ones, and a PV correction
+    still adds on top.
+  - **CRS 10 Police BRA**: September Receipt 2 bags of 143 kg, Sales 2 of
+    142.5, so the PV prints 0 / 2 / 2 / 2 / 0 bags.
+  - On the Manual PV the bags are the system months' only: the office's
+    police PDFs carry no bags, so July / August add none.
+  - The statements print police lines in kgs only (CRS Police, RBI, COLL),
+    so nothing there changes.
+  - The other police lines and every other shop print 0, as before.
 - **Checked on localhost, fresh read-only copy of live data**:
   - CRS 7, with the office's July / August PDFs (`Downloads/PV`) and
     September from the system: the Manual PV generates, and Preview and the

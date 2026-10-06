@@ -28,7 +28,7 @@ import { fitPvSheet } from '@/lib/engine/pvFit';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
 import { pvPeriodBags, pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
-import { pvCommMapWithCorrection, pvGunnyWithCorrection } from '@/lib/engine/pvCorrections';
+import { pvCommMapWithCorrection, pvGunnyWithCorrection, pvPoliceOwnBags } from '@/lib/engine/pvCorrections';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 import OapStatement from './OapStatement';
@@ -231,6 +231,21 @@ export default function ReportsPage() {
    * One shop's AUTOMATIC PV for the period — the sheet on screen, and each
    * sheet of "Download All Shops", so the two can never differ.
    */
+  /**
+   * The police lines' own bag counts over the PV's period, as Monthly Sales
+   * shows them — for a shop whose PV prints them (pvCorrections.ts
+   * PV_POLICE_OWN_BAGS; CRS 10's Police BRA). Months the system has.
+   */
+  const policeBagsFor = useCallback(
+    (crsId: number) => () => {
+      if (!pvPeriod) return {};
+      const stores = { entryStore, inspectionStore, meManualStore, receiptStore: receiptStore as unknown[], meGunnyStore: meGunnyStore as never, salesCloseStore };
+      const hasMonth = (m: YearMonth) => !!monthlyStore[`${crsId}_${m.month}_${m.year}`] || !!meGunnyStore[`${crsId}_${m.month}_${m.year}`];
+      return pvPeriodBags(crsId, pvPeriod.months, stores, hasMonth, commodityListsFor(commodityMaster, crsId), 'b');
+    },
+    [pvPeriod, entryStore, inspectionStore, meManualStore, receiptStore, meGunnyStore, salesCloseStore, monthlyStore, commodityMaster],
+  );
+
   const autoPvHtml = useCallback(
     (crsId: number, note: string, paper: PvPaperSize): string => {
       if (!pvPeriod) return '';
@@ -251,7 +266,7 @@ export default function ReportsPage() {
       const officer = resolveForStatement(pvOfficerStore, crsId);
       return buildPVTable({
         // Any PV-only correction the office set for THIS PV, Automatic included (pvCorrections.ts).
-        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, agg.commMap, 'auto'),
+        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, pvPoliceOwnBags(crsId, agg.commMap, policeBagsFor(crsId)), 'auto'),
         periodLabel: pvPeriod.rangeLabel,
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
@@ -265,7 +280,7 @@ export default function ReportsPage() {
         commodities: commodityListsFor(commodityMaster, crsId).a,
       });
     },
-    [pvPeriod, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, users, pvOfficerStore, shops],
+    [pvPeriod, entryStore, receiptStore, monthlyStore, meGunnyStore, inspectionStore, meManualStore, salesCloseStore, commodityMaster, users, pvOfficerStore, shops, policeBagsFor],
   );
 
   const pvHtml = useMemo(() => {
@@ -282,7 +297,7 @@ export default function ReportsPage() {
       return buildPVTable({
         // The chained quarter's rows and Gunny, then any PV-only correction
         // the office set for this shop's PV (pvCorrections.ts) — this PV's alone.
-        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, commMap, 'manual'),
+        commMap: pvCommMapWithCorrection(crsId, pvPeriod.months, pvPoliceOwnBags(crsId, commMap, policeBagsFor(crsId)), 'manual'),
         periodLabel: pvPeriod.rangeLabel,
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
@@ -299,7 +314,7 @@ export default function ReportsPage() {
     }
     return autoPvHtml(crsId, pvNote, pvPaper);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, pvPaper, autoPvHtml, generated, users, commodityMaster]);
+  }, [isPV, pvPeriod, crsVal, pvSource, manualQuarter, pvOfficer, pvNote, pvPaper, autoPvHtml, generated, users, commodityMaster, policeBagsFor]);
 
   /**
    * The PV as a PDF FILE (office, 2026-10-06), on the paper chosen above:
