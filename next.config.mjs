@@ -15,6 +15,8 @@ const nextConfig = {
   serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
   outputFileTracingIncludes: {
     '/api/statements/pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
+    // The PV download (one shop's PV per call) draws with the same Chrome.
+    '/api/pv/pdf': ['./node_modules/@sparticuz/chromium/bin/**'],
   },
   // The legacy engine is served as classic scripts from /public/js and must not
   // be cached across a rebuild during development.

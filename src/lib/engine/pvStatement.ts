@@ -171,8 +171,17 @@ export function pvAggregatePeriod(
 type GunnyMonth = Record<string, { opening?: number; receipt?: number; total?: number; issues?: number; closing?: number }>;
 
 /**
- * The paper a PV is filed on: LEGAL landscape, 14 × 8.5 in (office,
- * 2026-09-28). The office's own workbook (`CRS 19 PV STATEMENT.xlsx`, sheet
+ * The paper a PV is filed on: A4 or LEGAL, landscape — the office chooses on
+ * the screen (office, 2026-10-06; it was Legal only, and an A4 printer shrank
+ * the Legal sheet onto A4, which is why the print came out small).
+ *
+ * Margins are the printer's safe minimum (6 mm) on every side, and the sheet
+ * is SCALED to fill what is left (pvFit.ts `fitPvSheet`): laid out narrower
+ * and zoomed back out to the full printable width, so type, padding and row
+ * height all grow by one factor — as far as the page height allows and no
+ * cell is cut. Height still left goes into the commodity rows.
+ *
+ * Before that (office, 2026-09-28): LEGAL landscape, 14 × 8.5 in. The office's own workbook (`CRS 19 PV STATEMENT.xlsx`, sheet
  * "30.09.23" — Annexure-I) is `paperSize="5"` (Legal), landscape, 0.709 in at
  * each side, fit to one page, and every PV PDF the office has sent is
  * 355.6 × 215.9 mm, one page.
@@ -181,9 +190,15 @@ type GunnyMonth = Record<string, { opening?: number; receipt?: number; total?: n
  * is a Legal page (the scroller around it scrolls), on paper the same table at
  * the same width, so the preview and the print are one layout.
  */
-export const PV_PAPER = { wMm: 355.6, hMm: 215.9, marginXMm: 18, marginYMm: 12 } as const;
-/** The table's printed width: the page less the office's side margins (18 mm = its 0.709 in). */
-export const PV_TABLE_MM = PV_PAPER.wMm - 2 * PV_PAPER.marginXMm;
+export type PvPaperSize = 'A4' | 'Legal';
+export const PV_PAPERS: Record<PvPaperSize, { wMm: number; hMm: number; css: string }> = {
+  A4: { wMm: 297, hMm: 210, css: 'A4 landscape' },
+  Legal: { wMm: 355.6, hMm: 215.9, css: 'legal landscape' },
+};
+/** The printer's safe minimum, every side. */
+export const PV_MARGIN_MM = 6;
+/** The printable box of a paper: the page less the margins. */
+export const pvPrintable = (p: PvPaperSize) => ({ wMm: PV_PAPERS[p].wMm - 2 * PV_MARGIN_MM, hMm: PV_PAPERS[p].hMm - 2 * PV_MARGIN_MM });
 
 /**
  * The office's Annexure-I, column for column — 38 of them (B:AM of its sheet).
@@ -235,6 +250,8 @@ export function buildPVTable(opts: {
   gunnyNotes?: string[];
   /** The NOTE row's text, as typed on the PV screen; blank leaves the space for a hand-written note. */
   note?: string;
+  /** A4 (default) or Legal, landscape. */
+  paper?: PvPaperSize;
 }): string {
   const { commMap, periodLabel, crsId, crsName, gunny, staff, pvOfficer, pvDate, gunnyNotes, note } = opts;
   const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -354,7 +371,7 @@ export function buildPVTable(opts: {
   const bk = () => h('Bags') + h('Kgs');
   const hdr =
     '<thead>' +
-    `<tr><td colspan="${PV_COLS}" class="t1">TAMIL NADU CIVIL SUPPLIES CORPORATION MADURAI REGION</td></tr>` +
+    `<tr><td colspan="${PV_COLS}" class="t1">TAMIL NADU CIVIL SUPPLIES CORPORATION – MADURAI REGION</td></tr>` +
     `<tr><td colspan="21" class="l t2"><b>NAME OF THE CRS :</b> ${crsId}${crsName ? ' — ' + crsName : ''}</td>` +
     `<td colspan="17" class="l t2"><b>NAME AND DESIGNATION OF THE P.V.OFFICER :</b> ${pvOfficer || '____________'}</td></tr>` +
     `<tr><td colspan="21" class="l t2">${staffLines.join('<br>')}</td>` +
@@ -399,9 +416,15 @@ export function buildPVTable(opts: {
   const footer =
     '<tfoot>' +
     // The NOTE row (office, 2026-10-06): one full-width ruled cell, "NOTE:"
-    // in bold, the text wrapping after it, tall enough for 2–4 lines and
-    // growing with a longer note.
-    `<tr class="pv-note"><td colspan="${PV_COLS}" class="l f note"><b>NOTE:</b>${noteLines.length ? ` <span class="note-text">${noteLines.join('<br>')}</span>` : ''}</td></tr>` +
+    // in bold, then the notes — as tall as they are and no taller: one line
+    // for one note (or none), a numbered line each for several.
+    `<tr class="pv-note"><td colspan="${PV_COLS}" class="l f note"><b>NOTE:</b>${
+      noteLines.length === 1
+        ? ` <span class="note-text">${noteLines[0]}</span>`
+        : noteLines.length
+          ? ` <span class="note-text">${noteLines.map((t, i) => `${i + 1}. ${t}`).join('<br>')}</span>`
+          : ''
+    }</td></tr>` +
     '<tr><td colspan="21" class="l f wrap">' +
     '1. Certified that the details were verified with connected records and found correct.<br>' +
     '2. Certified that the result of the physical verification have been recorded in the stock ledger, stack register and stack card.' +
@@ -413,20 +436,28 @@ export function buildPVTable(opts: {
 
   const total = PV_COL_MM.reduce((a, b) => a + b, 0);
   const colgroup = '<colgroup>' + PV_COL_MM.map((w) => `<col style="width:${((w / total) * 100).toFixed(4)}%">`).join('') + '</colgroup>';
-  const P = PV_PAPER;
+  const paper: PvPaperSize = opts.paper === 'Legal' ? 'Legal' : 'A4';
+  const P = PV_PAPERS[paper];
+  const box = pvPrintable(paper);
+  const M = PV_MARGIN_MM;
 
   const css =
     // The sheet. Its own rules, scoped to it, so the app's table styles
     // (globals.css) cannot reach a cell and the paper is the same everywhere.
-    `#pv-print-area .pv-paper{box-sizing:border-box;width:${P.wMm}mm;min-height:${P.hMm}mm;padding:${P.marginYMm}mm ${P.marginXMm}mm;` +
+    `#pv-print-area .pv-paper{box-sizing:border-box;width:${P.wMm}mm;height:${P.hMm}mm;padding:${M}mm;` +
     'margin:0 auto;background:#fff;color:#000;box-shadow:0 1px 6px rgba(15,23,42,.18)}' +
     '#pv-tbl{width:100%;table-layout:fixed;border-collapse:collapse;font-family:Arial,sans-serif;color:#000}' +
-    '#pv-tbl td{border:1px solid #000;padding:1px 2px;text-align:center;vertical-align:middle;font-size:8.5px;white-space:nowrap;overflow:hidden}' +
-    '#pv-tbl td.l{text-align:left;font-weight:600;padding-left:5px}' +
+    // The fitted width (pvFit.ts) is the table's own: print.css's
+    // `max-width:100%` for wide screen tables must not undo it.
+    '#pv-print-area #pv-tbl{max-width:none!important;min-width:0!important}' +
+    // Height left on the page after scaling goes into the commodity rows.
+    '#pv-tbl tbody td{padding-top:calc(1px + var(--pv-xpad,0px));padding-bottom:calc(1px + var(--pv-xpad,0px))}' +
+    '#pv-tbl td{border:1px solid #000;padding:1px 0.5px;text-align:center;vertical-align:middle;font-size:8.5px;white-space:nowrap;overflow:hidden}' +
+    '#pv-tbl td.l{text-align:left;font-weight:600;padding-left:4px}' +
     '#pv-tbl td.sec{font-weight:700;font-size:9px;background:#F5F5F5}' +
-    '#pv-tbl .t1{font-weight:800;font-size:11px;padding:4px}' +
+    '#pv-tbl .t1{font-weight:800;font-size:15px;letter-spacing:.02em;padding:5px 4px}' +
     '#pv-tbl .t2{font-weight:400;font-size:9px;padding:3px 8px}' +
-    '#pv-tbl .t3{font-weight:700;font-size:10px;padding:3px}' +
+    '#pv-tbl .t3{font-weight:700;font-size:10.5px;padding:3px}' +
     '#pv-tbl tr.hd td{background:#F5F5F5;white-space:normal;line-height:1.15}' +
     '#pv-tbl td.h8{font-size:8px;font-weight:700}' +
     '#pv-tbl td.h7{font-size:7px}' +
@@ -435,34 +466,34 @@ export function buildPVTable(opts: {
     '#pv-tbl td.f.wrap{white-space:normal}' +
     '#pv-tbl td.f:not(.l){text-align:center}' +
     '#pv-tbl td.sig{padding-top:14px}' +
-    // The NOTE row: wraps, top-aligned, room for about four lines, grows with more.
-    '#pv-tbl td.note{white-space:normal;vertical-align:top;height:15mm;padding:6px 10px;line-height:1.45;word-wrap:break-word;overflow-wrap:anywhere}' +
+    // The NOTE row: wraps, top-aligned, exactly as tall as its notes.
+    '#pv-tbl td.note{white-space:normal;vertical-align:top;padding:3px 8px;line-height:1.35;word-wrap:break-word;overflow-wrap:anywhere}' +
     '#pv-tbl td.note b{font-weight:800;margin-right:6px}' +
     '#pv-tbl tr.pv-note{break-inside:avoid;page-break-inside:avoid}' +
     // Shortage red, Excess green — the figure only, never the row.
     '#pv-tbl td.short{color:#DC2626}' +
     '#pv-tbl td.excess{color:#15803D}' +
     // Printed from the screen it is read on: the app hidden, the sheet at the
-    // top-left of a LEGAL landscape page with the office's side margins, and
-    // the table the width it has on screen (PV_TABLE_MM). ABSOLUTE, not fixed:
-    // a fixed element prints its first page and nothing after it.
+    // top-left of the chosen page inside its margins, at exactly the width and
+    // scale it has on screen. ABSOLUTE, not fixed: a fixed element prints its
+    // first page and nothing after it.
     '@media print{' +
-    `@page{size:legal landscape;margin:${P.marginYMm}mm ${P.marginXMm}mm}` +
+    `@page{size:${P.css};margin:${M}mm}` +
     'body *{visibility:hidden}#pv-print-area,#pv-print-area *{visibility:visible}' +
     '#pv-print-area{position:absolute;top:0;left:0;width:100%;z-index:9999;padding:0}' +
     '#pv-print-area .pv-scroll{overflow:visible!important}' +
-    `#pv-print-area .pv-paper{width:${PV_TABLE_MM.toFixed(1)}mm;min-height:0;padding:0;margin:0;box-shadow:none}` +
+    `#pv-print-area .pv-paper{width:${box.wMm}mm;height:auto;padding:0;margin:0;box-shadow:none;overflow:visible}` +
     '#pv-tbl td{-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
     '}';
 
   return (
     '<div id="pv-print-area">' +
     `<style>${css}</style>` +
-    // On screen: a Legal page, scrolled sideways inside the card when the
-    // window is narrower than 14 in — the page never gives way to the window.
+    // On screen: the chosen page, scrolled sideways inside the card when the
+    // window is narrower — the page never gives way to the window.
     '<div class="pv-scroll" style="overflow-x:auto;padding:4px 0 10px">' +
-    '<div class="pv-paper">' +
+    `<div class="pv-paper" data-paper="${paper}" data-pw="${box.wMm}" data-ph="${box.hMm}"><div class="pv-fit">` +
     `<table id="pv-tbl">${colgroup}${hdr}<tbody>${rows}</tbody>${footer}</table>` +
-    '</div></div></div>'
+    '</div></div></div></div>'
   );
 }
