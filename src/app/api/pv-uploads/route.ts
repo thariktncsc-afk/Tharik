@@ -1,5 +1,7 @@
 /**
- * The Manual 3-Month PV's saved statement PDFs (lib/pvUploads, migration 0009).
+ * The Manual 3-Month PV's saved statement PDFs (lib/pvUploads) — the files in
+ * a private Storage bucket, the details in crs_state (storageStore.ts); no
+ * migration to run.
  *
  * GET    ?crs=20&months=2026-7,2026-8,2026-9          the months' saved files (names, sizes, when, who)
  * POST   ?crs=20&year=2026&month=9&mode=replace|add&name=…   body: the PDF itself
@@ -15,7 +17,7 @@ import { recordActivity } from '@/lib/activityLog/server';
 import { MAX_PDF_BYTES, parseMonths } from '@/lib/pvUploads/core';
 import { activitySummary, listUploads, removeMonth, saveUpload } from '@/lib/pvUploads/server';
 import { actorOf, failure, todayIst } from '@/lib/pvUploads/routeKit';
-import { supabasePvStore } from '@/lib/pvUploads/supabaseStore';
+import { storagePvStore } from '@/lib/pvUploads/storageStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,10 +27,10 @@ export async function GET(req: Request) {
   const u = new URL(req.url);
   try {
     const { actor } = await actorOf();
-    const a = await listUploads(supabasePvStore(), actor, Number(u.searchParams.get('crs')), parseMonths(u.searchParams.get('months')));
+    const a = await listUploads(storagePvStore(), actor, Number(u.searchParams.get('crs')), parseMonths(u.searchParams.get('months')));
     return NextResponse.json(a.body, { status: a.status, headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
-    return failure(e);
+    return failure(e, 'list');
   }
 }
 
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
     const len = Number(req.headers.get('content-length') ?? 0);
     if (len > MAX_PDF_BYTES) return NextResponse.json({ error: `${name} is larger than the ${MAX_PDF_BYTES / 1048576} MB a PDF may be.` }, { status: 413 });
     const bytes = new Uint8Array(await req.arrayBuffer());
-    const a = await saveUpload(supabasePvStore(), actor, { crsId, year, month, name, mode, bytes }, todayIst());
+    const a = await saveUpload(storagePvStore(), actor, { crsId, year, month, name, mode, bytes }, todayIst());
     if (a.saved && !a.saved.duplicate) {
       const kind = a.saved.removed.length ? 'replaced' : 'saved';
       after(() =>
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
     }
     return NextResponse.json(a.body, { status: a.status });
   } catch (e) {
-    return failure(e);
+    return failure(e, 'save');
   }
 }
 
@@ -78,7 +80,7 @@ export async function DELETE(req: Request) {
   const month = Number(u.searchParams.get('month'));
   try {
     const { session, actor } = await actorOf();
-    const a = await removeMonth(supabasePvStore(), actor, crsId, year, month);
+    const a = await removeMonth(storagePvStore(), actor, crsId, year, month);
     if (a.removed?.length) {
       after(() =>
         recordActivity(session, [
@@ -97,6 +99,6 @@ export async function DELETE(req: Request) {
     }
     return NextResponse.json(a.body, { status: a.status });
   } catch (e) {
-    return failure(e);
+    return failure(e, 'remove');
   }
 }

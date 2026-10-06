@@ -32,9 +32,6 @@ export type PvUploadStore = {
   get(id: number): Promise<(PvUploadRow & { data_b64: string }) | null>;
 };
 
-/** The table does not exist yet (0009 not run). */
-export class MissingTableError extends Error {}
-
 type Answer = { status: number; body: Record<string, unknown> };
 const fail = (status: number, error: string): Answer => ({ status, body: { error } });
 
