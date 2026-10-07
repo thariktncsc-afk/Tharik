@@ -3000,6 +3000,9 @@ verify:pv-gunny` §7).
   | CRS 14 | Manual | Wheat BAGS (O + R = T − I = CB) | 47 + 52 = 99 − 57 = 42 | 47 + 78 = 125 − 83 = 42 (Receipt / Issues +26) |
   | CRS 30 | Manual + Automatic | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 1 = 1 − 1 = 0 |
   | CRS 10 | Manual | BRA Rice (Police) BAGS | 0 + 2 = 2 − 2 = 0 (Monthly Sales' own) | 0 + 5 = 5 − 5 = 0 (SET to 5 — "only 5", not 2 + 5) |
+  | CRS 10 | Manual | BRA Rice BAGS | 0 + 251 = 251 − 251 = 0 | 0 + 259 = 259 − 259 = 0 (kgs 0 + 12557 − 12557 = 0 unchanged) |
+  | CRS 10 | Manual | POLYTHENE (O + R = T − I = CB) | 3 + 68 = 71 − 71 = 0 | 3 + 73 = 76 − 76 = 0 |
+  | CRS 10 | Manual | C.BOX (O + R = T − I = CB) | 0 + 219 = 219 − 219 = 0 | 0 + 221 = 221 − 221 = 0 (50 KG SS unchanged) |
   | CRS 10 | — | OAP FRK KGS | 0 + 2 = 2 − 0 = 2 | a PV-only override at first, then the real 2 kg sale recorded (below) — no override now |
 
   - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
