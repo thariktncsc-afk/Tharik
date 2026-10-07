@@ -563,6 +563,18 @@ CRS.
       (`ownListsFor`, server.ts). Every other shop's statements are
       byte-identical: 412 of 418 sections, live September copy; the golden
       run is identical before and after.
+  - **OAP FRK is kgs only on the statements and the PV** (office,
+    2026-10-07: "remove the Bags for OAP FRK"):
+    - Its bag cells print blank on CRS Page 2, Free Com, B6 and both PVs.
+    - It adds no bags to a total: `stmtBagCounts` gives it 0, so Free
+      Com's RICE TOTAL bags drop by its 2.
+    - The kgs are unchanged.
+    - Monthly Sales and the stored bag counts are untouched: display only.
+    - The list is `KGS_ONLY` (commodities.ts, the PV) and `STMT_KGS_ONLY`
+      (46-shop-commodities.js, the statements); keep the two alike.
+    - Live September copy: only CRS 10's B6, Page 2 and Free Com change;
+      the other 415 sections are byte-identical, and `verify:statements`
+      is identical.
   - **Not covered:** the DSS (compiled lists, unchanged) and All Shops
     additions on the statements (the forms are the office's).
   - **Receipt** lists the shop's master list, as Daily / Monthly do. OAP
