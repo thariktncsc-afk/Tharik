@@ -3007,6 +3007,17 @@ verify:pv-gunny` §7).
   - CRS 11's police BRA kgs are unchanged: 2 / 54 / 56 / 54 / 2 on the
     Manual PV. On the Automatic PV they are September's alone, 2 / 18 / 20
     / 18 / 2, beside the same 1 bag (the office chose both PVs).
+- **A Gunny note reworded on one PV** (`PV_NOTE_CORRECTIONS`,
+  `pvNotesWithCorrection`; office, 2026-10-07).
+  - CRS 10's July and August GUNNY PDFs say "POLICE BRA 3 CONSIDER AS POLY".
+    With Police BRA SET to 5 bags on that PV, the office asked for the note
+    to say 5.
+  - So CRS 10's July – September 2026 Manual PV prints "POLICE BRA 5
+    CONSIDER AS POLY" in its NOTE row, on Preview, Print and Download PDF.
+  - The match is the whole note, ignoring case and spacing. Any other note
+    prints as read.
+  - The uploaded PDFs, the Automatic PV, other periods and other shops are
+    unchanged.
 - **A police line printing its OWN bags** (`PV_POLICE_OWN_BAGS`,
   `pvPoliceOwnBags`; office, 2026-10-07).
   - A police line prints 0 bags on every PV. For a shop named in this
