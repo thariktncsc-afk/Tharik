@@ -72,12 +72,13 @@ export const PV_GUNNY_CORRECTIONS: Record<string, { note: string; applies: Appli
     },
   },
   // CRS 17, the July – September 2026 Manual PV (office, 2026-10-07): C.BOX
-  // 0 + 127 = 127 − 127 = 0 (the PV had 0 + 256 = 256 − 256 = 0; September
-  // alone holds 88). 50 KG SS and POLYTHENE as they are.
+  // 0 + 257 = 257 − 257 = 0 (the PV had 0 + 256 = 256 − 256 = 0; September
+  // alone holds 88; first set to 127, then 257 the same day). 50 KG SS and
+  // POLYTHENE as they are.
   '17|2026-7|2026-9': {
     note: 'office, 2026-10-07 — CRS 17 Jul–Sep 2026 PV only',
     applies: 'manual',
-    rows: { cbox: { receipt: 127, issues: 127, closing: 0 } },
+    rows: { cbox: { receipt: 257, issues: 257, closing: 0 } },
   },
 };
 

@@ -367,7 +367,7 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     PC.pvCommMapWithCorrection(24, quarter.months, map24, 'auto') === map24 && PC.pvCommMapWithCorrection(24, quarterByIndex(2026, 2).months, map24, 'manual') === map24 && PC.pvCommMapWithCorrection(26, quarter.months, map24, 'manual') === map24);
 
   // CRS 17, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice (Police) bags 0 + 3 = 3 − 2 = 1
-  // (a police line prints 0 bags otherwise), C.BOX 0 + 127 = 127 − 127 = 0 (had 256). No kgs move.
+  // (a police line prints 0 bags otherwise), C.BOX 0 + 257 = 257 − 257 = 0 (had 256; first set to 127, then 257). No kgs move.
   const pb17 = police({ name: 'BRA Rice (Police)', open: 21.59, receipt: 287, total: 308.59, issues: 264.016, closing: 44.574 });
   const ps17 = police({ name: 'Sugar (Police)', open: 1.5, receipt: 31.5, total: 33, issues: 29.502, closing: 3.498 });
   const map17 = { PB_BRA: pb17, PB_SUGAR: ps17 };
@@ -382,9 +382,9 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   const g17 = { ss50: { opening: 300, receipt: 900, total: 1200, issues: 974, closing: 226 }, poly: { opening: 0, receipt: 70, total: 70, issues: 70, closing: 0 }, cbox: { opening: 0, receipt: 256, total: 256, issues: 256, closing: 0 } };
   const g17snap = J(g17);
   const pg17 = PC.pvGunnyWithCorrection(17, quarter.months, g17, 'manual');
-  check(`CRS 17 Manual PV, C.BOX ${J(tuple(pg17.cbox))} = 0 + 127 = 127 − 127 = 0`, J(tuple(pg17.cbox)) === J([0, 127, 127, 127, 0]));
+  check(`CRS 17 Manual PV, C.BOX ${J(tuple(pg17.cbox))} = 0 + 257 = 257 − 257 = 0`, J(tuple(pg17.cbox)) === J([0, 257, 257, 257, 0]));
   check('  50 KG SS and POLYTHENE as they were, the input untouched', pg17.ss50 === g17.ss50 && pg17.poly === g17.poly && J(g17) === g17snap);
-  check(`  printed: C.BOX ${J(printed(pg17)['C.BOX'])}`, J(printed(pg17)['C.BOX'].slice(1)) === J([0, 127, 127, 127, 0]));
+  check(`  printed: C.BOX ${J(printed(pg17)['C.BOX'])}`, J(printed(pg17)['C.BOX'].slice(1)) === J([0, 257, 257, 257, 0]));
   check('  the Automatic PV, another period and another shop: Gunny untouched',
     PC.pvGunnyWithCorrection(17, quarter.months, g17, 'auto') === g17 && PC.pvGunnyWithCorrection(17, quarterByIndex(2026, 2).months, g17, 'manual') === g17 && PC.pvGunnyWithCorrection(18, quarter.months, g17, 'manual') === g17);
 
