@@ -168,8 +168,8 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('pvQuarter (the system figures, the 3-Month PV\'s chain check) does not apply it', !/pvCorrections|pvGunnyWithCorrection/.test(pvq));
   const page = readFileSync(join(root, 'src/app/(app)/reports/page.tsx'), 'utf8');
   check('Reports lays the corrections over BOTH PVs, each saying which it is (Manual / Automatic)',
-    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, commMap, 'manual'\)/.test(page) && /gunny: pvGunnyWithCorrection\(crsId, pvPeriod\.months, gunny, 'manual'\)/.test(page) &&
-    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, agg\.commMap, 'auto'\)/.test(page) && /const gunny = pvGunnyWithCorrection\(crsId, pvPeriod\.months, pvPeriodGunny\([\s\S]{0,120}\), 'auto'\)/.test(page));
+    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, pvPoliceOwnBags\(crsId, commMap, policeBagsFor\(crsId\)\), 'manual'\)/.test(page) && /gunny: pvGunnyWithCorrection\(crsId, pvPeriod\.months, gunny, 'manual'\)/.test(page) &&
+    /commMap: pvCommMapWithCorrection\(crsId, pvPeriod\.months, pvPoliceOwnBags\(crsId, agg\.commMap, policeBagsFor\(crsId\)\), 'auto'\)/.test(page) && /const gunny = pvGunnyWithCorrection\(crsId, pvPeriod\.months, pvPeriodGunny\([\s\S]{0,120}\), 'auto'\)/.test(page));
   check('CRS 9\'s Gunny is the MANUAL PV\'s only: the Automatic PV of the same quarter is untouched', PC.pvGunnyWithCorrection(9, quarter.months, system, 'auto') === system);
 
   // CRS 7, the July – September 2026 PV: Wheat BAGS 16 + 73 = 89 − 68 = 21; its kgs and every other row untouched.
@@ -232,6 +232,21 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     check('  …Sugar (Police) untouched, the input map untouched', m.PB_SUGAR === map30.PB_SUGAR && J(map30) === snap30);
   }
   check('  CRS 30, Oct – Dec 2026: untouched', PC.pvCommMapWithCorrection(30, quarterByIndex(2026, 2).months, map30, 'auto') === map30);
+
+  // CRS 10 (office, 2026-10-07): its Police BRA prints its own bag counts (Monthly Sales'), every PV; nothing else.
+  const map10 = {
+    PB_BRA: police({ name: 'BRA Rice (Police)', open: 36.5, receipt: 143, total: 179.5, issues: 142.5, closing: 37 }),
+    PB_SUGAR: police({ name: 'Sugar (Police)', open: 2, receipt: 0, total: 2, issues: 0, closing: 2 }),
+  };
+  const snap10 = J(map10);
+  const own10 = PC.pvPoliceOwnBags(10, map10, () => ({ PB_BRA: { open: 0, receipt: 2, total: 2, issues: 2, closing: 0 } }));
+  const r10 = policeRow(own10, 'BRA Rice (Police)');
+  check(`CRS 10 PV, BRA Rice (Police) bags / kgs: Opening ${r10.open.join(' / ')} · Receipt ${r10.receipt.join(' / ')} · Total ${r10.total.join(' / ')} · Issues ${r10.issues.join(' / ')} · Balance ${r10.balance.join(' / ')}`,
+    J(r10) === J({ open: ['0', '36.500'], receipt: ['2', '143'], total: ['2', '179.500'], issues: ['2', '142.500'], balance: ['0', '37'] }));
+  check('  …Sugar (Police) still prints 0 bags, the input map untouched', own10.PB_SUGAR === map10.PB_SUGAR && J(map10) === snap10);
+  check('  no other shop: CRS 11 / 1 police lines unchanged by this list', PC.pvPoliceOwnBags(11, map10, () => ({ PB_BRA: { open: 9, receipt: 9, total: 9, issues: 9, closing: 9 } })) === map10 && PC.pvPoliceOwnBags(1, map10, () => ({})) === map10);
+  const stacked = PC.pvCommMapWithCorrection(11, quarter.months, PC.pvPoliceOwnBags(11, map11, () => ({})), 'auto');
+  check('  a PV correction still adds on top (CRS 11: +1 / +1 over its 0s)', J(policeRow(stacked, 'BRA Rice (Police)').receipt) === J(['1', '54']));
 
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.

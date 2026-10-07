@@ -211,6 +211,8 @@ buildColl = function(d){
     ['WHEAT','WHEAT'],['T.DHALL','TOOR'],['P.OIL','PALM'],['PHH BRA','PHH_BRA'],['PHH FRK','PHH_FRK'],
     ['AAY FRK','AAY_FRK'],['NPHH FRK','NPHH_FRK'],['NPHH FRK RRA','NPHH_RRA'],
   ];
+  // A shop's own commodity (CRS 10's OAP FRK) on a row of its own, where its Order puts it (46-shop-commodities.js).
+  MAIN_REST = stmtWithOwnRows(d, MAIN_REST, function(r){ return r[1]; }, function(c){ return [stmtOwnLabel(c), c.id]; });
   var POLICE=[['BRA','PB_BRA'],['SUGAR','PB_SUGAR'],['WHEAT','PB_WHEAT'],['T.DHALL','PB_TOOR'],['P.OIL','PB_PALM']];
 
   var body='';

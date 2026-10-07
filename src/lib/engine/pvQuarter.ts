@@ -238,13 +238,15 @@ export function pvPeriodBags(
   stores: Stores,
   hasData: (m: { month: number; year: number }) => boolean,
   lists?: { a: Commodity[]; b: Commodity[] },
+  /** 'b' for the police lines' own bag counts (a PV that prints them — PV_POLICE_OWN_BAGS). */
+  section: 'a' | 'b' = 'a',
 ): Record<string, PeriodBags> {
   const l = lists ?? entryListsFor(crsId);
   const per: Record<string, BagFlow[]> = {};
   for (const m of months) {
     if (!hasData(m)) continue;
     const mb = monthBags(stores as never, crsId, m.month, m.year, l, carriedBagsFor(stores as never, crsId, m.month, m.year, l));
-    for (const [id, b] of Object.entries(mb.a)) {
+    for (const [id, b] of Object.entries(mb[section] ?? {})) {
       if (!carriesBags(id)) continue;
       (per[id] ??= []).push({ open: b.open, receipt: b.receipt, total: b.total, sales: b.sales, closing: b.close });
     }

@@ -95,6 +95,41 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
   },
 };
 
+/**
+ * Police lines whose OWN bag counts a shop's PV prints (office, 2026-10-07).
+ * A police line prints no bags — every bag cell 0 — on every PV; for a shop
+ * named here the listed lines print the bag counts Monthly Sales shows for
+ * them (bagChain.monthBags, section b), over the PV's period, as the main
+ * commodities do. Every PV of that shop, Manual and Automatic; no other shop
+ * and no other police line changes. CRS 10: Police BRA (September: Receipt 2
+ * bags of 143 kg, Sales 2 of 142.5 kg).
+ */
+export const PV_POLICE_OWN_BAGS: Record<number, string[]> = {
+  10: ['PB_BRA'],
+};
+
+/**
+ * This PV's rows with the shop's police lines carrying their own bags
+ * (`PV_POLICE_OWN_BAGS`) — a new map. `bagsOf` is the period's bag counts of
+ * the police section (pvQuarter `pvPeriodBags(…, 'b')`); a line with none
+ * prints 0s.
+ */
+export function pvPoliceOwnBags<T extends { bags?: PeriodBags; bagsFixed?: boolean }>(
+  crsId: number,
+  commMap: Record<string, T>,
+  bagsOf: () => Record<string, PeriodBags>,
+): Record<string, T> {
+  const ids = PV_POLICE_OWN_BAGS[crsId];
+  if (!ids?.length) return commMap;
+  const bags = bagsOf();
+  const out = { ...commMap };
+  for (const id of ids) {
+    if (!out[id]) continue;
+    out[id] = { ...out[id], bags: bags[id] ?? { open: 0, receipt: 0, total: 0, issues: 0, closing: 0 }, bagsFixed: true };
+  }
+  return out;
+}
+
 /** This PV's Gunny with its PV-only correction laid over it — a new object; `g` is untouched. */
 export function pvGunnyWithCorrection(crsId: number, months: Period, g: Record<GunnyKey, GunnyFlow>, kind: PvKind): Record<GunnyKey, GunnyFlow> {
   const c = PV_GUNNY_CORRECTIONS[keyOf(crsId, months)];
