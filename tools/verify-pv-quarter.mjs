@@ -537,6 +537,51 @@ console.log('\n2. Built pages — what a real file can throw');
       }
     } else console.log('  (CRS 29 PDFs not on this machine — skipped)');
   }
+  // A SALES shown without decimals (office, 2026-10-07 — CRS 27 JULY'26 T.DHALL: Sales printed 1014, Amount 30419.40
+  // at 30.00 = 1013.98 kg; 1687 − 1013.98 = the printed Closing 673.02). Taken only when the row proves it.
+  {
+    const salesRow = (sales, closing, rate, amount) => {
+      const items = page2(27, 7, { 'T.DHALL': { open: [14, 687], receipt: [20, 1000], total: [34, '1687.000'], sales: [20, sales], closing: [14, closing] } }, { adjustments: false });
+      const y = items.find((i) => i.str === 'T.DHALL').y;
+      const r = items.find((i) => i.str === 'RATE'), a = items.find((i) => i.str === 'AMOUNT');
+      if (rate !== undefined) items.push(rightAt(rate, r.x + W('RATE') + 6, y));
+      if (amount !== undefined) items.push(rightAt(amount, a.x + W('AMOUNT') + 6, y));
+      let rows = null; const e = refused(() => (rows = P.readPage2(items)));
+      return { e, t: rows?.TOOR };
+    };
+    const ok = salesRow('1014', '673.020', '30.00', '30419.40');
+    check(`Sales 1014 with Amount 30419.40 at 30.00 reads as ${ok.t?.sales} (1687 − ${ok.t?.sales} = ${ok.t?.closing}); its bags ${ok.t?.bags.sales} as printed`, !ok.e && ok.t.sales === 1013.98 && ok.t.closing === 673.02 && ok.t.bags.sales === 20, ok.e);
+    const badAmt = salesRow('1014', '673.020', '30.00', '30420.00');
+    check(`  an Amount that does not agree (30420.00) is refused: "${badAmt.e}"`, /does not add up/.test(badAmt.e ?? ''));
+    const noAmt = salesRow('1014', '673.020', '30.00', undefined);
+    check(`  a rate with no amount to prove it is refused: "${noAmt.e}"`, /does not add up/.test(noAmt.e ?? ''));
+    const far = salesRow('1014', '672.020', '30.00', '30449.40');
+    check(`  more than half a kilo off (1687 − 672.02 = 1014.98 vs 1014) is refused: "${far.e}"`, /does not add up/.test(far.e ?? ''));
+    const free = salesRow('1014', '673.020', undefined, undefined);
+    check(`  a free line (no rate / amount) within half a kilo reads as ${free.t?.sales}`, !free.e && free.t.sales === 1013.98);
+    const exactSales = salesRow('1013.980', '673.020', '30.00', '30419.40');
+    check(`  a Sales printed with its decimals reads as printed (${exactSales.t?.sales})`, !exactSales.e && exactSales.t.sales === 1013.98);
+    const D27 = ['C:/Users/TharikAliR/Downloads', 'C:/Users/TharikAliR/Downloads/PV'].find((d) => existsSync(`${d}/CRS 27 JULY'26 - CRS PAGE2 - 2.pdf`));
+    if (D27) {
+      const pdfjs = await import(pathToFileURL(join(root, 'node_modules/pdfjs-dist/legacy/build/pdf.mjs')).href);
+      const pagesOf = async (f) => {
+        const d = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(f)), verbosity: 0 }).promise;
+        const out = [];
+        for (let n = 1; n <= d.numPages; n++) {
+          const pg = await d.getPage(n); const vp = pg.getViewport({ scale: 1 });
+          out.push({ file: f.split('/').pop(), items: (await pg.getTextContent()).items.filter((i) => i.str?.trim()).map((i) => ({ str: i.str, x: i.transform[4], y: vp.height - i.transform[5], w: i.width })) });
+        }
+        return out;
+      };
+      for (const [tag, month, toor] of [['JULY', 7, [687, 1000, 1687, 1013.98, 673.02]], ['AUG', 8, [673.02, 946, 1619.02, 942, 677.02]]]) {
+        const pages = (await Promise.all(['CRS PAGE2 - 2', 'GUNNY-2', 'CRS POLICE'].map((k) => pagesOf(`${D27}/CRS 27 ${tag}'26 - ${k}.pdf`)))).flat();
+        let m = null; const e2 = refused(() => (m = P.readMonthPages(pages, { crsId: 27, month, year: 2026 })));
+        const t = m?.rows.TOOR;
+        check(`CRS 27 ${tag}'26 (the office's PDFs): ${e2 ?? `${Object.keys(m.rows).length} commodities, GUNNY ${!!m.gunny}, POLICE ${!!m.police}, review ${m.review.length}; Toor Dal ${t.open}/${t.receipt}/${t.total}/${t.sales}/${t.closing}`}`,
+          !e2 && Object.keys(m.rows).length === 19 && !!m.gunny && !!m.police && !m.review.length && J([t.open, t.receipt, t.total, t.sales, t.closing]) === J(toor), e2);
+      }
+    } else console.log('  (CRS 27 PDFs not on this machine — skipped)');
+  }
   check('a file named "CRS PAGE 2" (with a space) that is not a PAGE2 is named, as "PAGE2" is', /PAGE 2/.test("CRS 1 JULY'26 - CRS PAGE 2.pdf") &&
     /could not be read — CRS 1 JULY'26 - CRS PAGE 2\.pdf/.test(refused(() => P.readMonthPages([{ ...notP2, file: "CRS 1 JULY'26 - CRS PAGE 2.pdf" }], { crsId: 1, month: 7, year: 2026 })) ?? ''));
 }
