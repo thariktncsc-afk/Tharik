@@ -30,6 +30,7 @@ import type { PeriodBags } from './pvQuarter';
 type SetRow = { receipt: number; issues: number; closing: number };
 type AddRow = { add: { receipt?: number; issues?: number } };
 type Period = { month: number; year: number }[];
+type KgRow = { open: number; receipt: number; total: number; issues: number; closing: number; transfer?: number; excess?: number; shortage?: number };
 export type PvKind = 'manual' | 'auto';
 type Applies = 'manual' | 'both';
 
@@ -105,6 +106,24 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
 };
 
 /**
+ * A commodity row's KGS columns of a PV (its bags are never touched) —
+ * SET to the period's figures as the PV prints them: Receipt, Issues,
+ * Closing; Opening = Closing − Receipt + Issues (transfer / excess /
+ * shortage kept), Total = Opening + Receipt + transfer + excess.
+ */
+export const PV_KG_CORRECTIONS: Record<string, { note: string; applies: Applies; rows: Record<string, SetRow> }> = {
+  // CRS 10, the July – September 2026 PV, Manual and Automatic (office,
+  // 2026-10-07): OAP FRK kgs 0 + 2 = 2 − 2 = 0 (the PV had 0 + 2 = 2 − 0 = 2:
+  // the 2 kg received, no sale keyed). Kgs only — its bags (0 / 2 / 2 / 2 / 0)
+  // stay as Monthly Sales has them.
+  '10|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 10 Jul–Sep 2026 PV only',
+    applies: 'both',
+    rows: { OAP_FRK: { receipt: 2, issues: 2, closing: 0 } },
+  },
+};
+
+/**
  * Police lines whose OWN bag counts a shop's PV prints (office, 2026-10-07).
  * A police line prints no bags — every bag cell 0 — on every PV; for a shop
  * named here the listed lines print the bag counts Monthly Sales shows for
@@ -163,20 +182,37 @@ export function pvCommMapWithCorrection<T extends { bags?: PeriodBags; bagsFixed
   commMap: Record<string, T>,
   kind: PvKind,
 ): Record<string, T> {
-  const c = PV_BAG_CORRECTIONS[keyOf(crsId, months)];
-  if (!c || !appliesTo(c.applies, kind)) return commMap;
+  const key = keyOf(crsId, months);
+  const c = PV_BAG_CORRECTIONS[key];
+  const k = PV_KG_CORRECTIONS[key];
+  const useBags = !!c && appliesTo(c.applies, kind);
+  const useKgs = !!k && appliesTo(k.applies, kind);
+  if (!useBags && !useKgs) return commMap;
   const out = { ...commMap };
-  for (const [id, v] of Object.entries(c.rows)) {
-    if (!out[id]) continue;
-    let bags: PeriodBags;
-    if ('add' in v) {
-      const was = out[id].bags ?? { open: 0, receipt: 0, total: 0, issues: 0, closing: 0 };
-      const receipt = was.receipt + (v.add.receipt ?? 0);
-      const issues = was.issues + (v.add.issues ?? 0);
-      const total = was.open + receipt;
-      bags = { open: was.open, receipt, total, issues, closing: total - issues };
-    } else bags = fromSet(v);
-    out[id] = { ...out[id], bags, bagsFixed: true };
+  if (useBags) {
+    for (const [id, v] of Object.entries(c!.rows)) {
+      if (!out[id]) continue;
+      let bags: PeriodBags;
+      if ('add' in v) {
+        const was = out[id].bags ?? { open: 0, receipt: 0, total: 0, issues: 0, closing: 0 };
+        const receipt = was.receipt + (v.add.receipt ?? 0);
+        const issues = was.issues + (v.add.issues ?? 0);
+        const total = was.open + receipt;
+        bags = { open: was.open, receipt, total, issues, closing: total - issues };
+      } else bags = fromSet(v);
+      out[id] = { ...out[id], bags, bagsFixed: true };
+    }
+  }
+  // Kgs only: the bag counts (and bagsFixed) are left exactly as they are. A
+  // row the period does not carry is made, named by its code (the PV prints
+  // the master's name for it).
+  if (useKgs) {
+    for (const [id, v] of Object.entries(k!.rows)) {
+      const was = (out[id] ?? { name: id, unit: 'KG', open: 0, receipt: 0, total: 0, issues: 0, closing: 0, amount: 0, free: true }) as T & KgRow;
+      const tr = (Number(was.transfer) || 0) + (Number(was.excess) || 0) - (Number(was.shortage) || 0);
+      const open = v.closing - v.receipt - tr + v.issues;
+      out[id] = { ...was, open, receipt: v.receipt, total: open + v.receipt + (Number(was.transfer) || 0) + (Number(was.excess) || 0), issues: v.issues, closing: v.closing } as T;
+    }
   }
   return out;
 }
