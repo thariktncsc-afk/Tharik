@@ -214,7 +214,7 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     check(`  …Sugar (Police) and B.RICE untouched, the input map untouched`, m.PB_SUGAR === map11.PB_SUGAR && m.BRA === map11.BRA && J(policeRow(m, 'Sugar (Police)')) === J(policeRow(map11, 'Sugar (Police)')) && J(map11) === snap11);
   }
   check(`without the correction the police row prints its bags as 0, as always (${J(before11)})`, J(before11) === J({ open: ['0', '2'], receipt: ['0', '54'], total: ['0', '56'], issues: ['0', '54'], balance: ['0', '2'] }));
-  for (const [label, crs, months] of [['CRS 10, same quarter', 10, quarter.months], ['CRS 11, Oct – Dec 2026', 11, quarterByIndex(2026, 2).months], ['CRS 11, August alone', 11, [{ month: 8, year: 2026 }]]]) {
+  for (const [label, crs, months] of [['CRS 12, same quarter', 12, quarter.months], ['CRS 11, Oct – Dec 2026', 11, quarterByIndex(2026, 2).months], ['CRS 11, August alone', 11, [{ month: 8, year: 2026 }]]]) {
     check(`${label}: BRA Rice (Police) untouched`, PC.pvCommMapWithCorrection(crs, months, map11, 'auto') === map11 && PC.pvCommMapWithCorrection(crs, months, map11, 'manual') === map11);
   }
 
@@ -247,6 +247,13 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('  no other shop: CRS 11 / 1 police lines unchanged by this list', PC.pvPoliceOwnBags(11, map10, () => ({ PB_BRA: { open: 9, receipt: 9, total: 9, issues: 9, closing: 9 } })) === map10 && PC.pvPoliceOwnBags(1, map10, () => ({})) === map10);
   const stacked = PC.pvCommMapWithCorrection(11, quarter.months, PC.pvPoliceOwnBags(11, map11, () => ({})), 'auto');
   check('  a PV correction still adds on top (CRS 11: +1 / +1 over its 0s)', J(policeRow(stacked, 'BRA Rice (Police)').receipt) === J(['1', '54']));
+
+  // CRS 10, the July – September 2026 Manual PV: Police BRA Receipt 5, Issues 5 bags (set — not added to its own 2 / 2).
+  const manual10 = PC.pvCommMapWithCorrection(10, quarter.months, own10, 'manual');
+  const m10 = policeRow(manual10, 'BRA Rice (Police)');
+  check(`CRS 10 Manual PV, BRA Rice (Police): Opening ${m10.open.join(' / ')} · Receipt ${m10.receipt.join(' / ')} · Total ${m10.total.join(' / ')} · Issues ${m10.issues.join(' / ')} · Balance ${m10.balance.join(' / ')}`,
+    J(m10) === J({ open: ['0', '36.500'], receipt: ['5', '143'], total: ['5', '179.500'], issues: ['5', '142.500'], balance: ['0', '37'] }));
+  check('  …the Automatic PV keeps its own 2 / 2, Sugar (Police) untouched', PC.pvCommMapWithCorrection(10, quarter.months, own10, 'auto') === own10 && manual10.PB_SUGAR === own10.PB_SUGAR);
 
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.

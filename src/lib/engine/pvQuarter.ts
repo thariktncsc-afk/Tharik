@@ -396,9 +396,18 @@ export function chainQuarter(crsId: number, months: QuarterMonth[]): QuarterResu
 
   // Main commodities, in the statement's order.
   const rows: Record<string, QuarterRow> = {};
-  const ids = lists.a.map((c) => c.id).filter((id) => months.some((m) => m.rows[id]));
+  // …and any commodity a month carries that the built-in list lacks — a
+  // shop's own (CRS 10's OAP FRK, from the system's month): chained like the
+  // rest, never dropped (office, 2026-10-07). The PV prints it in the shop's Order.
+  const builtIn = lists.a.map((c) => c.id);
+  const extra = [...new Set(months.flatMap((m) => Object.keys(m.rows)))].filter((id) => !builtIn.includes(id));
+  const ids = [...builtIn, ...extra].filter((id) => months.some((m) => m.rows[id]));
   for (const id of ids) {
-    const r = chainFlows(id, months.map((m) => ({ label: m.label, flow: m.rows[id] ?? { ...ZERO } })), nameOf(id)?.en ?? id, problems);
+    // A month that does not carry the commodity at all held none of it — bags
+    // included (0), so the period's bags still add up from the months that
+    // do (CRS 10's OAP FRK: July / August no row, September 0 + 2 − 2 = 0).
+    const none = { ...ZERO, bags: { open: 0, receipt: 0, total: 0, sales: 0, closing: 0 } };
+    const r = chainFlows(id, months.map((m) => ({ label: m.label, flow: m.rows[id] ?? none })), nameOf(id)?.en ?? id, problems);
     if (r) rows[id] = r;
   }
 
