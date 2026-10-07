@@ -112,15 +112,9 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
  * shortage kept), Total = Opening + Receipt + transfer + excess.
  */
 export const PV_KG_CORRECTIONS: Record<string, { note: string; applies: Applies; rows: Record<string, SetRow> }> = {
-  // CRS 10, the July – September 2026 PV, Manual and Automatic (office,
-  // 2026-10-07): OAP FRK kgs 0 + 2 = 2 − 2 = 0 (the PV had 0 + 2 = 2 − 0 = 2:
-  // the 2 kg received, no sale keyed). Kgs only — its bags (0 / 2 / 2 / 2 / 0)
-  // stay as Monthly Sales has them.
-  '10|2026-7|2026-9': {
-    note: 'office, 2026-10-07 — CRS 10 Jul–Sep 2026 PV only',
-    applies: 'both',
-    rows: { OAP_FRK: { receipt: 2, issues: 2, closing: 0 } },
-  },
+  // (CRS 10's OAP FRK 0 + 2 = 2 − 2 = 0, set here on 2026-10-07, was then
+  // recorded as the real sale — 2 kg on 30-09-2026, tools/correct-sales.mjs —
+  // so every statement and the PV read it from the data; the override went.)
 };
 
 /**

@@ -255,7 +255,11 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     J(m10) === J({ open: ['0', '36.500'], receipt: ['5', '143'], total: ['5', '179.500'], issues: ['5', '142.500'], balance: ['0', '37'] }));
   check('  …the Automatic PV keeps its own 2 / 2, Sugar (Police) untouched', PC.pvCommMapWithCorrection(10, quarter.months, own10, 'auto').PB_BRA === own10.PB_BRA && manual10.PB_SUGAR === own10.PB_SUGAR);
 
-  // CRS 10, the July – September 2026 PV (both): OAP FRK KGS only 0 + 2 = 2 − 2 = 0; its bags untouched.
+  // A PV-only KGS correction (PV_KG_CORRECTIONS), kgs only, its bags untouched. CRS 10's OAP FRK used one on
+  // 2026-10-07 until the real 2 kg sale was recorded (correct-sales.mjs): the mechanism is tested with it put back
+  // for the test; the live table holds none for CRS 10 any more.
+  check('  the live table: no KGS override for CRS 10 (its OAP FRK is the data itself now)', !PC.PV_KG_CORRECTIONS['10|2026-7|2026-9']);
+  PC.PV_KG_CORRECTIONS['10|2026-7|2026-9'] = { note: 'test', applies: 'both', rows: { OAP_FRK: { receipt: 2, issues: 2, closing: 0 } } };
   const frkBags = { open: 0, receipt: 2, total: 2, issues: 2, closing: 0 };
   const map10k = { ...own10, OAP_FRK: police({ name: 'OAP FRK', open: 0, receipt: 2, total: 2, issues: 0, closing: 2, bags: frkBags }), BRA: police({ name: 'BRA Rice', open: 100, receipt: 0, total: 100, issues: 50, closing: 50 }) };
   const snap10k = J(map10k);
@@ -270,6 +274,7 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
       m.BRA === map10k.BRA && J(map10k) === snap10k && (kind !== 'manual' || (m.PB_BRA.bags.receipt === 5 && m.PB_BRA.receipt === map10k.PB_BRA.receipt && m.PB_BRA.closing === map10k.PB_BRA.closing)));
   }
   check('  another period of CRS 10: OAP FRK untouched', PC.pvCommMapWithCorrection(10, quarterByIndex(2026, 2).months, map10k, 'auto') === map10k);
+  delete PC.PV_KG_CORRECTIONS['10|2026-7|2026-9'];
 
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
