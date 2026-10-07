@@ -208,6 +208,8 @@ const PAGE2_LABELS: Record<string, string | null> = {
   WHEAT: 'WHEAT', CYL: 'TOOR', 'T.DHALL': 'TOOR', 'T.DAL': 'TOOR', 'P.OIL': 'PALM', OOTY: 'OOTY', TAN: 'TAN',
   'SALT(CIS)': 'SALT_CIS', 'SALT(RFFS)': 'SALT_RFFS', OAP: 'OAP', APS: 'APS', 'PHH BRA': 'PHH_BRA',
   'PHH FRK': 'PHH_FRK', 'AAY FRK': 'AAY_FRK', 'NPHH FRK': 'NPHH_FRK', 'NPHH FRK RRA': 'NPHH_RRA',
+  // CRS 29's camp stocks kerosene (commodities.ts CRS29_KERO).
+  KEROSENE: 'KERO',
   'C.BOX': 'EMPTY_BOX', 'P.GUNNY': 'EMPTY_BAG',
   // Our own Page 2's spellings of the same rows (office, 2026-10-02: the
   // system's September PDF uploaded beside the office's July / August).
@@ -277,10 +279,21 @@ const page2Label = makeResolver(PAGE2_LABELS, DSS_A, PAGE2_ALIASES);
 /** Counted in pieces, printed in the BAGS columns. */
 const PIECES = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
-const PAGE2_PARENTS: Record<string, keyof Flow | 'rate' | 'amount'> = {
+/**
+ * Page 2's column headings, matched with their dots taken out ("C.S" → CS).
+ * C.S is a column of its own on some shops' sheets, between SALES and
+ * CLOSING (office, 2026-10-07: CRS 26 JULY'26 / AUG'26, P.OIL C.S 6 bags /
+ * 60 kg). Unknown, its BAGS / KGS pair was taken for CLOSING's — the nearest
+ * heading — and P.OIL read as "two figures in CLOSING BAGS". The office's
+ * sheets carry it into next month's Opening, so it is read as stock still
+ * held (readPage2: Closing = printed CLOSING + C.S).
+ */
+const PAGE2_PARENTS: Record<string, keyof Flow | 'cs' | 'rate' | 'amount'> = {
   OPENING: 'open', RECEIPT: 'receipt', EXCESS: 'excess', SHORTAG: 'shortage', SHORTAGE: 'shortage',
-  TRANSFER: 'transfer', TOTAL: 'total', SALES: 'sales', CLOSING: 'closing',
+  TRANSFER: 'transfer', TOTAL: 'total', SALES: 'sales', CS: 'cs', CLOSING: 'closing',
 };
+/** A heading word as PAGE2_PARENTS keys it: upper case, dots out. */
+const headWord = (s: string) => norm(s).replace(/\./g, '');
 
 type Leaf = { c: number; field: string; sub: 'BAGS' | 'KGS' | 'RATE' | 'AMOUNT' };
 
@@ -302,19 +315,19 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
   // The headings above the leaves. A heading printed on two lines — our own
   // Page 2 breaks SHORT / AGE and TRANS / FER — is joined when its halves
   // stand one over the other (office, 2026-10-02).
-  const above = items.filter((i) => i.y < leafY - 2 && i.y > leafY - 34 && /^[A-Z]+$/.test(norm(i.str)));
+  const above = items.filter((i) => i.y < leafY - 2 && i.y > leafY - 34 && /^[A-Z]+$/.test(headWord(i.str)));
   const used = new Set<TextItem>();
-  const parents: { x: number; r: number; field: keyof Flow }[] = [];
+  const parents: { x: number; r: number; field: keyof Flow | 'cs' }[] = [];
   for (const a of above) {
     if (used.has(a)) continue;
-    let name = norm(a.str);
+    let name = headWord(a.str);
     let x0 = a.x;
     let x1 = right(a);
     if (!(name in PAGE2_PARENTS)) {
-      const below = above.find((b) => b !== a && !used.has(b) && b.y > a.y && b.y - a.y < 14 && Math.abs(centre(b) - centre(a)) < 12 && norm(a.str) + norm(b.str) in PAGE2_PARENTS);
+      const below = above.find((b) => b !== a && !used.has(b) && b.y > a.y && b.y - a.y < 14 && Math.abs(centre(b) - centre(a)) < 12 && headWord(a.str) + headWord(b.str) in PAGE2_PARENTS);
       if (!below) continue;
       used.add(below);
-      name = norm(a.str) + norm(below.str);
+      name = headWord(a.str) + headWord(below.str);
       x0 = Math.min(x0, below.x);
       x1 = Math.max(x1, right(below));
     }
@@ -373,6 +386,8 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
 
   const firstColX = Math.min(...cols.map((c) => c.c)) - 25;
   const rows: Record<string, Flow> = {};
+  // Rows read from a line with no figure on it (every cell 0 or blank).
+  const blank = new Set<string>();
   for (const l of ls.slice(leafLineIdx + 1)) {
     const printedLabel = labelOf(l, firstColX);
     if (!printedLabel) continue;
@@ -397,7 +412,24 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       }
       continue;
     }
-    if (rows[id]) throw new PdfReadError(`CRS PAGE2: ${label} appears twice.`);
+    // Two lines for one commodity (office, 2026-10-07: CRS 29's camp sheet
+    // prints T.DHALL with its Toor Dal figures AND a CYL line of 0s — both
+    // Toor Dal). A line with no figure on it is a ruled line, stepped over
+    // (or stepped aside for the line that has them). Two lines that BOTH
+    // carry figures are still refused: nothing is dropped without a word.
+    // "No figure" means no STOCK figure: CRS 29's CYL line prints its RATE
+    // (30.00), which is not a quantity.
+    const hasStock = l.some((it) => {
+      if (it.x < firstColX - 4 || !NUMBER.test(it.str.trim()) || Number(it.str) === 0) return false;
+      const col = columnOf(it, cols);
+      return !!col && col.sub !== 'RATE' && col.sub !== 'AMOUNT';
+    });
+    if (rows[id]) {
+      if (!hasStock) continue;
+      if (!blank.has(id)) throw new PdfReadError(`CRS PAGE2: ${label} appears twice.`);
+      delete rows[id];
+      blank.delete(id);
+    }
 
     const cell: Record<string, { BAGS?: number; KGS?: number }> = {};
     for (const it of l) {
@@ -415,12 +447,17 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       return PIECES.has(id) ? (s.BAGS ?? s.KGS ?? 0) : (s.KGS ?? 0);
     };
     const open = qty('open'), receipt = qty('receipt'), excess = qty('excess'), shortage = qty('shortage');
-    const transferCell = qty('transfer'), total = qty('total'), sales = qty('sales');
+    // C.S on the office's sheet is stock STILL HELD (office, 2026-10-07): CRS
+    // 26 prints P.OIL July Closing 421 beside C.S 60 and opens August at 481
+    // (= 421 + 60). So it is not a sale: Issues = SALES, and the PV's Closing
+    // is the printed CLOSING + C.S (= Total − Sales), which is where the next
+    // month opens. (The system's own month is pvQuarter.ts's, unchanged.)
+    const transferCell = qty('transfer'), total = qty('total'), sales = qty('sales'), cs = qty('cs');
     // A CLOSING cell left blank is Total − Sales, not 0: CRS 1 leaves C.BOX and
     // P.GUNNY's Closing unprinted, and its next month opens at exactly Total −
     // Sales (July C.BOX 343 + 55 = 398 → August opens 398; P.GUNNY 118 − 74 →
     // 44). A PRINTED Closing — 0 included — is still read and still checked.
-    const closing = cell.closing ? qty('closing') : r3(total - sales);
+    const closing = cell.closing ? r3(qty('closing') + cs) : r3(total - sales);
     const flow = checkedFlow(`CRS PAGE2 · ${label}`, { open, receipt, excess, shortage, transferCell, total, sales, closing });
     // The printed BAGS (a blank bag cell is 0; a blank Closing bag cell is
     // Total − Sales, as for the kgs). Pieces rows ARE their counts.
@@ -429,9 +466,10 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
     } else {
       const bag = (fld: string) => cell[fld]?.BAGS ?? 0;
       const bT = bag('total'), bS = bag('sales');
-      flow.bags = { open: bag('open'), receipt: bag('receipt'), total: bT, sales: bS, closing: cell.closing?.BAGS !== undefined ? bag('closing') : bT - bS };
+      flow.bags = { open: bag('open'), receipt: bag('receipt'), total: bT, sales: bS, closing: cell.closing?.BAGS !== undefined ? bag('closing') + bag('cs') : bT - bS };
     }
     rows[id] = flow;
+    if (!hasStock) blank.add(id);
   }
   if (!Object.keys(rows).length) throw new PdfReadError('CRS PAGE2: no commodity rows were read.');
   return rows;
