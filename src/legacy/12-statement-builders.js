@@ -700,11 +700,11 @@ function buildCrsPage2(d){
     if(!free) salesAmountMain += amt;
     var B=stmtBagCounts(d,r.id);
     bodyRows += '<tr>'+ C(r.sl) + L(r.label) +
-      C(bz(B.open,ob))+C(nk(ob)) + C(bz(B.receipt,rec))+C(nk(rec)) +
+      C(stmtBagCell(r.id,bz(B.open,ob)))+C(nk(ob)) + C(stmtBagCell(r.id,bz(B.receipt,rec)))+C(nk(rec)) +
       C(iv(r.id,'excess'))+C(iv(r.id,'shortage'))+C(iv(r.id,'transfer')) +
-      C(bz(B.total,tot))+C(nk(tot)) + C(bz(B.sales,sal))+C(nk(sal)) +
+      C(stmtBagCell(r.id,bz(B.total,tot)))+C(nk(tot)) + C(stmtBagCell(r.id,bz(B.sales,sal)))+C(nk(sal)) +
       C(free?'':n2(rt)) + R(free?'':n2(amt)) +
-      C(bz(B.close,cb))+C(nk(cb)) + '</tr>';
+      C(stmtBagCell(r.id,bz(B.close,cb)))+C(nk(cb)) + '</tr>';
   });
 
   // ── Special rows (19–22). Empties are counted in NOS, shown in the KGS cols ──
@@ -973,13 +973,13 @@ function buildFreeCom(d){
   function comRow(r){
     var v=vals(r.id);
     return '<tr>'+ C(r.sl) + L(r.label) +
-      C(v.gob)+C(nk(v.ob)) +      // opening
-      C(v.grec)+C(nk(v.rec)) +    // receipt
-      C(v.gtr)+C(nk(v.tr)) +     // transfer (Inspection module)
-      C(v.gtot)+C(nk(v.tot)) +   // total
-      C(v.gsal)+C(nk(v.sal)) +   // sales bags/kgs
+      C(stmtBagCell(r.id,v.gob))+C(nk(v.ob)) +      // opening
+      C(stmtBagCell(r.id,v.grec))+C(nk(v.rec)) +    // receipt
+      C(stmtBagCell(r.id,v.gtr))+C(nk(v.tr)) +     // transfer (Inspection module)
+      C(stmtBagCell(r.id,v.gtot))+C(nk(v.tot)) +   // total
+      C(stmtBagCell(r.id,v.gsal))+C(nk(v.sal)) +   // sales bags/kgs
       C('-')+R('') +             // rate / amount (free)
-      C(v.gcb)+C(nk(v.cb)) +     // closing
+      C(stmtBagCell(r.id,v.gcb))+C(nk(v.cb)) +     // closing
     '</tr>';
   }
   // subtotal row (bold)
@@ -1550,9 +1550,9 @@ function buildB6(d){
   function comRow(sl,label,id){
     var v=vals(id);
     return '<tr>'+C(sl)+L(label)+
-      C(v.gob)+C(nz(v.ob))+ C(v.grec)+C(nz(v.rec))+
+      C(stmtBagCell(id,v.gob))+C(nz(v.ob))+ C(stmtBagCell(id,v.grec))+C(nz(v.rec))+
       C(nz(d.getInsp(id,'excess')))+C(nz(d.getInsp(id,'shortage')))+C(nz(d.getInsp(id,'transfer')))+
-      C(v.gtot)+C(nz(v.tot))+ C(v.gsal)+C(nz(v.sal))+ C(v.gcb)+C(nz(v.cb))+'</tr>';
+      C(stmtBagCell(id,v.gtot))+C(nz(v.tot))+ C(stmtBagCell(id,v.gsal))+C(nz(v.sal))+ C(stmtBagCell(id,v.gcb))+C(nz(v.cb))+'</tr>';
   }
   function blankRow(sl,label){
     return '<tr>'+C(sl)+L(label)+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+'</tr>';

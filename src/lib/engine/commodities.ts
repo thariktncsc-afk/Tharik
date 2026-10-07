@@ -100,6 +100,14 @@ export function stockListsFor(crsId: number | null | undefined): { a: Commodity[
  */
 export const SALES_ONLY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
+/**
+ * Kept in KGS ONLY on the PV and the statements (office, 2026-10-07): their bag
+ * cells print blank, and they add no bags to a total. Monthly Sales and every
+ * stored figure are unchanged. The statements' own list is STMT_KGS_ONLY
+ * (src/legacy/46-shop-commodities.js) — keep the two alike.
+ */
+export const KGS_ONLY = new Set(['OAP_FRK']);
+
 export type EntryRecord = { open?: number; receipt?: number; sales?: number; close?: number; amount?: number };
 export type DayEntry = { a?: Record<string, EntryRecord>; b?: Record<string, EntryRecord> };
 
