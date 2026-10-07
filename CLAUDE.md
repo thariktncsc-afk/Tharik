@@ -509,9 +509,13 @@ role.
     (`set-month-bags.mjs --receipt=0 --sales=0`): OAP FRK is kgs only, and
     those bags had added 2 to Gunny SS Receipt (306 → 308). It is back to
     306, its stored copy.
-  - **COLL still reads −2**: R/2026/087 is an ADVANCE receipt, and COLL
-    keeps advances out of its balance. If it was September's stock, the
-    receipt is Regular; that is the office's call, and it was not changed.
+  - **COLL**: R/2026/087 had been saved as an ADVANCE receipt, which COLL
+    keeps out of its balance, so COLL read −2. The office confirmed it was
+    September's stock: `tools/set-receipt-type.mjs --crs=10
+    --receipt-no=R/2026/087 --type=regular --write` changed only its type.
+    The tool proves the month and the chain are identical before and after.
+    COLL now reads OAP FRK 0 / 0 / 2 / 2 / 2 / 0, and OAP FRK left its
+    ADVANCE table. Backup `backups/receipt-type-crs10-R_2026_087-…`.
   - Backups: `backups/correct-sales-10_2026-09-30-OAP_FRK-…` and
     `backups/month-bags-10_9_2026-OAP_FRK-2026-10-07T03-00-…`.
 
