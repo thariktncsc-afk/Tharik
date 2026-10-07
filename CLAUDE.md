@@ -2595,6 +2595,23 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
       PAGE2 · 20 commodities · GUNNY", 3 / 3 months ready, and Generate
       builds the PV. P.OIL reads bags 54 + 247 = 301 − 282 = 19, kgs 536 +
       2477 = 3013 − 2823 = 190.
+  - **CRS 29's camp PAGE2** (office, 2026-10-07; §2).
+    - **The fault**: CRS 29's July and August sheets print **T.DHALL** with
+      the Toor Dal figures AND a **CYL** line of 0s. Both are Toor Dal (the
+      camp has one TOOR), and the CYL line prints its RATE 30.00. Both
+      months were refused: "CRS PAGE2: CYL appears twice".
+    - **Now**: a repeated commodity line with no STOCK figure is stepped
+      over, whichever order the two come in. "No stock figure" means every
+      quantity cell is 0 or blank; a RATE or AMOUNT does not count. Two lines
+      that BOTH carry figures are still refused.
+    - **KEROSENE** reads as the camp's `KERO` (CRS29_KERO). It used to be
+      left out for review.
+    - **Every other office PDF reads as before**: 261 sheets in 160 files
+      identical, only CRS 29's two PAGE2s changed (refused → read).
+    - Localhost, live copy, the office's CRS 29 PDFs: both cards read "CRS
+      PAGE2 · 9 commodities · GUNNY", 3 / 3 months ready, and Generate
+      builds the PV. Toor Dal reads 6 + 2310 = 2316 − 2309 = 7, Kerosene 54
+      + 6554 = 6608 − 6570 = 38.
   - **This system's own statements PDF as a month** (§8). Our Page 2 prints
     Empty Card+Box / Polythene Bag as SALES ONLY (their stock is Gunny's), so
     September (CRS 20's own statements) chained as "August closes at 40,

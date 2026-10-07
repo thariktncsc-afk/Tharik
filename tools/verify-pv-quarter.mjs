@@ -496,6 +496,47 @@ console.log('\n2. Built pages — what a real file can throw');
       }
     } else console.log('  (CRS 26 PDFs not on this machine — skipped)');
   }
+  // CRS 29's camp sheet (office, 2026-10-07): T.DHALL carries Toor Dal's figures AND a CYL line of 0s (with its
+  // RATE 30.00) — both Toor Dal. Read as "CYL appears twice". A line with no STOCK figure is a ruled line.
+  {
+    const tdhall = { open: [1, 6], receipt: [15, 767], total: [16, 773], sales: [15, 766], closing: [1, 7] };
+    const zeros = { open: [0, 0], receipt: [0, 0], total: [0, 0], sales: [0, 0], closing: [0, 0] };
+    const withRate = (items, label) => {
+      const y = items.find((i) => i.str === label).y;
+      const rate = items.find((i) => i.str === 'RATE');
+      return [...items, rightAt('30.00', rate.x + W('RATE') + 6, y)];
+    };
+    for (const [name, rows] of [['T.DHALL, then CYL of 0s', { 'T.DHALL': tdhall, CYL: zeros }], ['CYL of 0s, then T.DHALL', { CYL: zeros, 'T.DHALL': tdhall }]]) {
+      const rev = [];
+      let r = null; const e = refused(() => (r = P.readPage2(withRate(page2(29, 7, rows, { adjustments: false }), 'CYL'), rev)));
+      check(`${name} (CYL's RATE 30.00 printed): Toor Dal ${r?.TOOR?.open} + ${r?.TOOR?.receipt} = ${r?.TOOR?.total} − ${r?.TOOR?.sales} = ${r?.TOOR?.closing}`,
+        !e && J([r.TOOR.open, r.TOOR.receipt, r.TOOR.total, r.TOOR.sales, r.TOOR.closing]) === J([6, 767, 773, 766, 7]) && r.TOOR.bags.closing === 1 && !rev.length, e);
+    }
+    const both = refused(() => P.readPage2(page2(29, 7, { 'T.DHALL': tdhall, CYL: { ...tdhall } }, { adjustments: false })));
+    check(`  two lines that BOTH carry figures are still refused: "${both}"`, /appears twice/.test(both ?? ''));
+    const kero = P.readPage2(page2(29, 7, { KEROSENE: { open: ['', 54], receipt: ['', 2174], total: ['', 2228], sales: ['', 2201], closing: ['', 27] } }, { adjustments: false })).KERO;
+    check(`KEROSENE reads as the camp's KERO: ${kero?.open} + ${kero?.receipt} = ${kero?.total} − ${kero?.sales} = ${kero?.closing}`, !!kero && kero.closing === 27 && kero.total === 2228);
+    const D29 = ['C:/Users/TharikAliR/Downloads', 'C:/Users/TharikAliR/Downloads/PV'].find((d) => existsSync(`${d}/CRS 29-REFUGEE CAMP JULY'26 - CRS PAGE2.pdf`));
+    if (D29) {
+      const pdfjs = await import(pathToFileURL(join(root, 'node_modules/pdfjs-dist/legacy/build/pdf.mjs')).href);
+      const pagesOf = async (f) => {
+        const d = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(f)), verbosity: 0 }).promise;
+        const out = [];
+        for (let n = 1; n <= d.numPages; n++) {
+          const pg = await d.getPage(n); const vp = pg.getViewport({ scale: 1 });
+          out.push({ file: f.split('/').pop(), items: (await pg.getTextContent()).items.filter((i) => i.str?.trim()).map((i) => ({ str: i.str, x: i.transform[4], y: vp.height - i.transform[5], w: i.width })) });
+        }
+        return out;
+      };
+      for (const [tag, month, toor, kero2] of [['JULY', 7, [6, 767, 773, 766, 7], [54, 2174, 2228, 2201, 27]], ['AUG', 8, [7, 773, 780, 770, 10], [27, 2201, 2228, 2179, 49]]]) {
+        const pages = (await Promise.all(['CRS PAGE2', 'GUNNY-2'].map((k) => pagesOf(`${D29}/CRS 29-REFUGEE CAMP ${tag}'26 - ${k}.pdf`)))).flat();
+        let m = null; const e2 = refused(() => (m = P.readMonthPages(pages, { crsId: 29, month, year: 2026 })));
+        const t = m?.rows.TOOR, k = m?.rows.KERO;
+        check(`CRS 29 ${tag}'26 (the office's PDFs): ${e2 ?? `${Object.keys(m.rows).join(' ')}; GUNNY ${!!m.gunny}; review ${m.review.length}; Toor Dal ${t.open}/${t.receipt}/${t.total}/${t.sales}/${t.closing}; Kerosene ${k.open}/${k.receipt}/${k.total}/${k.sales}/${k.closing}`}`,
+          !e2 && !!m.gunny && !m.review.length && J([t.open, t.receipt, t.total, t.sales, t.closing]) === J(toor) && J([k.open, k.receipt, k.total, k.sales, k.closing]) === J(kero2), e2);
+      }
+    } else console.log('  (CRS 29 PDFs not on this machine — skipped)');
+  }
   check('a file named "CRS PAGE 2" (with a space) that is not a PAGE2 is named, as "PAGE2" is', /PAGE 2/.test("CRS 1 JULY'26 - CRS PAGE 2.pdf") &&
     /could not be read — CRS 1 JULY'26 - CRS PAGE 2\.pdf/.test(refused(() => P.readMonthPages([{ ...notP2, file: "CRS 1 JULY'26 - CRS PAGE 2.pdf" }], { crsId: 1, month: 7, year: 2026 })) ?? ''));
 }

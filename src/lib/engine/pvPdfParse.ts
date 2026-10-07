@@ -208,6 +208,8 @@ const PAGE2_LABELS: Record<string, string | null> = {
   WHEAT: 'WHEAT', CYL: 'TOOR', 'T.DHALL': 'TOOR', 'T.DAL': 'TOOR', 'P.OIL': 'PALM', OOTY: 'OOTY', TAN: 'TAN',
   'SALT(CIS)': 'SALT_CIS', 'SALT(RFFS)': 'SALT_RFFS', OAP: 'OAP', APS: 'APS', 'PHH BRA': 'PHH_BRA',
   'PHH FRK': 'PHH_FRK', 'AAY FRK': 'AAY_FRK', 'NPHH FRK': 'NPHH_FRK', 'NPHH FRK RRA': 'NPHH_RRA',
+  // CRS 29's camp stocks kerosene (commodities.ts CRS29_KERO).
+  KEROSENE: 'KERO',
   'C.BOX': 'EMPTY_BOX', 'P.GUNNY': 'EMPTY_BAG',
   // Our own Page 2's spellings of the same rows (office, 2026-10-02: the
   // system's September PDF uploaded beside the office's July / August).
@@ -384,6 +386,8 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
 
   const firstColX = Math.min(...cols.map((c) => c.c)) - 25;
   const rows: Record<string, Flow> = {};
+  // Rows read from a line with no figure on it (every cell 0 or blank).
+  const blank = new Set<string>();
   for (const l of ls.slice(leafLineIdx + 1)) {
     const printedLabel = labelOf(l, firstColX);
     if (!printedLabel) continue;
@@ -408,7 +412,24 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       }
       continue;
     }
-    if (rows[id]) throw new PdfReadError(`CRS PAGE2: ${label} appears twice.`);
+    // Two lines for one commodity (office, 2026-10-07: CRS 29's camp sheet
+    // prints T.DHALL with its Toor Dal figures AND a CYL line of 0s — both
+    // Toor Dal). A line with no figure on it is a ruled line, stepped over
+    // (or stepped aside for the line that has them). Two lines that BOTH
+    // carry figures are still refused: nothing is dropped without a word.
+    // "No figure" means no STOCK figure: CRS 29's CYL line prints its RATE
+    // (30.00), which is not a quantity.
+    const hasStock = l.some((it) => {
+      if (it.x < firstColX - 4 || !NUMBER.test(it.str.trim()) || Number(it.str) === 0) return false;
+      const col = columnOf(it, cols);
+      return !!col && col.sub !== 'RATE' && col.sub !== 'AMOUNT';
+    });
+    if (rows[id]) {
+      if (!hasStock) continue;
+      if (!blank.has(id)) throw new PdfReadError(`CRS PAGE2: ${label} appears twice.`);
+      delete rows[id];
+      blank.delete(id);
+    }
 
     const cell: Record<string, { BAGS?: number; KGS?: number }> = {};
     for (const it of l) {
@@ -448,6 +469,7 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       flow.bags = { open: bag('open'), receipt: bag('receipt'), total: bT, sales: bS, closing: cell.closing?.BAGS !== undefined ? bag('closing') + bag('cs') : bT - bS };
     }
     rows[id] = flow;
+    if (!hasStock) blank.add(id);
   }
   if (!Object.keys(rows).length) throw new PdfReadError('CRS PAGE2: no commodity rows were read.');
   return rows;
