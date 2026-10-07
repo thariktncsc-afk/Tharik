@@ -2574,21 +2574,27 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
       both months showed "No CRS PAGE2 … read".
     - **Now**: headings are matched with their dots taken out (`headWord`),
       and `CS` is a column of its own.
-    - **C.S counts as sales**, as for the system's own month:
-      - Sales = SALES + C.S, kgs and bags alike, so Total − Sales = the
-        printed Closing.
-      - CRS 26 July P.OIL: bags 54 + 90 = 144 − (96 + 6) = 42; kgs 536 + 900
-        = 1436 − (955 + 60) = 421, every figure as printed.
+    - **C.S on an office PDF is stock STILL HELD** (the office's answer,
+      2026-10-07):
+      - CRS 26's sheets carry C.S into the next month's Opening. July
+        closes P.OIL at 421 and August opens at 481 (= 421 + 60); August
+        closes at 521 and the system's September opens at 581.
+      - So Issues = SALES, and the PV's Closing = the printed CLOSING + C.S
+        (= Total − Sales), in kgs and bags. July P.OIL: 1436 − 955 = 481 kg,
+        144 − 96 = 48 bags. August: 581 kg, 58 bags.
+      - Read the first way (C.S as a sale), Generate stopped on two breaks
+        of 60.
+      - The system's own month is unchanged: there, C.S still counts as
+        sales (pvQuarter.ts).
     - **Every other office PDF reads as before**: 257 sheets in 156 files,
       read by the old and the new reader, are identical. Only CRS 26's two
       PAGE2s changed, from refused to read.
     - The reading is done in the browser from the SAVED bytes on every open,
       so saved uploads are re-read with no re-upload.
-    - **Open, the office's to decide**: on CRS 26's sheets the C.S is carried
-      into the next month's Opening. July closes P.OIL at 421 and August
-      opens at 481 (= 421 + 60); August closes at 521 and the system's
-      September opens at 581. So the Manual PV's Generate stops on those two
-      breaks of 60.
+    - Localhost, live copy, the office's CRS 26 PDFs: both cards read "CRS
+      PAGE2 · 20 commodities · GUNNY", 3 / 3 months ready, and Generate
+      builds the PV. P.OIL reads bags 54 + 247 = 301 − 282 = 19, kgs 536 +
+      2477 = 3013 − 2823 = 190.
   - **This system's own statements PDF as a month** (§8). Our Page 2 prints
     Empty Card+Box / Polythene Bag as SALES ONLY (their stock is Gunny's), so
     September (CRS 20's own statements) chained as "August closes at 40,

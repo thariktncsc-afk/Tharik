@@ -462,17 +462,19 @@ console.log('\n2. Built pages — what a real file can throw');
   }
   // A C.S column between SALES and CLOSING (office, 2026-10-07: CRS 26 JULY'26 / AUG'26, P.OIL C.S 6 bags / 60 kg).
   // Unknown, its BAGS / KGS pair was taken for CLOSING's and P.OIL read as "two figures in CLOSING BAGS".
+  // The office's sheets carry C.S into next month's Opening (July 421 + 60 = August's 481): stock still held, so
+  // Issues = SALES and the PV's Closing = the printed CLOSING + C.S (= Total − Sales).
   {
     const csRows = { 'B.RICE': { open: [10, 500], receipt: [20, 1000], total: [30, 1500], sales: [25, 1250], closing: [5, 250] }, 'P.OIL': { open: [54, 536], receipt: [90, 900], total: [144, 1436], sales: [96, 955], cs: [6, 60], closing: [42, 421] }, 'T.DHALL': { open: [2, 100.5], receipt: [4, 200], total: [6, 300.5], sales: [5, 250.25], cs: ['', 0.25], closing: [1, 50] } };
     const rev = [];
     let r = null; const e = refused(() => (r = P.readPage2(page2(26, 7, csRows, { cs: true }), rev)));
     const p = r?.PALM, b = p?.bags;
-    check(`C.S column: P.OIL bags ${b?.open} + ${b?.receipt} = ${b?.total} − (${b?.sales} incl. C.S) = ${b?.closing}; kgs ${p?.open} + ${p?.receipt} = ${p?.total} − (${p?.sales} incl. C.S) = ${p?.closing}`,
-      !e && J([b.open, b.receipt, b.total, b.sales, b.closing]) === J([54, 90, 144, 102, 42]) && J([p.open, p.receipt, p.total, p.sales, p.closing]) === J([536, 900, 1436, 1015, 421]) && !rev.length, e);
+    check(`C.S column (stock still held): P.OIL bags ${b?.open} + ${b?.receipt} = ${b?.total} − ${b?.sales} = ${b?.closing}; kgs ${p?.open} + ${p?.receipt} = ${p?.total} − ${p?.sales} = ${p?.closing}`,
+      !e && J([b.open, b.receipt, b.total, b.sales, b.closing]) === J([54, 90, 144, 96, 48]) && J([p.open, p.receipt, p.total, p.sales, p.closing]) === J([536, 900, 1436, 955, 481]) && !rev.length, e);
     check(`  a row with no C.S reads as before (B.RICE ${r?.BRA?.sales} / ${r?.BRA?.closing}); a decimal C.S kgs with a blank bag cell (T.DHALL ${r?.TOOR?.sales} / ${r?.TOOR?.closing}, bags ${J(r?.TOOR?.bags)})`,
-      !e && r.BRA.sales === 1250 && r.BRA.closing === 250 && r.TOOR.sales === 250.5 && r.TOOR.closing === 50 && r.TOOR.bags.sales === 5 && r.TOOR.bags.closing === 1);
-    const plain = { 'P.OIL': { open: [54, 536], receipt: [90, 900], total: [144, 1436], sales: [102, 1015], closing: [42, 421] } };
-    check('  the same sheet without a C.S column reads the same P.OIL', J(P.readPage2(page2(26, 7, plain)).PALM) === J(p));
+      !e && r.BRA.sales === 1250 && r.BRA.closing === 250 && r.TOOR.sales === 250.25 && r.TOOR.closing === 50.25 && r.TOOR.bags.sales === 5 && r.TOOR.bags.closing === 1);
+    const plain = { 'P.OIL': { open: [54, 536], receipt: [90, 900], total: [144, 1436], sales: [96, 955], closing: [48, 481] } };
+    check('  the same row printed with its C.S already in CLOSING (no C.S column) reads the same P.OIL', J(P.readPage2(page2(26, 7, plain)).PALM) === J(p));
     const pdfDir = ['C:/Users/TharikAliR/Downloads', 'C:/Users/TharikAliR/Downloads/PV'].find((d) => existsSync(`${d}/CRS 26 JULY'26 - CRS PAGE2 .pdf`));
     if (pdfDir) {
       const pdfjs = await import(pathToFileURL(join(root, 'node_modules/pdfjs-dist/legacy/build/pdf.mjs')).href);
@@ -485,7 +487,7 @@ console.log('\n2. Built pages — what a real file can throw');
         }
         return out;
       };
-      for (const [tag, month, want] of [['JULY', 7, [54, 90, 144, 102, 42, 536, 900, 1436, 1015, 421]], ['AUG', 8, [48, 101, 149, 97, 52, 481, 1009, 1490, 969, 521]]]) {
+      for (const [tag, month, want] of [['JULY', 7, [54, 90, 144, 96, 48, 536, 900, 1436, 955, 481]], ['AUG', 8, [48, 101, 149, 91, 58, 481, 1009, 1490, 909, 581]]]) {
         const pages = (await Promise.all(['CRS PAGE2 ', 'GUNNY 2'].map((k) => pagesOf(`${pdfDir}/CRS 26 ${tag}'26 - ${k}.pdf`)))).flat();
         let m = null; const e2 = refused(() => (m = P.readMonthPages(pages, { crsId: 26, month, year: 2026 })));
         const q = m?.rows.PALM;

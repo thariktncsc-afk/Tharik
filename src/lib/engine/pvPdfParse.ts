@@ -279,11 +279,12 @@ const PIECES = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
 /**
  * Page 2's column headings, matched with their dots taken out ("C.S" → CS).
- * C.S (closing sales) is a column of its own on some shops' sheets, between
- * SALES and CLOSING (office, 2026-10-07: CRS 26 JULY'26 / AUG'26, P.OIL
- * C.S 6 bags / 60 kg). Unknown, its BAGS / KGS pair was taken for CLOSING's —
- * the nearest heading — and P.OIL read as "two figures in CLOSING BAGS". It
- * counts as sales, as everywhere else (Total − Sales − C.S = Closing).
+ * C.S is a column of its own on some shops' sheets, between SALES and
+ * CLOSING (office, 2026-10-07: CRS 26 JULY'26 / AUG'26, P.OIL C.S 6 bags /
+ * 60 kg). Unknown, its BAGS / KGS pair was taken for CLOSING's — the nearest
+ * heading — and P.OIL read as "two figures in CLOSING BAGS". The office's
+ * sheets carry it into next month's Opening, so it is read as stock still
+ * held (readPage2: Closing = printed CLOSING + C.S).
  */
 const PAGE2_PARENTS: Record<string, keyof Flow | 'cs' | 'rate' | 'amount'> = {
   OPENING: 'open', RECEIPT: 'receipt', EXCESS: 'excess', SHORTAG: 'shortage', SHORTAGE: 'shortage',
@@ -425,13 +426,17 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       return PIECES.has(id) ? (s.BAGS ?? s.KGS ?? 0) : (s.KGS ?? 0);
     };
     const open = qty('open'), receipt = qty('receipt'), excess = qty('excess'), shortage = qty('shortage');
-    // C.S counts as sales (the system's month does the same: pvQuarter.ts).
-    const transferCell = qty('transfer'), total = qty('total'), sales = r3(qty('sales') + qty('cs'));
+    // C.S on the office's sheet is stock STILL HELD (office, 2026-10-07): CRS
+    // 26 prints P.OIL July Closing 421 beside C.S 60 and opens August at 481
+    // (= 421 + 60). So it is not a sale: Issues = SALES, and the PV's Closing
+    // is the printed CLOSING + C.S (= Total − Sales), which is where the next
+    // month opens. (The system's own month is pvQuarter.ts's, unchanged.)
+    const transferCell = qty('transfer'), total = qty('total'), sales = qty('sales'), cs = qty('cs');
     // A CLOSING cell left blank is Total − Sales, not 0: CRS 1 leaves C.BOX and
     // P.GUNNY's Closing unprinted, and its next month opens at exactly Total −
     // Sales (July C.BOX 343 + 55 = 398 → August opens 398; P.GUNNY 118 − 74 →
     // 44). A PRINTED Closing — 0 included — is still read and still checked.
-    const closing = cell.closing ? qty('closing') : r3(total - sales);
+    const closing = cell.closing ? r3(qty('closing') + cs) : r3(total - sales);
     const flow = checkedFlow(`CRS PAGE2 · ${label}`, { open, receipt, excess, shortage, transferCell, total, sales, closing });
     // The printed BAGS (a blank bag cell is 0; a blank Closing bag cell is
     // Total − Sales, as for the kgs). Pieces rows ARE their counts.
@@ -439,8 +444,8 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       flow.bags = { open: flow.open, receipt: flow.receipt, total: flow.total, sales: flow.sales, closing: flow.closing };
     } else {
       const bag = (fld: string) => cell[fld]?.BAGS ?? 0;
-      const bT = bag('total'), bS = bag('sales') + bag('cs');
-      flow.bags = { open: bag('open'), receipt: bag('receipt'), total: bT, sales: bS, closing: cell.closing?.BAGS !== undefined ? bag('closing') : bT - bS };
+      const bT = bag('total'), bS = bag('sales');
+      flow.bags = { open: bag('open'), receipt: bag('receipt'), total: bT, sales: bS, closing: cell.closing?.BAGS !== undefined ? bag('closing') + bag('cs') : bT - bS };
     }
     rows[id] = flow;
   }
