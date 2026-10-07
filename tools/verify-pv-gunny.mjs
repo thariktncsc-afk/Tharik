@@ -332,7 +332,23 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check(`  printed: PHH BRA bags ${pb.join(' / ')} kgs ${pk.join(' / ')}; Palm Oil bags ${ob.join(' / ')} kgs ${ok.join(' / ')}`,
     J(pb) === J(['0', '178', '178', '165', '13']) && J(pk) === J(['0', '9305', '9305', '8689.970', '615.030']) && J(ob) === J(['54', '190', '244', '214', '30']) && J(ok) === J(['536', '1890', '2426', '2113', '313']));
   check('  the Automatic PV, another period and another shop: untouched',
-    PC.pvCommMapWithCorrection(15, quarter.months, map15, 'auto') === map15 && PC.pvCommMapWithCorrection(15, quarterByIndex(2026, 2).months, map15, 'manual') === map15 && PC.pvCommMapWithCorrection(16, quarter.months, map15, 'manual') === map15);
+    PC.pvCommMapWithCorrection(15, quarter.months, map15, 'auto') === map15 && PC.pvCommMapWithCorrection(15, quarterByIndex(2026, 2).months, map15, 'manual') === map15 && PC.pvCommMapWithCorrection(18, quarter.months, map15, 'manual') === map15);
+
+  // CRS 16, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice bags 15 + 191 = 206 − 172 = 34
+  // (had 15 + 193 = 208 − 174 = 34). No kgs move.
+  const bra16 = police({ name: 'BRA Rice', open: 750, receipt: 9665, total: 10415, issues: 8681, closing: 1734, free: false, bags: { open: 15, receipt: 193, total: 208, issues: 174, closing: 34 } });
+  const map16 = { BRA: bra16, WHEAT: wheat15 };
+  const snap16 = J(map16);
+  const fx16 = PC.pvCommMapWithCorrection(16, quarter.months, map16, 'manual');
+  check(`CRS 16 Manual PV, BRA Rice bags: ${tup(fx16.BRA.bags).join(' / ')} = 15 + 191 = 206 − 172 = 34`, J(tup(fx16.BRA.bags)) === J([15, 191, 206, 172, 34]));
+  check('  …its kgs unchanged, Wheat untouched, the input untouched',
+    J({ ...fx16.BRA, bags: undefined, bagsFixed: undefined }) === J({ ...bra16, bags: undefined }) && fx16.WHEAT === wheat15 && J(map16) === snap16);
+  const html16 = buildPVTable({ commMap: fx16, periodLabel: 'Q', crsId: 16, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' });
+  const r16 = [...html16.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'BRA Rice')?.slice(3) ?? [];
+  const [b16, k16] = bk(r16);
+  check(`  printed: bags ${b16.join(' / ')}, kgs ${k16.join(' / ')}`, J(b16) === J(['15', '191', '206', '172', '34']) && J(k16) === J(['750', '9665', '10415', '8681', '1734']));
+  check('  the Automatic PV, another period and another shop: untouched',
+    PC.pvCommMapWithCorrection(16, quarter.months, map16, 'auto') === map16 && PC.pvCommMapWithCorrection(16, quarterByIndex(2026, 2).months, map16, 'manual') === map16 && PC.pvCommMapWithCorrection(17, quarter.months, map16, 'manual') === map16);
 
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
