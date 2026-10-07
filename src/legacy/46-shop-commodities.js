@@ -76,7 +76,9 @@ function stmtOwnLabel(c){ return String((c && (c.en || c.id)) || '').toUpperCase
 // has them (CRS Page 2, Free Com, B6), and it adds no bags to a total
 // (stmtBagCounts gives it 0). Its kgs print as ever. The same list is
 // src/lib/engine/commodities.ts KGS_ONLY (the PV) — keep the two alike.
-var STMT_KGS_ONLY = ['OAP_FRK'];
+// KERO: CRS 29's kerosene has no bags (office, 2026-10-07) — blank on the
+// camp's Page 2 and B6 (26-crs29.js c29StockGrid).
+var STMT_KGS_ONLY = ['OAP_FRK', 'KERO'];
 function stmtKgsOnly(id){ return STMT_KGS_ONLY.indexOf(id) !== -1; }
 /** A bag cell: blank for a kgs-only commodity, else the figure as given. */
 function stmtBagCell(id, v){ return stmtKgsOnly(id) ? '' : v; }
