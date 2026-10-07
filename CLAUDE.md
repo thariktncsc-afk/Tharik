@@ -459,6 +459,21 @@ role.
   `node tools/repair-stock-chain.mjs [--crs=N]` (dry run) then `--write`, which
   backs up the rows to `backups/` first and writes under version.
 
+- **A commodity added after the chain began starts at 0** (office,
+  2026-10-07; `buildChainIndex`, `walk`; `verify:commodity-scope` §9).
+  - The sheets saved before it was on the shop's list held none of it. Its
+    first row opens at 0 plus what was received or adjusted from the
+    shop's first sheet on. This is the roll-up's reading too.
+  - Before, those receipts were lost. CRS 10 received 2 kg of OAP FRK on
+    25-09 (R/2026/087), its first OAP FRK row is 30-09, and the month
+    read −2 + 2 = 0.
+  - Unchanged:
+    - the shop's first sheet is the start of its chain;
+    - an administrator's fixed Opening wins;
+    - every commodity already on the sheets is unchanged. Live, 291
+      sheets: the only figure that moves is CRS 10's OAP FRK, 0 → 2 from
+      30-09 on.
+
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
 
@@ -502,10 +517,51 @@ CRS.
   only while no shop holds a saved figure for it (every record is keyed by
   both). Narrowing to one shop when others hold figures asks first; their
   figures stay in the database, the commodity leaves their screens.
-- **Not covered — statements, the DSS and the PV.** They print the
-  statutory forms' fixed rows from the compiled engine (CLAUDE.md above),
-  so NO added commodity — All Shops or Particular — appears on them; the
-  master only feeds them rates. Unchanged here; a decision for the office.
+- **A shop's own commodity reaches its statements and PV** (office,
+  2026-10-07; CRS 10's OAP FRK, `verify:commodity-scope` §9). Before this,
+  NO added commodity appeared on the statements, the PV or the DSS.
+  - **The PV** prints its rows in the shop's own list and Order
+    (`buildPVTable`'s `commodities`, both PVs). A row carrying figures that
+    the list lacks (an uploaded PDF's OAP FRK) still prints, after them.
+    A commodity the master ADDED to the shop's list prints even with no
+    figures in the period, at 0, like every other line, never skipped
+    (CRS 10's Jul–Sep PV, office 2026-10-07). The built-in and camp lines
+    are unchanged: CRS 29 gains no Kerosene row.
+  - **The statements** (`src/legacy/46-shop-commodities.js`,
+    `stmtWithOwnRows`): a shop's OWN (scope 'shop') commodity gets a row of
+    its own. It sits after the row of the commodity the shop's Order has
+    just before it, on every form that has one:
+    - CRS Page 2, Free Com, Sale Tax, RBI and COLL. B6 fills its existing
+      OAP FRK / APS FRK line.
+    - The serial is the preceding one + "A" (12A, 9A, 3A). RBI numbers its
+      rows itself, so its later rows move up one.
+    - The rice totals of Free Com / RBI include it.
+    - The month's roll-up uses the shop's list for such a shop only
+      (`ownListsFor`, server.ts). Every other shop's statements are
+      byte-identical: 412 of 418 sections, live September copy; the golden
+      run is identical before and after.
+  - **Not covered:** the DSS (compiled lists, unchanged) and All Shops
+    additions on the statements (the forms are the office's).
+  - **Receipt** lists the shop's master list, as Daily / Monthly do. OAP
+    FRK now has its Gunny bag box (GUNNY ÷ 50, as OAP) there, in
+    `PACK_BASE` and in the statements' gunny twin (42-gunny-live.js).
+  - **Placing a commodity**:
+    - **Commodity Master → Edit** (Order, Scope), or
+    - `node tools/set-commodity-place.mjs --id=ID --order=N (--crs=N |
+      --all) [--write]`: the screen's `placeAtOrder`. It refuses to narrow
+      while another shop holds figures, or if any other commodity would
+      change place. It backs up and writes under version.
+    - Written live 2026-10-07: OAP_FRK → CRS 10, Order 28 → 10. CRS 10 reads
+      … OAP 9 · OAP FRK 10 · APS 11 …; every other shop unchanged, with no
+      OAP FRK. No shop held OAP FRK figures. Backup
+      `backups/commodity-place-OAP_FRK-…`.
+  - Localhost, fresh read-only copy of live data, every write judged by the
+    real guard:
+    - CRS 10's Receipt lists OAP FRK 10th with a Gunny box (100 kg → 2
+      bags); the receipt saves and survives a reload.
+    - Daily Sales: row 10, Receipt 100. Monthly Sales: row 10, 2 bags /
+      100 kg. PV: row 10, under OAP.
+    - CRS 1 has no OAP FRK.
 - Localhost, admin, live copy: Special Rice CRS 14 / Order 23 → CRS 14's
   Daily and Monthly Entry between Empty Polythene Bag and OAP FRK, absent on
   CRS 1 / 5 / 10; Order 23 → 5 → between PHH BRA and AAY FRK; → All Shops →
@@ -2892,6 +2948,21 @@ verify:pv-gunny` §7).
   - CRS 11's police BRA kgs are unchanged: 2 / 54 / 56 / 54 / 2 on the
     Manual PV. On the Automatic PV they are September's alone, 2 / 18 / 20
     / 18 / 2, beside the same 1 bag (the office chose both PVs).
+- **A police line printing its OWN bags** (`PV_POLICE_OWN_BAGS`,
+  `pvPoliceOwnBags`; office, 2026-10-07).
+  - A police line prints 0 bags on every PV. For a shop named in this
+    list, the listed lines print the bag counts Monthly Sales shows for
+    them (`pvPeriodBags(…, 'b')`) on every PV of that shop, Manual and
+    Automatic.
+  - Not a correction: the figures are the stored ones, and a PV correction
+    still adds on top.
+  - **CRS 10 Police BRA**: September Receipt 2 bags of 143 kg, Sales 2 of
+    142.5, so the PV prints 0 / 2 / 2 / 2 / 0 bags.
+  - On the Manual PV the bags are the system months' only: the office's
+    police PDFs carry no bags, so July / August add none.
+  - The statements print police lines in kgs only (CRS Police, RBI, COLL),
+    so nothing there changes.
+  - The other police lines and every other shop print 0, as before.
 - **Checked on localhost, fresh read-only copy of live data**:
   - CRS 7, with the office's July / August PDFs (`Downloads/PV`) and
     September from the system: the Manual PV generates, and Preview and the
@@ -3088,7 +3159,7 @@ npm run verify:gunny-sync       Gunny Save → Monthly Sales + last-day Daily En
 npm run verify:daily-bags       a "from Daily" row's typed bag counts: saved, kept by every republish and by Gunny Save, logged
 npm run verify:oap-statement    Reports OAP / APS / ANP: shops with an entry only, Monthly Sales figures, family from the master, one A4 landscape page per shop
 npm run verify:carry-forward    previous month Closing → this month Opening on Monthly Entry, for administrators too; chain, then last month published
-npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard
+npm run verify:commodity-scope  Commodity Master scope: All Shops / one shop, Order position, server read filter, admin-only master, keying guard, a shop's own commodity on its statements / PV / Receipt
 npm run verify:page2-fill       CRS Page 2 and B6 fill their A4 landscape page: one page, larger type, nothing clipped (worst case), CRS 29 too, builders untouched
 npm run verify:receipt-date     Receipt Register Edit Date (admin): in place, both dates republished, chain / months / DSS / statements follow, activity row, shop staff refused
 npm run verify:bag-carry        bags carry: last month's Closing bags = this month's Opening, typed Opening wins, first month unchanged, statements via ctx.bagOpening

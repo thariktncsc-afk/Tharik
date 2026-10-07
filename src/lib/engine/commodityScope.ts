@@ -139,3 +139,26 @@ export function describeScope(v: ScopeViolation[]): string {
   if (!first) return '';
   return `${first.commodity} belongs to CRS ${first.owner} only — it cannot be entered for CRS ${first.crsId}` + (v.length > 1 ? ` (+${v.length - 1} more)` : '') + '.';
 }
+
+type ListRow = ScopedRow & { ta?: string; en?: string; unit?: string; rate?: number | string; free?: boolean; section?: string; active?: boolean; crs29Only?: boolean };
+type ListItem = { id: string; ta: string; en: string; unit: string; rate: number; free: boolean };
+
+/**
+ * A shop's Daily / Monthly lists, server-side — the same rows and Order as
+ * `commodityListsFor` (masters.ts, which is client-only) — but ONLY for a
+ * shop that has a commodity of its own (scope 'shop'); null otherwise, so a
+ * caller keeps its built-in lists and every other shop's output is exactly
+ * as it was (office, 2026-10-07: CRS 10's OAP FRK reaches its statements).
+ * CRS 29 keeps its own family: null.
+ */
+export function ownListsFor(master: ListRow[] | null | undefined, crsId: number): { a: ListItem[]; b: ListItem[] } | null {
+  const rows = master ?? [];
+  if (Number(crsId) === 29) return null;
+  if (!rows.some((r) => scopeShop(r) === Number(crsId) && r.active !== false)) return null;
+  const sec = (s: 'a' | 'b') =>
+    rows
+      .filter((r) => r.section === s && r.active !== false && !r.crs29Only && inScope(r, crsId))
+      .sort((x, y) => x.order - y.order)
+      .map((r) => ({ id: r.id, ta: r.ta ?? '', en: r.en ?? r.id, unit: r.unit ?? 'KG', rate: Number(r.rate) || 0, free: !!r.free }));
+  return { a: sec('a'), b: sec('b') };
+}

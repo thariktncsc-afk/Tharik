@@ -17,6 +17,7 @@ import { DEFAULT_SETTINGS, type PaymentSettings } from './pricing';
 import { GATE_KEY, gateRequired, readGate, type GateKind, type PaymentGate } from './gate';
 import { createStatementEngine } from '@/generated/statements-legacy';
 import { bagOpeningLookup } from '@/lib/engine/bagChain';
+import { ownListsFor } from '@/lib/engine/commodityScope';
 
 export type Section = {
   id: string;
@@ -254,7 +255,9 @@ export async function loadStatementEngine(currentUser: unknown): Promise<Stateme
         stores.entryStore as never,
         stores.inspectionStore as never,
         manual as never,
-        undefined,
+        // A shop with a commodity of its own rolls it up too (CRS 10's OAP
+        // FRK); every other shop keeps the built-in lists, exactly as before.
+        (ownListsFor(raw.get('__commodityMaster') as never, cid) ?? undefined) as never,
         stores.receiptStore as never,
       );
       (stores.monthlyStore as Record<string, unknown>)[key] = next.merged;

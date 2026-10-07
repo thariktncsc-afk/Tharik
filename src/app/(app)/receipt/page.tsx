@@ -62,6 +62,8 @@ const PACK_RULES: Record<string, PackRule> = {
   AAY_FRK: { type: 'GUNNY', div: 50, countLabel: 'bags', qtyLabel: 'kgs' },
   AAY: { type: 'GUNNY', div: 50, countLabel: 'bags', qtyLabel: 'kgs' },
   OAP: { type: 'GUNNY', div: 50, countLabel: 'bags', qtyLabel: 'kgs' },
+  // A commodity of its own, in 50 kg gunny like OAP (office, 2026-10-07: it had no bag box here).
+  OAP_FRK: { type: 'GUNNY', div: 50, countLabel: 'bags', qtyLabel: 'kgs' },
   APS: { type: 'GUNNY', div: 50, countLabel: 'bags', qtyLabel: 'kgs' },
   TOOR: { type: 'GUNNY', div: 50, countLabel: 'bags', qtyLabel: 'kgs' },
   PHH_BRA: { type: 'GUNNY', div: 50, countLabel: 'bags', qtyLabel: 'kgs' },

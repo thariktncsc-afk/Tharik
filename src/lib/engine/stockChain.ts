@@ -157,6 +157,22 @@ export function buildChainIndex(
     return moved;
   };
 
+  /**
+   * A commodity whose first row comes AFTER the shop's first sheet (it was
+   * added to the shop later — CRS 10's OAP FRK, office 2026-10-07) held none
+   * on the sheets that do not list it: it opens at 0 plus what was received
+   * or adjusted from the shop's first sheet on. Without this, 2 kg received
+   * on 25-09 before its first row (30-09) was lost, and the month read
+   * Opening −2 + Receipt 2. The roll-up already reads it this way.
+   */
+  const firstSheet = sheetDates[sheetDates.length - 1];
+  const movedSinceStart = (before: string, id: string, key: string) => {
+    let moved = 0;
+    for (const ds of receiptDays) if (ds >= firstSheet && ds < before) moved += receipts[ds][id] ?? 0;
+    for (const ds of adjustmentDays) if (ds >= firstSheet && ds < before) moved += adjustments[ds][key] ?? 0;
+    return moved;
+  };
+
   // Every sheet's Closing, commodity by commodity, in date order.
   const closes: Record<string, Record<string, number>> = {};
   const last = new Map<string, { date: string; close: number }>();
@@ -172,7 +188,13 @@ export function buildChainIndex(
           close = num(row.close);
         } else {
           const prev = last.get(key);
-          const open = prev && !isOpenFixed(row) ? prev.close + movedBetween(prev.date, ds, id, key) : num(row.open);
+          const open = isOpenFixed(row)
+            ? num(row.open)
+            : prev
+              ? prev.close + movedBetween(prev.date, ds, id, key)
+              : ds > firstSheet
+                ? movedSinceStart(ds, id, key) // a commodity added after the chain began
+                : num(row.open);
           // The register is the Receipt wherever it speaks for the day, as on
           // the Daily Entry grid; a figure keyed with no register row stands.
           const godown = receipts[ds]?.[id] ?? 0;
@@ -213,8 +235,12 @@ function walk(ix: ChainIndex, upto: string, commId: string, sec: Section, inclus
   const within = (ds: string) => (inclusive ? ds <= upto : ds < upto);
 
   // The last sheet that actually states this commodity. A sheet saved before
-  // the commodity existed does not, and is not a balance for it.
+  // the commodity was on the shop's list does not: it held none of it, so
+  // the balance runs from 0 at the shop's first sheet (office, 2026-10-07 —
+  // the same reading as buildChainIndex and the roll-up). Only with no
+  // earlier sheet at all is there nothing to carry from.
   let from: Carry['from'] = null;
+  let fromInclusive = false;
   for (const ds of ix.sheetDates) {
     if (!within(ds)) continue;
     const rec = ix.sheets[ds]?.[sec]?.[commId];
@@ -223,13 +249,19 @@ function walk(ix: ChainIndex, upto: string, commId: string, sec: Section, inclus
       break;
     }
   }
-  if (!from) return { from: null, received: 0, adjusted: 0, movedOn: [], value: null };
+  if (!from) {
+    const start = [...ix.sheetDates].reverse().find(within);
+    if (!start) return { from: null, received: 0, adjusted: 0, movedOn: [], value: null };
+    from = { date: start, close: 0 };
+    fromInclusive = true; // the start sheet does not list it, so its own day's moves count
+  }
+  const after = (ds: string) => (fromInclusive ? ds >= from!.date : ds > from!.date);
 
   let received = 0;
   let adjusted = 0;
   const movedOn = new Set<string>();
   for (const [ds, day] of Object.entries(ix.receipts)) {
-    if (ds <= from.date || !within(ds)) continue;
+    if (!after(ds) || !within(ds)) continue;
     const q = day[commId] ?? 0;
     if (q) {
       received += q;
@@ -237,7 +269,7 @@ function walk(ix: ChainIndex, upto: string, commId: string, sec: Section, inclus
     }
   }
   for (const [ds, day] of Object.entries(ix.adjustments)) {
-    if (ds <= from.date || !within(ds)) continue;
+    if (!after(ds) || !within(ds)) continue;
     const net = day[`${sec}:${commId}`] ?? 0;
     if (net) {
       adjusted += net;
