@@ -2970,6 +2970,10 @@ verify:pv-gunny` §7).
     - **ADD** bags to what the PV shows (a police line shows 0); Opening is
       kept.
   - Either way TOTAL = OPENING + RECEIPT and CB = TOTAL − SALES hold.
+  - A third kind, **SHORTAGE BAGS** (`{ shortageBags }`), sets only the
+    "Shortage during the period" bag cell (otherwise the shortage kgs ÷
+    pack, `PvCommRow.shortageBags`). Every other bag cell and every kgs
+    cell, the shortage kgs included, is kept.
   - A police line prints bags only when a correction set them
     (`bagsFixed`, pvStatement.ts). Every other police line prints 0, as
     always.
@@ -3007,6 +3011,9 @@ verify:pv-gunny` §7).
   | CRS 15 | Manual | Palm Oil BAGS (O + R = T − I = CB) | 54 + 189 = 243 − 213 = 30 | 54 + 190 = 244 − 214 = 30 (kgs unchanged) |
   | CRS 16 | Manual | BRA Rice BAGS (O + R = T − I = CB) | 15 + 193 = 208 − 174 = 34 | 15 + 191 = 206 − 172 = 34 (kgs 750 + 9665 = 10415 − 8681 = 1734 unchanged) |
   | CRS 24 | Manual | BRA Rice BAGS (O + R = T − I = CB) | 0 + 156 = 156 − 123 = 33 | 0 + 155 = 155 − 122 = 33 (kgs 0 + 7844 = 7844 − 6188.586 = 1655.414 unchanged) |
+  | CRS 17 | Manual | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 3 = 3 − 2 = 1 (kgs 21.590 + 287 = 308.590 − 264.016 = 44.574 unchanged) |
+  | CRS 17 | Manual | C.BOX (O + R = T − I = CB) | 0 + 256 = 256 − 256 = 0 | 0 + 127 = 127 − 127 = 0 (50 KG SS, POLYTHENE unchanged) |
+  | CRS 25 | Manual | Palm Oil "Shortage during the period" BAGS | 1 (10 L ÷ 10) | 0 — shortage kgs 10 and every other cell unchanged |
   | CRS 10 | — | OAP FRK KGS | 0 + 2 = 2 − 0 = 2 | a PV-only override at first, then the real 2 kg sale recorded (below) — no override now |
 
   - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
