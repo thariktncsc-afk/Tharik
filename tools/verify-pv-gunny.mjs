@@ -270,8 +270,8 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     const v = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'OAP FRK')?.slice(3) ?? [];
     check(`CRS 10 ${kind === 'manual' ? 'Manual' : 'Automatic'} PV, OAP FRK kgs ${f.open} + ${f.receipt} = ${f.total} − ${f.issues} = ${f.closing}; printed bags (blank — kgs only) "${[v[5], v[9], v[12], v[14], v[23]].join('|')}", kgs ${[v[6], v[10], v[13], v[15], v[24]].join(' / ')}`,
       J([f.open, f.receipt, f.total, f.issues, f.closing]) === J([0, 2, 2, 2, 0]) && J(f.bags) === J(frkBags) && J([v[5], v[9], v[12], v[14], v[23]]) === J(['', '', '', '', '']) /* kgs only — no bags printed */ && J([v[6], v[10], v[13], v[15], v[24]]) === J(['0', '2', '2', '2', '0']));
-    check(`  …BRA Rice and the input untouched${kind === 'manual' ? '; Police BRA still 5 / 5 bags (bags only — its kgs as before)' : ''}`,
-      m.BRA === map10k.BRA && J(map10k) === snap10k && (kind !== 'manual' || (m.PB_BRA.bags.receipt === 5 && m.PB_BRA.receipt === map10k.PB_BRA.receipt && m.PB_BRA.closing === map10k.PB_BRA.closing)));
+    check(`  …BRA Rice's kgs and the input untouched${kind === 'manual' ? '; Police BRA still 5 / 5 bags (bags only — its kgs as before)' : ''}`,
+      (kind === 'manual' ? J({ ...m.BRA, bags: undefined, bagsFixed: undefined }) === J({ ...map10k.BRA, bags: undefined }) : m.BRA === map10k.BRA) && J(map10k) === snap10k && (kind !== 'manual' || (m.PB_BRA.bags.receipt === 5 && m.PB_BRA.receipt === map10k.PB_BRA.receipt && m.PB_BRA.closing === map10k.PB_BRA.closing)));
   }
   check('  another period of CRS 10: OAP FRK untouched', PC.pvCommMapWithCorrection(10, quarterByIndex(2026, 2).months, map10k, 'auto') === map10k);
   delete PC.PV_KG_CORRECTIONS['10|2026-7|2026-9'];
@@ -284,6 +284,33 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('  printed in the NOTE row as 5, the 3 gone', /POLICE BRA 5 CONSIDER AS POLY/.test(noteSheet) && !/POLICE BRA 3/.test(noteSheet));
   check('  the Automatic PV, other periods and other shops untouched',
     PC.pvNotesWithCorrection(10, quarter.months, notes10, 'auto') === notes10 && PC.pvNotesWithCorrection(10, quarterByIndex(2026, 2).months, notes10, 'manual') === notes10 && PC.pvNotesWithCorrection(30, quarter.months, notes10, 'manual') === notes10);
+
+  // CRS 10, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice BAGS 0 + 259 = 259 − 259 = 0 (had 251),
+  // POLYTHENE 3 + 73 = 76 − 76 = 0 (had 3 + 68 = 71 − 71), C.BOX 0 + 221 = 221 − 221 = 0 (had 219). No kgs move.
+  const bra10 = police({ name: 'BRA Rice', open: 0, receipt: 12557, total: 12557, issues: 12557, closing: 0, free: false, bags: { open: 0, receipt: 251, total: 251, issues: 251, closing: 0 } });
+  const map10b = { ...own10, BRA: bra10 };
+  const snap10b = J(map10b);
+  const fx10 = PC.pvCommMapWithCorrection(10, quarter.months, map10b, 'manual');
+  const bb = fx10.BRA.bags;
+  check(`CRS 10 Manual PV, BRA Rice bags: ${bb.open} + ${bb.receipt} = ${bb.total} − ${bb.issues} = ${bb.closing}`, J([bb.open, bb.receipt, bb.total, bb.issues, bb.closing]) === J([0, 259, 259, 259, 0]));
+  check('  …its kgs unchanged (0 + 12557 = 12557 − 12557 = 0), Police BRA still 5 / 5, the input untouched',
+    J({ ...fx10.BRA, bags: undefined, bagsFixed: undefined }) === J({ ...bra10, bags: undefined }) && fx10.PB_BRA.bags.receipt === 5 && fx10.PB_BRA.bags.issues === 5 && J(map10b) === snap10b);
+  const braRow = [...buildPVTable({ commMap: fx10, periodLabel: 'Q', crsId: 10, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' }).matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]
+    .map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'BRA Rice')?.slice(3) ?? [];
+  check(`  printed: bags ${[braRow[5], braRow[9], braRow[12], braRow[14], braRow[23]].join(' / ')}, kgs ${[braRow[6], braRow[10], braRow[13], braRow[15], braRow[24]].join(' / ')}`,
+    J([braRow[5], braRow[9], braRow[12], braRow[14], braRow[23]]) === J(['0', '259', '259', '259', '0']) && J([braRow[6], braRow[10], braRow[13], braRow[15], braRow[24]]) === J(['0', '12557', '12557', '12557', '0']));
+  check('  the Automatic PV and another period: BRA Rice untouched',
+    PC.pvCommMapWithCorrection(10, quarter.months, map10b, 'auto').BRA === bra10 && PC.pvCommMapWithCorrection(10, quarterByIndex(2026, 2).months, map10b, 'manual') === map10b);
+  const g10 = { ss50: { opening: 1156, receipt: 901, total: 2057, issues: 0, closing: 2057 }, poly: { opening: 3, receipt: 68, total: 71, issues: 71, closing: 0 }, cbox: { opening: 0, receipt: 219, total: 219, issues: 219, closing: 0 } };
+  const g10snap = J(g10);
+  const pv10 = PC.pvGunnyWithCorrection(10, quarter.months, g10, 'manual');
+  check(`CRS 10 Manual PV, POLYTHENE ${J(tuple(pv10.poly))} = 3 + 73 = 76 − 76 = 0; C.BOX ${J(tuple(pv10.cbox))} = 0 + 221 = 221 − 221 = 0`,
+    J(tuple(pv10.poly)) === J([3, 73, 76, 76, 0]) && J(tuple(pv10.cbox)) === J([0, 221, 221, 221, 0]));
+  check('  50 KG SS GUNNY as it was, the input untouched', pv10.ss50 === g10.ss50 && J(g10) === g10snap);
+  const p10 = printed(pv10);
+  check(`  printed: POLYTHENE ${J(p10.POLYTHENE)}, C.BOX ${J(p10['C.BOX'])}`, J(p10.POLYTHENE.slice(1)) === J([3, 73, 76, 76, 0]) && J(p10['C.BOX'].slice(1)) === J([0, 221, 221, 221, 0]));
+  check('  the Automatic PV, another period and another shop: Gunny untouched',
+    PC.pvGunnyWithCorrection(10, quarter.months, g10, 'auto') === g10 && PC.pvGunnyWithCorrection(10, quarterByIndex(2026, 2).months, g10, 'manual') === g10 && PC.pvGunnyWithCorrection(11, quarter.months, g10, 'manual') === g10);
 
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
