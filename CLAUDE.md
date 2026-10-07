@@ -474,6 +474,29 @@ role.
       sheets: the only figure that moves is CRS 10's OAP FRK, 0 → 2 from
       30-09 on.
 
+- **CRS 10 OAP FRK, written live 2026-10-07** (office: "OB 0, Receipt 2,
+  Total 2, Sales 2, CB 0 bags; remove the −2"). Page 2 now reads 12A OAP
+  FRK: bags 0 + 2 = 2 − 2 = 0, kgs 0 + 2 = 2 − 0 = 2.
+  - `repair-stock-chain.mjs --crs=10 --write` carried R/2026/087's 2 kg
+    onto 30-09 … 06-10 (only OAP FRK moved). Backup
+    `backups/stock-chain-repair-2026-10-07T02-01-…`.
+  - That tool republished without the shop's own lists and dropped OAP
+    FRK's row from September / October. It now passes
+    `commodityListsFor(master, crs)`, as the app's save does.
+  - `tools/set-month-bags.mjs --crs=10 --month=9 --year=2026
+    --id=OAP_FRK --receipt=2 --sales=2 --write` is Monthly Sales' save of
+    a from-Daily row's bag boxes (dailyBags, only where it differs from
+    kgs ÷ pack). It republished September and October with the shop's
+    lists, restoring the row. Only OAP FRK changed (checked field by
+    field). Backup `backups/month-bags-10_9_2026-OAP_FRK-…`.
+  - Kgs: 2 kg received (an Advance receipt), none sold, so the kgs close
+    at 2 while the bags close at 0, as the office asked. COLL keeps the
+    advance in its ADVANCE table (0 in its balance).
+  - The Manual PV now chains a commodity only the system's month carries
+    (`chainQuarter`: the built-in list plus any carried id). A month
+    without the row holds 0 bags, so the period's bags add up: 0 / 2 / 2
+    / 2 / 0 on both PVs.
+
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
 
