@@ -2564,6 +2564,31 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
     half a kilo of the sum (± a printed transfer), AND sum − Sales = the
     printed Closing. A Total printed with decimals, rounded the wrong way,
     or whose Closing does not follow is still refused.
+  - **A C.S column** (office, 2026-10-07; §2).
+    - **The fault**: CRS 26's July and August PAGE2 have a C.S column
+      between SALES (and RATE / AMOUNT) and CLOSING. Their P.OIL rows carry
+      C.S 6 bags / 60 kg. The reader did not know C.S as a heading: its name
+      has dots, and it was not in `PAGE2_PARENTS`.
+    - So its BAGS / KGS pair was taken for the nearest heading, CLOSING.
+      P.OIL then read as "has two figures in CLOSING BAGS" (6 and 42), and
+      both months showed "No CRS PAGE2 … read".
+    - **Now**: headings are matched with their dots taken out (`headWord`),
+      and `CS` is a column of its own.
+    - **C.S counts as sales**, as for the system's own month:
+      - Sales = SALES + C.S, kgs and bags alike, so Total − Sales = the
+        printed Closing.
+      - CRS 26 July P.OIL: bags 54 + 90 = 144 − (96 + 6) = 42; kgs 536 + 900
+        = 1436 − (955 + 60) = 421, every figure as printed.
+    - **Every other office PDF reads as before**: 257 sheets in 156 files,
+      read by the old and the new reader, are identical. Only CRS 26's two
+      PAGE2s changed, from refused to read.
+    - The reading is done in the browser from the SAVED bytes on every open,
+      so saved uploads are re-read with no re-upload.
+    - **Open, the office's to decide**: on CRS 26's sheets the C.S is carried
+      into the next month's Opening. July closes P.OIL at 421 and August
+      opens at 481 (= 421 + 60); August closes at 521 and the system's
+      September opens at 581. So the Manual PV's Generate stops on those two
+      breaks of 60.
   - **This system's own statements PDF as a month** (§8). Our Page 2 prints
     Empty Card+Box / Polythene Bag as SALES ONLY (their stock is Gunny's), so
     September (CRS 20's own statements) chained as "August closes at 40,

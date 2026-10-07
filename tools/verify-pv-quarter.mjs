@@ -177,7 +177,7 @@ const rightAt = (str, edge, y) => ({ str: String(str), x: edge - W(str), y, w: W
 const MONTHS = ['', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEP', 'OCT', 'NOV', 'DEC'];
 
 /** A CRS PAGE2: rows = { label: { open:[bags,kgs], receipt:[..], excess:kgs, shortage:kgs, transfer:kgs, total:[..], sales:[..], closing:[..] } }. */
-function page2(crsId, month, rows, { year = 2026, adjustments = true } = {}) {
+function page2(crsId, month, rows, { year = 2026, adjustments = true, cs = false } = {}) {
   const items = [
     at('TAMIL NADU CIVIL SUPPLIES CORPORATION - MADURAI REGION', 200, 20),
     at(`Monthly report for the month of ${MONTHS[month]}'${year}`, 240, 34),
@@ -187,7 +187,7 @@ function page2(crsId, month, rows, { year = 2026, adjustments = true } = {}) {
   if (!('SUGAR' in rows)) rows = { ...rows, SUGAR: {} };
   // parent, and its leaves: BAGS+KGS pair or a lone KGS. Some shops' PAGE2
   // has no EXCESS / SHORTAGE columns at all (CRS 1).
-  const layout = [['OPENING', 2], ['RECEIPT', 2], ...(adjustments ? [['EXCESS', 1], ['SHORTAG', 1]] : []), ['TRANSFER', 1], ['TOTAL', 2], ['SALES', 2], ['RATE', 0], ['AMOUNT', 0], ['CLOSING', 2]];
+  const layout = [['OPENING', 2], ['RECEIPT', 2], ...(adjustments ? [['EXCESS', 1], ['SHORTAG', 1]] : []), ['TRANSFER', 1], ['TOTAL', 2], ['SALES', 2], ['RATE', 0], ['AMOUNT', 0], ...(cs ? [['C.S', 2]] : []), ['CLOSING', 2]];
   const cols = {};
   let x = 120;
   for (const [name, n] of layout) {
@@ -205,7 +205,7 @@ function page2(crsId, month, rows, { year = 2026, adjustments = true } = {}) {
       x += 40;
     }
   }
-  const field = { open: 'OPENING', receipt: 'RECEIPT', excess: 'EXCESS', shortage: 'SHORTAG', transfer: 'TRANSFER', total: 'TOTAL', sales: 'SALES', closing: 'CLOSING' };
+  const field = { open: 'OPENING', receipt: 'RECEIPT', excess: 'EXCESS', shortage: 'SHORTAG', transfer: 'TRANSFER', total: 'TOTAL', sales: 'SALES', cs: 'C.S', closing: 'CLOSING' };
   let y = 110;
   let sl = 1;
   for (const [label, v] of Object.entries(rows)) {
@@ -459,6 +459,40 @@ console.log('\n2. Built pages — what a real file can throw');
         if (month === 7 && m) check(`  JULY T.DHALL/CYL → Toor Dal, closing ${m.rows.TOOR.closing} (August opens at 764)`, m.rows.TOOR.closing === 764 && m.rows.TOOR.bags.closing === 16);
       }
     } else console.log('  (CRS 11 PDFs not on this machine — skipped)');
+  }
+  // A C.S column between SALES and CLOSING (office, 2026-10-07: CRS 26 JULY'26 / AUG'26, P.OIL C.S 6 bags / 60 kg).
+  // Unknown, its BAGS / KGS pair was taken for CLOSING's and P.OIL read as "two figures in CLOSING BAGS".
+  {
+    const csRows = { 'B.RICE': { open: [10, 500], receipt: [20, 1000], total: [30, 1500], sales: [25, 1250], closing: [5, 250] }, 'P.OIL': { open: [54, 536], receipt: [90, 900], total: [144, 1436], sales: [96, 955], cs: [6, 60], closing: [42, 421] }, 'T.DHALL': { open: [2, 100.5], receipt: [4, 200], total: [6, 300.5], sales: [5, 250.25], cs: ['', 0.25], closing: [1, 50] } };
+    const rev = [];
+    let r = null; const e = refused(() => (r = P.readPage2(page2(26, 7, csRows, { cs: true }), rev)));
+    const p = r?.PALM, b = p?.bags;
+    check(`C.S column: P.OIL bags ${b?.open} + ${b?.receipt} = ${b?.total} − (${b?.sales} incl. C.S) = ${b?.closing}; kgs ${p?.open} + ${p?.receipt} = ${p?.total} − (${p?.sales} incl. C.S) = ${p?.closing}`,
+      !e && J([b.open, b.receipt, b.total, b.sales, b.closing]) === J([54, 90, 144, 102, 42]) && J([p.open, p.receipt, p.total, p.sales, p.closing]) === J([536, 900, 1436, 1015, 421]) && !rev.length, e);
+    check(`  a row with no C.S reads as before (B.RICE ${r?.BRA?.sales} / ${r?.BRA?.closing}); a decimal C.S kgs with a blank bag cell (T.DHALL ${r?.TOOR?.sales} / ${r?.TOOR?.closing}, bags ${J(r?.TOOR?.bags)})`,
+      !e && r.BRA.sales === 1250 && r.BRA.closing === 250 && r.TOOR.sales === 250.5 && r.TOOR.closing === 50 && r.TOOR.bags.sales === 5 && r.TOOR.bags.closing === 1);
+    const plain = { 'P.OIL': { open: [54, 536], receipt: [90, 900], total: [144, 1436], sales: [102, 1015], closing: [42, 421] } };
+    check('  the same sheet without a C.S column reads the same P.OIL', J(P.readPage2(page2(26, 7, plain)).PALM) === J(p));
+    const pdfDir = ['C:/Users/TharikAliR/Downloads', 'C:/Users/TharikAliR/Downloads/PV'].find((d) => existsSync(`${d}/CRS 26 JULY'26 - CRS PAGE2 .pdf`));
+    if (pdfDir) {
+      const pdfjs = await import(pathToFileURL(join(root, 'node_modules/pdfjs-dist/legacy/build/pdf.mjs')).href);
+      const pagesOf = async (f) => {
+        const d = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(f)), verbosity: 0 }).promise;
+        const out = [];
+        for (let n = 1; n <= d.numPages; n++) {
+          const pg = await d.getPage(n); const vp = pg.getViewport({ scale: 1 });
+          out.push({ file: f.split('/').pop(), items: (await pg.getTextContent()).items.filter((i) => i.str?.trim()).map((i) => ({ str: i.str, x: i.transform[4], y: vp.height - i.transform[5], w: i.width })) });
+        }
+        return out;
+      };
+      for (const [tag, month, want] of [['JULY', 7, [54, 90, 144, 102, 42, 536, 900, 1436, 1015, 421]], ['AUG', 8, [48, 101, 149, 97, 52, 481, 1009, 1490, 969, 521]]]) {
+        const pages = (await Promise.all(['CRS PAGE2 ', 'GUNNY 2'].map((k) => pagesOf(`${pdfDir}/CRS 26 ${tag}'26 - ${k}.pdf`)))).flat();
+        let m = null; const e2 = refused(() => (m = P.readMonthPages(pages, { crsId: 26, month, year: 2026 })));
+        const q = m?.rows.PALM;
+        check(`CRS 26 ${tag}'26 (the office's PDFs): ${e2 ?? `${Object.keys(m.rows).length} commodities, GUNNY ${!!m.gunny}, review ${m.review.length}; P.OIL bags ${q.bags.open}/${q.bags.receipt}/${q.bags.total}/${q.bags.sales}/${q.bags.closing}, kgs ${q.open}/${q.receipt}/${q.total}/${q.sales}/${q.closing}`}`,
+          !e2 && Object.keys(m.rows).length === 20 && !!m.gunny && !m.review.length && J([q.bags.open, q.bags.receipt, q.bags.total, q.bags.sales, q.bags.closing, q.open, q.receipt, q.total, q.sales, q.closing]) === J(want), e2);
+      }
+    } else console.log('  (CRS 26 PDFs not on this machine — skipped)');
   }
   check('a file named "CRS PAGE 2" (with a space) that is not a PAGE2 is named, as "PAGE2" is', /PAGE 2/.test("CRS 1 JULY'26 - CRS PAGE 2.pdf") &&
     /could not be read — CRS 1 JULY'26 - CRS PAGE 2\.pdf/.test(refused(() => P.readMonthPages([{ ...notP2, file: "CRS 1 JULY'26 - CRS PAGE 2.pdf" }], { crsId: 1, month: 7, year: 2026 })) ?? ''));

@@ -277,10 +277,20 @@ const page2Label = makeResolver(PAGE2_LABELS, DSS_A, PAGE2_ALIASES);
 /** Counted in pieces, printed in the BAGS columns. */
 const PIECES = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
-const PAGE2_PARENTS: Record<string, keyof Flow | 'rate' | 'amount'> = {
+/**
+ * Page 2's column headings, matched with their dots taken out ("C.S" → CS).
+ * C.S (closing sales) is a column of its own on some shops' sheets, between
+ * SALES and CLOSING (office, 2026-10-07: CRS 26 JULY'26 / AUG'26, P.OIL
+ * C.S 6 bags / 60 kg). Unknown, its BAGS / KGS pair was taken for CLOSING's —
+ * the nearest heading — and P.OIL read as "two figures in CLOSING BAGS". It
+ * counts as sales, as everywhere else (Total − Sales − C.S = Closing).
+ */
+const PAGE2_PARENTS: Record<string, keyof Flow | 'cs' | 'rate' | 'amount'> = {
   OPENING: 'open', RECEIPT: 'receipt', EXCESS: 'excess', SHORTAG: 'shortage', SHORTAGE: 'shortage',
-  TRANSFER: 'transfer', TOTAL: 'total', SALES: 'sales', CLOSING: 'closing',
+  TRANSFER: 'transfer', TOTAL: 'total', SALES: 'sales', CS: 'cs', CLOSING: 'closing',
 };
+/** A heading word as PAGE2_PARENTS keys it: upper case, dots out. */
+const headWord = (s: string) => norm(s).replace(/\./g, '');
 
 type Leaf = { c: number; field: string; sub: 'BAGS' | 'KGS' | 'RATE' | 'AMOUNT' };
 
@@ -302,19 +312,19 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
   // The headings above the leaves. A heading printed on two lines — our own
   // Page 2 breaks SHORT / AGE and TRANS / FER — is joined when its halves
   // stand one over the other (office, 2026-10-02).
-  const above = items.filter((i) => i.y < leafY - 2 && i.y > leafY - 34 && /^[A-Z]+$/.test(norm(i.str)));
+  const above = items.filter((i) => i.y < leafY - 2 && i.y > leafY - 34 && /^[A-Z]+$/.test(headWord(i.str)));
   const used = new Set<TextItem>();
-  const parents: { x: number; r: number; field: keyof Flow }[] = [];
+  const parents: { x: number; r: number; field: keyof Flow | 'cs' }[] = [];
   for (const a of above) {
     if (used.has(a)) continue;
-    let name = norm(a.str);
+    let name = headWord(a.str);
     let x0 = a.x;
     let x1 = right(a);
     if (!(name in PAGE2_PARENTS)) {
-      const below = above.find((b) => b !== a && !used.has(b) && b.y > a.y && b.y - a.y < 14 && Math.abs(centre(b) - centre(a)) < 12 && norm(a.str) + norm(b.str) in PAGE2_PARENTS);
+      const below = above.find((b) => b !== a && !used.has(b) && b.y > a.y && b.y - a.y < 14 && Math.abs(centre(b) - centre(a)) < 12 && headWord(a.str) + headWord(b.str) in PAGE2_PARENTS);
       if (!below) continue;
       used.add(below);
-      name = norm(a.str) + norm(below.str);
+      name = headWord(a.str) + headWord(below.str);
       x0 = Math.min(x0, below.x);
       x1 = Math.max(x1, right(below));
     }
@@ -415,7 +425,8 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       return PIECES.has(id) ? (s.BAGS ?? s.KGS ?? 0) : (s.KGS ?? 0);
     };
     const open = qty('open'), receipt = qty('receipt'), excess = qty('excess'), shortage = qty('shortage');
-    const transferCell = qty('transfer'), total = qty('total'), sales = qty('sales');
+    // C.S counts as sales (the system's month does the same: pvQuarter.ts).
+    const transferCell = qty('transfer'), total = qty('total'), sales = r3(qty('sales') + qty('cs'));
     // A CLOSING cell left blank is Total − Sales, not 0: CRS 1 leaves C.BOX and
     // P.GUNNY's Closing unprinted, and its next month opens at exactly Total −
     // Sales (July C.BOX 343 + 55 = 398 → August opens 398; P.GUNNY 118 − 74 →
@@ -428,7 +439,7 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
       flow.bags = { open: flow.open, receipt: flow.receipt, total: flow.total, sales: flow.sales, closing: flow.closing };
     } else {
       const bag = (fld: string) => cell[fld]?.BAGS ?? 0;
-      const bT = bag('total'), bS = bag('sales');
+      const bT = bag('total'), bS = bag('sales') + bag('cs');
       flow.bags = { open: bag('open'), receipt: bag('receipt'), total: bT, sales: bS, closing: cell.closing?.BAGS !== undefined ? bag('closing') : bT - bS };
     }
     rows[id] = flow;
