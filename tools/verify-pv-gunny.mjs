@@ -276,6 +276,15 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('  another period of CRS 10: OAP FRK untouched', PC.pvCommMapWithCorrection(10, quarterByIndex(2026, 2).months, map10k, 'auto') === map10k);
   delete PC.PV_KG_CORRECTIONS['10|2026-7|2026-9'];
 
+  // CRS 10, the July – September 2026 Manual PV: the GUNNY sheets' note "POLICE BRA 3 CONSIDER AS POLY" says 5.
+  const notes10 = ['POLICE BRA 3 CONSIDER AS POLY', 'WHEAT CONSIDER AS GUNNY'];
+  const n10 = PC.pvNotesWithCorrection(10, quarter.months, notes10, 'manual');
+  check(`CRS 10 Manual PV NOTE: ${J(n10)}`, J(n10) === J(['POLICE BRA 5 CONSIDER AS POLY', 'WHEAT CONSIDER AS GUNNY']) && J(notes10) === J(['POLICE BRA 3 CONSIDER AS POLY', 'WHEAT CONSIDER AS GUNNY']));
+  const noteSheet = buildPVTable({ commMap: {}, periodLabel: 'Q', crsId: 10, crsName: '', gunny: system, gunnyNotes: n10, billClerk: '', pvOfficer: '', pvDate: '' });
+  check('  printed in the NOTE row as 5, the 3 gone', /POLICE BRA 5 CONSIDER AS POLY/.test(noteSheet) && !/POLICE BRA 3/.test(noteSheet));
+  check('  the Automatic PV, other periods and other shops untouched',
+    PC.pvNotesWithCorrection(10, quarter.months, notes10, 'auto') === notes10 && PC.pvNotesWithCorrection(10, quarterByIndex(2026, 2).months, notes10, 'manual') === notes10 && PC.pvNotesWithCorrection(30, quarter.months, notes10, 'manual') === notes10);
+
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
   const wheat14 = police({ name: 'Wheat', open: 2400, receipt: 2620, total: 5020, issues: 2920, closing: 2100, bags: { open: 47, receipt: 52, total: 99, issues: 57, closing: 42 } });

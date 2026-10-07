@@ -28,7 +28,7 @@ import { fitPvSheet } from '@/lib/engine/pvFit';
 import { annualFor, annualOptions, monthName, quarterByIndex, quarterIndexOf, QUARTER_LABELS, type PvPeriod, type YearMonth } from '@/lib/engine/pvPeriod';
 import { buildMonthlySheet, loadXlsx, monthlyFileName, type PvMonthData, type PvMonthRow } from '@/lib/engine/pvExcel';
 import { pvPeriodBags, pvPeriodGunny, quarterPvInputs, systemQuarterMonth, type QuarterResult } from '@/lib/engine/pvQuarter';
-import { pvCommMapWithCorrection, pvGunnyWithCorrection, pvPoliceOwnBags } from '@/lib/engine/pvCorrections';
+import { pvCommMapWithCorrection, pvGunnyWithCorrection, pvNotesWithCorrection, pvPoliceOwnBags } from '@/lib/engine/pvCorrections';
 import { normalise as normalisePvOfficers, resolveForStatement, type PvOfficerStore } from '@/lib/engine/pvOfficer';
 import ManualPvUpload from './ManualPvUpload';
 import OapStatement from './OapStatement';
@@ -302,7 +302,7 @@ export default function ReportsPage() {
         crsId,
         crsName: shops[crsId - 1]?.name ?? '',
         gunny: pvGunnyWithCorrection(crsId, pvPeriod.months, gunny, 'manual'),
-        gunnyNotes,
+        gunnyNotes: pvNotesWithCorrection(crsId, pvPeriod.months, gunnyNotes, 'manual'),
         staff: shopStaffNames(users, crsId),
         pvOfficer: pvOfficer.officer,
         pvDate: pvOfficer.date,

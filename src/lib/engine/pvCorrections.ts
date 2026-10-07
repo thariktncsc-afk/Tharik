@@ -118,6 +118,30 @@ export const PV_KG_CORRECTIONS: Record<string, { note: string; applies: Applies;
 };
 
 /**
+ * The PV's NOTE row: a Gunny note read off the uploaded GUNNY sheets
+ * ("… CONSIDER AS …") REPLACED by the office's wording on that PV only. The
+ * uploaded PDFs, and every other PV, keep theirs.
+ */
+export const PV_NOTE_CORRECTIONS: Record<string, { note: string; applies: Applies; replace: [string, string][] }> = {
+  // CRS 10, the July – September 2026 Manual PV (office, 2026-10-07): its July
+  // and August GUNNY sheets say "POLICE BRA 3 CONSIDER AS POLY"; with Police
+  // BRA at 5 bags on this PV (PV_BAG_CORRECTIONS), the note says 5.
+  '10|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 10 Jul–Sep 2026 PV only',
+    applies: 'manual',
+    replace: [['POLICE BRA 3 CONSIDER AS POLY', 'POLICE BRA 5 CONSIDER AS POLY']],
+  },
+};
+
+/** This PV's Gunny notes with its PV-only wording — a new list; matching ignores case and spacing. */
+export function pvNotesWithCorrection(crsId: number, months: Period, notes: string[], kind: PvKind): string[] {
+  const c = PV_NOTE_CORRECTIONS[keyOf(crsId, months)];
+  if (!c || !appliesTo(c.applies, kind)) return notes;
+  const norm = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim();
+  return notes.map((n) => c.replace.find(([from]) => norm(from) === norm(n))?.[1] ?? n);
+}
+
+/**
  * Police lines whose OWN bag counts a shop's PV prints (office, 2026-10-07).
  * A police line prints no bags — every bag cell 0 — on every PV; for a shop
  * named here the listed lines print the bag counts Monthly Sales shows for
