@@ -26,6 +26,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 function stmtBagCounts(d, id){
+  // A kgs-only commodity (46-shop-commodities.js) has no bags: 0, so it adds none to a total.
+  if (typeof stmtKgsOnly === 'function' && stmtKgsOnly(id)) return { open: 0, receipt: 0, total: 0, sales: 0, close: 0 };
   var sec = (typeof DSS_B !== 'undefined' && (DSS_B || []).some(function(c){ return c.id === id; })) ? 'b' : 'a';
   var manual = (typeof meManualStore !== 'undefined' && meManualStore && d && d.key) ? (meManualStore[d.key] || {}) : {};
   var typed = (manual.dailyBags && manual.dailyBags[sec] && manual.dailyBags[sec][id]) || {};

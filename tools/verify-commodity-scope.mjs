@@ -262,6 +262,9 @@ console.log('\n9. A shop\'s own commodity at its Order, everywhere (office, 2026
     const r = rows[i] ?? [];
     check(`${sec}, CRS 10: ${r.filter(Boolean).join(' ')} — after ${rows[i - 1]?.filter(Boolean).slice(0, 2).join(' ')}`,
       i > 0 && rows[i - 1].includes(before) && (row === null || r[0] === row) && (after === null || rows[i + 1].includes(after)) && figs.every((f) => r.includes(f)));
+    // OAP FRK is kept in kgs only (office, 2026-10-07): every bag cell of its row blank, the kgs as ever.
+    const bagCols = { crs_page2: [2, 4, 9, 11, 15], free_com: [2, 4, 6, 8, 10, 14], b6: [2, 4, 9, 11, 13] }[sec];
+    if (bagCols) check(`  ${sec}: OAP FRK's bag cells blank (${bagCols.map((n) => J(r[n])).join(' ')}), kgs 100 / 12 / 88 printed`, bagCols.every((n) => r[n] === '') && ['100', '12', '88'].every((f) => r.includes(f)));
     const plain = rowsOf(base(), 1, sec).html;
     check(`  ${sec}, CRS 1: byte-identical with OAP FRK placed for CRS 10 or not`, rowsOf(m, 1, sec).html === plain && !/OAP FRK<\/td><td>[^<]/.test(plain));
   }

@@ -70,3 +70,13 @@ function stmtSlAfter(sl){
 
 /** The label a form prints for a commodity of the shop's own: its English name, as the forms write theirs. */
 function stmtOwnLabel(c){ return String((c && (c.en || c.id)) || '').toUpperCase(); }
+
+// ── Commodities kept in KGS ONLY on the statements (office, 2026-10-07) ────
+// OAP FRK prints no bag counts: its bag cells are blank on every form that
+// has them (CRS Page 2, Free Com, B6), and it adds no bags to a total
+// (stmtBagCounts gives it 0). Its kgs print as ever. The same list is
+// src/lib/engine/commodities.ts KGS_ONLY (the PV) — keep the two alike.
+var STMT_KGS_ONLY = ['OAP_FRK'];
+function stmtKgsOnly(id){ return STMT_KGS_ONLY.indexOf(id) !== -1; }
+/** A bag cell: blank for a kgs-only commodity, else the figure as given. */
+function stmtBagCell(id, v){ return stmtKgsOnly(id) ? '' : v; }

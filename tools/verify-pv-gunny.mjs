@@ -264,8 +264,8 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
     const f = m.OAP_FRK;
     const html = buildPVTable({ commMap: m, periodLabel: 'Q', crsId: 10, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' });
     const v = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'OAP FRK')?.slice(3) ?? [];
-    check(`CRS 10 ${kind === 'manual' ? 'Manual' : 'Automatic'} PV, OAP FRK kgs ${f.open} + ${f.receipt} = ${f.total} − ${f.issues} = ${f.closing}; printed bags ${[v[5], v[9], v[12], v[14], v[23]].join(' / ')}, kgs ${[v[6], v[10], v[13], v[15], v[24]].join(' / ')}`,
-      J([f.open, f.receipt, f.total, f.issues, f.closing]) === J([0, 2, 2, 2, 0]) && J(f.bags) === J(frkBags) && J([v[5], v[9], v[12], v[14], v[23]]) === J(['0', '2', '2', '2', '0']) && J([v[6], v[10], v[13], v[15], v[24]]) === J(['0', '2', '2', '2', '0']));
+    check(`CRS 10 ${kind === 'manual' ? 'Manual' : 'Automatic'} PV, OAP FRK kgs ${f.open} + ${f.receipt} = ${f.total} − ${f.issues} = ${f.closing}; printed bags (blank — kgs only) "${[v[5], v[9], v[12], v[14], v[23]].join('|')}", kgs ${[v[6], v[10], v[13], v[15], v[24]].join(' / ')}`,
+      J([f.open, f.receipt, f.total, f.issues, f.closing]) === J([0, 2, 2, 2, 0]) && J(f.bags) === J(frkBags) && J([v[5], v[9], v[12], v[14], v[23]]) === J(['', '', '', '', '']) /* kgs only — no bags printed */ && J([v[6], v[10], v[13], v[15], v[24]]) === J(['0', '2', '2', '2', '0']));
     check(`  …BRA Rice and the input untouched${kind === 'manual' ? '; Police BRA still 5 / 5 bags (bags only — its kgs as before)' : ''}`,
       m.BRA === map10k.BRA && J(map10k) === snap10k && (kind !== 'manual' || (m.PB_BRA.bags.receipt === 5 && m.PB_BRA.receipt === map10k.PB_BRA.receipt && m.PB_BRA.closing === map10k.PB_BRA.closing)));
   }

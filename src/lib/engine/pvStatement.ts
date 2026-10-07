@@ -11,7 +11,7 @@
  *  - receipt totals read `items[k].qty` (the legacy parseFloat(object) was
  *    always NaN, so period receipt totals were silently 0).
  */
-import { CRS29_ENTRY_A, CRS29_STOCK, DSS_A, DSS_B, isCrs29, type DayEntry } from '@/lib/engine/commodities';
+import { CRS29_ENTRY_A, CRS29_STOCK, DSS_A, DSS_B, isCrs29, KGS_ONLY, type DayEntry } from '@/lib/engine/commodities';
 
 export type PvCommRow = {
   name: string;
@@ -347,11 +347,19 @@ export function buildPVTable(opts: {
     td(c.exB ?? '', tone(c.exB, 'excess')) + td(c.exK ?? '', tone(c.exK, 'excess')) + // 17 Excess
     td('') + td('') + //                               18 Shortage
     '</tr>';
-  const commodityRow = (sl: number, r: PvCommRow, div: number | null) => {
+  const commodityRow = (sl: number, r: PvCommRow, div: number | null, id = '') => {
     // Police lines are kilos only: their bag columns print 0, as they always have —
     // unless a PV-only correction set this line's bags (pvCorrections.ts, `bagsFixed`).
     const b = (kgs: number) => (div === null ? '0' : fmtB(kgs, div));
     const g = div === null ? (r.bagsFixed ? r.bags : undefined) : r.bags;
+    // A kgs-only commodity (KGS_ONLY — OAP FRK) prints no bag counts at all: blank.
+    if (KGS_ONLY.has(id)) {
+      return dataRow(sl, r.name, r.unit, {
+        obB: '', obK: fmtN(r.open), recB: '', recK: fmtN(r.receipt), tr: fmtT(r.transfer),
+        totB: '', totK: fmtN(r.total), issB: '', issK: fmtN(r.issues),
+        shB: '', shK: fmtT(r.shortage), balB: '', balK: fmtN(r.closing), exB: '', exK: fmtT(r.excess),
+      });
+    }
     return dataRow(sl, r.name, r.unit, {
       obB: g ? String(g.open) : b(r.open), obK: fmtN(r.open),
       recB: g ? String(g.receipt) : b(r.receipt), recK: fmtN(r.receipt),
@@ -369,7 +377,7 @@ export function buildPVTable(opts: {
   let sl = 1;
   for (const cid of mainComms) {
     const div = cid === 'PALM' ? 10 : cid === 'SALT_CIS' || cid === 'SALT_RFFS' ? 25 : 50;
-    rows += commodityRow(sl++, named(cid), div);
+    rows += commodityRow(sl++, named(cid), div, cid);
   }
   rows += sectionLabel('Gunny');
   for (const [label, key] of [
