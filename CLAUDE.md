@@ -2608,6 +2608,25 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
       PAGE2 · 20 commodities · GUNNY", 3 / 3 months ready, and Generate
       builds the PV. P.OIL reads bags 54 + 247 = 301 − 282 = 19, kgs 536 +
       2477 = 3013 − 2823 = 190.
+  - **A SALES shown without decimals** (office, 2026-10-07; §2).
+    - **The fault**: CRS 27's July PAGE2 prints T.DHALL Sales as **1014**,
+      beside Amount **30419.40** at 30.00, which is 1013.98 kg. 1687 −
+      1013.98 = the printed Closing **673.02**. The cell holds 1013.98 and
+      only displays it to the kilo, like the TOTAL above. The month was
+      refused: "Total 1687 − Sales 1014 = 673, but the Closing says 673.02".
+    - **Now** `checkedFlow` takes Sales as Total − Closing ONLY when the row
+      proves it:
+      - the printed Sales is a whole number within half a kilo of it;
+      - and, where the row prints a RATE, rate × that figure is the printed
+        AMOUNT to the paisa.
+      - A rate with no amount, an amount that disagrees, or more than half a
+        kilo off is still refused. A free line (no rate, no amount) takes
+        the half-kilo rule alone, as TOTAL does.
+    - The row's RATE / AMOUNT are now read for that proof; they are not
+      stock and print nowhere.
+    - Every other office PDF reads as before (268 sheets in 166 files); only
+      CRS 27's July PAGE2 changed (refused → read). July closes Toor Dal at
+      673.02, where August opens.
   - **CRS 29's camp PAGE2** (office, 2026-10-07; §2).
     - **The fault**: CRS 29's July and August sheets print **T.DHALL** with
       the Toor Dal figures AND a **CYL** line of 0s. Both are Toor Dal (the
