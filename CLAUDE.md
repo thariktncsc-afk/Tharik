@@ -2966,6 +2966,7 @@ verify:pv-gunny` §7).
   | CRS 14 | Manual | Wheat BAGS (O + R = T − I = CB) | 47 + 52 = 99 − 57 = 42 | 47 + 78 = 125 − 83 = 42 (Receipt / Issues +26) |
   | CRS 30 | Manual + Automatic | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 1 = 1 − 1 = 0 |
   | CRS 10 | Manual | BRA Rice (Police) BAGS | 0 + 2 = 2 − 2 = 0 (Monthly Sales' own) | 0 + 5 = 5 − 5 = 0 (SET to 5 — "only 5", not 2 + 5) |
+  | CRS 10 | Manual + Automatic | OAP FRK KGS (`PV_KG_CORRECTIONS`, kgs only — its bags untouched) | 0 + 2 = 2 − 0 = 2 | 0 + 2 = 2 − 2 = 0 |
 
   - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
   - CRS 14's Wheat kgs (2344 / 3887 / 6231 / 4141 / 2090) are unchanged, and so is BRA Rice (65 / 529 / 594 / 553 / 41 bags). The office first asked for BRA and corrected that to Wheat the same day.
