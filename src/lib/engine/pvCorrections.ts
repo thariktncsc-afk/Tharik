@@ -16,6 +16,10 @@
  *   ADD  { add: { receipt?, issues? } } — added to the bags the PV shows
  *        (a police line shows none, i.e. 0); Opening kept.
  * Either way Total = Opening + Receipt and Closing = Total − Issues.
+ * A third kind touches one cell only:
+ *   SHORTAGE BAGS { shortageBags } — the "Shortage during the period" bag
+ *        cell as printed (otherwise the shortage kgs ÷ pack); every other bag
+ *        cell, and every kgs cell (the shortage kgs included), is kept.
  *
  * Laid over the PV's sheet on the Reports page, so its Preview, Print and
  * Download PDF — one markup — carry them. NOTHING ELSE reads this file:
@@ -29,6 +33,7 @@ import type { PeriodBags } from './pvQuarter';
 
 type SetRow = { receipt: number; issues: number; closing: number };
 type AddRow = { add: { receipt?: number; issues?: number } };
+type ShortRow = { shortageBags: number };
 type Period = { month: number; year: number }[];
 type KgRow = { open: number; receipt: number; total: number; issues: number; closing: number; transfer?: number; excess?: number; shortage?: number };
 export type PvKind = 'manual' | 'auto';
@@ -77,7 +82,7 @@ export const PV_GUNNY_CORRECTIONS: Record<string, { note: string; applies: Appli
 };
 
 /** A commodity row's BAG columns of a PV (its kgs are never touched). */
-export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies; rows: Record<string, SetRow | AddRow> }> = {
+export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies; rows: Record<string, SetRow | AddRow | ShortRow> }> = {
   // CRS 7, the July – September 2026 Manual PV (office, 2026-10-06): Wheat
   // bags 16 + 73 = 89 − 68 = 21 (the PV had 16 + 74 = 90 − 69 = 21).
   '7|2026-7|2026-9': {
@@ -149,6 +154,16 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
     note: 'office, 2026-10-07 — CRS 17 Jul–Sep 2026 PV only',
     applies: 'manual',
     rows: { PB_BRA: { receipt: 3, issues: 2, closing: 1 } },
+  },
+  // CRS 25, the July – September 2026 Manual PV (office, 2026-10-07): Palm
+  // Oil's "Shortage during the period" bags 1 → 0. Its shortage kgs (10) and
+  // every other bag and kgs cell as they were. Manual only: the Automatic PV
+  // prints no shortage column, and this PV's Receipt adds up July and
+  // August's PDFs (1496 L), where September alone holds 260.
+  '25|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 25 Jul–Sep 2026 PV only',
+    applies: 'manual',
+    rows: { PALM: { shortageBags: 0 } },
   },
   // CRS 30, the July – September 2026 PV, Manual and Automatic (office,
   // 2026-10-07; as CRS 11's): BRA Rice (Police) Receipt +1 bag, Issues +1
@@ -259,7 +274,7 @@ export function pvGunnyWithCorrection(crsId: number, months: Period, g: Record<G
  * changes. A corrected row is marked `bagsFixed`, so a police line (which
  * otherwise prints no bags) prints the corrected ones.
  */
-export function pvCommMapWithCorrection<T extends { bags?: PeriodBags; bagsFixed?: boolean }>(
+export function pvCommMapWithCorrection<T extends { bags?: PeriodBags; bagsFixed?: boolean; shortageBags?: number }>(
   crsId: number,
   months: Period,
   commMap: Record<string, T>,
@@ -275,6 +290,8 @@ export function pvCommMapWithCorrection<T extends { bags?: PeriodBags; bagsFixed
   if (useBags) {
     for (const [id, v] of Object.entries(c!.rows)) {
       if (!out[id]) continue;
+      // The shortage bag cell alone: the bag counts and bagsFixed stay as they are.
+      if ('shortageBags' in v) { out[id] = { ...out[id], shortageBags: v.shortageBags }; continue; }
       let bags: PeriodBags;
       if ('add' in v) {
         const was = out[id].bags ?? { open: 0, receipt: 0, total: 0, issues: 0, closing: 0 };

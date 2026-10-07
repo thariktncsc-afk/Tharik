@@ -364,7 +364,7 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   const [b24, k24] = bk(r24);
   check(`  printed: bags ${b24.join(' / ')}, kgs ${k24.join(' / ')}`, J(b24) === J(['0', '155', '155', '122', '33']) && J(k24) === J(['0', '7844', '7844', '6188.586', '1655.414']));
   check('  the Automatic PV, another period and another shop: untouched',
-    PC.pvCommMapWithCorrection(24, quarter.months, map24, 'auto') === map24 && PC.pvCommMapWithCorrection(24, quarterByIndex(2026, 2).months, map24, 'manual') === map24 && PC.pvCommMapWithCorrection(25, quarter.months, map24, 'manual') === map24);
+    PC.pvCommMapWithCorrection(24, quarter.months, map24, 'auto') === map24 && PC.pvCommMapWithCorrection(24, quarterByIndex(2026, 2).months, map24, 'manual') === map24 && PC.pvCommMapWithCorrection(26, quarter.months, map24, 'manual') === map24);
 
   // CRS 17, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice (Police) bags 0 + 3 = 3 − 2 = 1
   // (a police line prints 0 bags otherwise), C.BOX 0 + 127 = 127 − 127 = 0 (had 256). No kgs move.
@@ -387,6 +387,22 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check(`  printed: C.BOX ${J(printed(pg17)['C.BOX'])}`, J(printed(pg17)['C.BOX'].slice(1)) === J([0, 127, 127, 127, 0]));
   check('  the Automatic PV, another period and another shop: Gunny untouched',
     PC.pvGunnyWithCorrection(17, quarter.months, g17, 'auto') === g17 && PC.pvGunnyWithCorrection(17, quarterByIndex(2026, 2).months, g17, 'manual') === g17 && PC.pvGunnyWithCorrection(18, quarter.months, g17, 'manual') === g17);
+
+  // CRS 25, the July – September 2026 Manual PV (office, 2026-10-07): Palm Oil's "Shortage during the period" BAGS
+  // 1 → 0. Its shortage kgs (10) and every other bag and kgs cell exactly as before.
+  const palm25 = police({ name: 'Palm Oil', unit: 'LTR', open: 365, receipt: 1496, total: 1861, issues: 1833, closing: 18, shortage: 10, transfer: 0, free: false, bags: { open: 37, receipt: 149, total: 186, issues: 184, closing: 2 } });
+  const map25 = { PALM: palm25, WHEAT: wheat15 };
+  const snap25 = J(map25);
+  const fx25 = PC.pvCommMapWithCorrection(25, quarter.months, map25, 'manual');
+  check(`CRS 25 Manual PV, Palm Oil: shortageBags ${fx25.PALM.shortageBags}, bags ${tup(fx25.PALM.bags).join(' / ')} kept, shortage kgs ${fx25.PALM.shortage}`,
+    fx25.PALM.shortageBags === 0 && fx25.PALM.bags === palm25.bags && !fx25.PALM.bagsFixed && J({ ...fx25.PALM, shortageBags: undefined }) === J(palm25) && fx25.WHEAT === wheat15 && J(map25) === snap25);
+  const cells25 = (m) => [...buildPVTable({ commMap: m, periodLabel: 'Q', crsId: 25, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' }).matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]
+    .map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'Palm Oil')?.slice(3) ?? [];
+  const before25 = cells25(map25); const after25 = cells25(fx25);
+  check(`  printed Shortage bags / kgs: before ${before25[16]} / ${before25[17]}, now ${after25[16]} / ${after25[17]}`, before25[16] === '1' && after25[16] === '0' && before25[17] === '10' && after25[17] === '10');
+  check(`  every other cell of the row printed as before (${after25.filter((v, i) => i !== 16 && v !== '').join(' ')})`, J(after25.filter((_, i) => i !== 16)) === J(before25.filter((_, i) => i !== 16)));
+  check('  the Automatic PV, another period and another shop: untouched',
+    PC.pvCommMapWithCorrection(25, quarter.months, map25, 'auto') === map25 && PC.pvCommMapWithCorrection(25, quarterByIndex(2026, 2).months, map25, 'manual') === map25 && PC.pvCommMapWithCorrection(26, quarter.months, map25, 'manual') === map25);
 
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.

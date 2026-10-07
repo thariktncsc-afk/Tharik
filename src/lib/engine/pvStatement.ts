@@ -42,6 +42,12 @@ export type PvCommRow = {
   bags?: { open: number; receipt: number; total: number; issues: number; closing: number };
   /** Bags set by a PV-only correction (pvCorrections.ts) — printed even on a police line. */
   bagsFixed?: boolean;
+  /**
+   * "Shortage during the period" BAGS as a PV-only correction sets it
+   * (pvCorrections.ts); absent, the shortage kgs ÷ pack as before. Its kgs
+   * cell is never touched.
+   */
+  shortageBags?: number;
 };
 export type PvAggregate = {
   commMap: Record<string, PvCommRow>;
@@ -366,7 +372,7 @@ export function buildPVTable(opts: {
       tr: fmtT(r.transfer),
       totB: g ? String(g.total) : b(r.total), totK: fmtN(r.total),
       issB: g ? String(g.issues) : b(r.issues), issK: fmtN(r.issues),
-      shB: r.shortage === undefined ? '' : b(r.shortage), shK: fmtT(r.shortage),
+      shB: r.shortage === undefined ? '' : r.shortageBags !== undefined ? String(r.shortageBags) : b(r.shortage), shK: fmtT(r.shortage),
       balB: g ? String(g.closing) : b(r.closing), balK: fmtN(r.closing),
       exB: r.excess === undefined ? '' : b(r.excess), exK: fmtT(r.excess),
     });
