@@ -2564,6 +2564,54 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
     half a kilo of the sum (± a printed transfer), AND sum − Sales = the
     printed Closing. A Total printed with decimals, rounded the wrong way,
     or whose Closing does not follow is still refused.
+  - **A C.S column** (office, 2026-10-07; §2).
+    - **The fault**: CRS 26's July and August PAGE2 have a C.S column
+      between SALES (and RATE / AMOUNT) and CLOSING. Their P.OIL rows carry
+      C.S 6 bags / 60 kg. The reader did not know C.S as a heading: its name
+      has dots, and it was not in `PAGE2_PARENTS`.
+    - So its BAGS / KGS pair was taken for the nearest heading, CLOSING.
+      P.OIL then read as "has two figures in CLOSING BAGS" (6 and 42), and
+      both months showed "No CRS PAGE2 … read".
+    - **Now**: headings are matched with their dots taken out (`headWord`),
+      and `CS` is a column of its own.
+    - **C.S on an office PDF is stock STILL HELD** (the office's answer,
+      2026-10-07):
+      - CRS 26's sheets carry C.S into the next month's Opening. July
+        closes P.OIL at 421 and August opens at 481 (= 421 + 60); August
+        closes at 521 and the system's September opens at 581.
+      - So Issues = SALES, and the PV's Closing = the printed CLOSING + C.S
+        (= Total − Sales), in kgs and bags. July P.OIL: 1436 − 955 = 481 kg,
+        144 − 96 = 48 bags. August: 581 kg, 58 bags.
+      - Read the first way (C.S as a sale), Generate stopped on two breaks
+        of 60.
+      - The system's own month is unchanged: there, C.S still counts as
+        sales (pvQuarter.ts).
+    - **Every other office PDF reads as before**: 257 sheets in 156 files,
+      read by the old and the new reader, are identical. Only CRS 26's two
+      PAGE2s changed, from refused to read.
+    - The reading is done in the browser from the SAVED bytes on every open,
+      so saved uploads are re-read with no re-upload.
+    - Localhost, live copy, the office's CRS 26 PDFs: both cards read "CRS
+      PAGE2 · 20 commodities · GUNNY", 3 / 3 months ready, and Generate
+      builds the PV. P.OIL reads bags 54 + 247 = 301 − 282 = 19, kgs 536 +
+      2477 = 3013 − 2823 = 190.
+  - **CRS 29's camp PAGE2** (office, 2026-10-07; §2).
+    - **The fault**: CRS 29's July and August sheets print **T.DHALL** with
+      the Toor Dal figures AND a **CYL** line of 0s. Both are Toor Dal (the
+      camp has one TOOR), and the CYL line prints its RATE 30.00. Both
+      months were refused: "CRS PAGE2: CYL appears twice".
+    - **Now**: a repeated commodity line with no STOCK figure is stepped
+      over, whichever order the two come in. "No stock figure" means every
+      quantity cell is 0 or blank; a RATE or AMOUNT does not count. Two lines
+      that BOTH carry figures are still refused.
+    - **KEROSENE** reads as the camp's `KERO` (CRS29_KERO). It used to be
+      left out for review.
+    - **Every other office PDF reads as before**: 261 sheets in 160 files
+      identical, only CRS 29's two PAGE2s changed (refused → read).
+    - Localhost, live copy, the office's CRS 29 PDFs: both cards read "CRS
+      PAGE2 · 9 commodities · GUNNY", 3 / 3 months ready, and Generate
+      builds the PV. Toor Dal reads 6 + 2310 = 2316 − 2309 = 7, Kerosene 54
+      + 6554 = 6608 − 6570 = 38.
   - **This system's own statements PDF as a month** (§8). Our Page 2 prints
     Empty Card+Box / Polythene Bag as SALES ONLY (their stock is Gunny's), so
     September (CRS 20's own statements) chained as "August closes at 40,
