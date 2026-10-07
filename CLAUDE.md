@@ -497,6 +497,28 @@ role.
     without the row holds 0 bags, so the period's bags add up: 0 / 2 / 2
     / 2 / 0 on both PVs.
 
+- **CRS 10 OAP FRK, the 2 kg recorded as sold** (office, 2026-10-07: "OB 0
+  RECEIPT 2 TOTAL 2 SALES 2 CB 0 in all statements and the PV").
+  - `tools/correct-sales.mjs --crs=10 --date=2026-09-30 --id=OAP_FRK
+    --sales=2 --write`: Daily Entry's save of a changed Sales figure. The
+    months were republished and the chain rebuilt; October opens at 0.
+  - Every statement and both PVs now read 0 + 2 = 2 − 2 = 0 from the data,
+    and the PV-only KGS override was removed. Page 2 prints a 0 kgs as
+    blank, as for every commodity.
+  - The typed Receipt 2 / Sales 2 bags were cleared
+    (`set-month-bags.mjs --receipt=0 --sales=0`): OAP FRK is kgs only, and
+    those bags had added 2 to Gunny SS Receipt (306 → 308). It is back to
+    306, its stored copy.
+  - **COLL**: R/2026/087 had been saved as an ADVANCE receipt, which COLL
+    keeps out of its balance, so COLL read −2. The office confirmed it was
+    September's stock: `tools/set-receipt-type.mjs --crs=10
+    --receipt-no=R/2026/087 --type=regular --write` changed only its type.
+    The tool proves the month and the chain are identical before and after.
+    COLL now reads OAP FRK 0 / 0 / 2 / 2 / 2 / 0, and OAP FRK left its
+    ADVANCE table. Backup `backups/receipt-type-crs10-R_2026_087-…`.
+  - Backups: `backups/correct-sales-10_2026-09-30-OAP_FRK-…` and
+    `backups/month-bags-10_9_2026-OAP_FRK-2026-10-07T03-00-…`.
+
 `npm run verify:chain-rebuild` has the reported CRS 7 case, gaps, and each kind
 of change.
 
@@ -2978,7 +3000,7 @@ verify:pv-gunny` §7).
   | CRS 14 | Manual | Wheat BAGS (O + R = T − I = CB) | 47 + 52 = 99 − 57 = 42 | 47 + 78 = 125 − 83 = 42 (Receipt / Issues +26) |
   | CRS 30 | Manual + Automatic | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 1 = 1 − 1 = 0 |
   | CRS 10 | Manual | BRA Rice (Police) BAGS | 0 + 2 = 2 − 2 = 0 (Monthly Sales' own) | 0 + 5 = 5 − 5 = 0 (SET to 5 — "only 5", not 2 + 5) |
-  | CRS 10 | Manual + Automatic | OAP FRK KGS (`PV_KG_CORRECTIONS`, kgs only — its bags untouched) | 0 + 2 = 2 − 0 = 2 | 0 + 2 = 2 − 2 = 0 |
+  | CRS 10 | — | OAP FRK KGS | 0 + 2 = 2 − 0 = 2 | a PV-only override at first, then the real 2 kg sale recorded (below) — no override now |
 
   - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
   - CRS 14's Wheat kgs (2344 / 3887 / 6231 / 4141 / 2090) are unchanged, and so is BRA Rice (65 / 529 / 594 / 553 / 41 bags). The office first asked for BRA and corrected that to Wheat the same day.
