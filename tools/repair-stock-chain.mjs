@@ -42,6 +42,9 @@ export async function resolve(spec, ctx, next) {
   import.meta.url,
 );
 const { rechainAndRepublish } = await import(pathToFileURL(join(root, 'src/lib/engine/rechain.ts')).href);
+// The shop's own lists, as the app's save passes them — without them a republished month drops a commodity of
+// the shop's own (CRS 10's OAP FRK was dropped from September / October by a repair, 2026-10-07).
+const { commodityListsFor } = await import(pathToFileURL(join(root, 'src/lib/masters.ts')).href);
 
 readFileSync(join(root, '.env.local'), 'utf8').split('\n').forEach((l) => {
   const m = l.match(/^([A-Z_]+)=(.*)$/);
@@ -51,7 +54,7 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
 
 const write = process.argv.includes('--write');
 const only = Number((process.argv.find((a) => a.startsWith('--crs=')) ?? '').split('=')[1]) || null;
-const STORES = ['entryStore', 'inspectionStore', 'receiptStore', 'meManualStore', 'meSourceStore', 'monthlyStore'];
+const STORES = ['entryStore', 'inspectionStore', 'receiptStore', 'meManualStore', 'meSourceStore', 'monthlyStore', '__commodityMaster'];
 const WRITABLE = ['entryStore', 'meManualStore', 'meSourceStore', 'monthlyStore'];
 // Compared by content, not key order: a republished month holds the same
 // figures in a different property order, and writing that would bump a row's
@@ -79,7 +82,7 @@ async function main() {
   console.log(write ? '── REPAIRING the stock chain ──' : '── DRY RUN — nothing will be written. Pass --write to apply. ──');
   const repaired = [];
   for (const crs of shops) {
-    const { patch, dates } = rechainAndRepublish(stores, crs, '0000-00-00');
+    const { patch, dates } = rechainAndRepublish(stores, crs, '0000-00-00', commodityListsFor(stores.__commodityMaster ?? null, crs));
     const count = Object.keys(stores.entryStore).filter((k) => k.startsWith(`${crs}_`)).length;
     if (!dates.length) {
       console.log(`CRS ${crs}: ${count} day sheet(s) — chain already consistent`);

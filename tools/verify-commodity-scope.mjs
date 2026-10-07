@@ -193,6 +193,20 @@ console.log('\n9. A shop\'s own commodity at its Order, everywhere (office, 2026
   const sep = rollup(10, 9, 2026, repaired, {}, undefined, S.ownListsFor(m, 10), rs).merged.a.OAP_FRK;
   check(`  September once the sheets carry it: ${sep.open} + ${sep.receipt} = ${sep.total} − ${sep.sales} = ${sep.close} (was −2 + 2 = 0)`, sep.open === 0 && sep.receipt === 2 && sep.total === 2 && sep.close === 2);
 
+  // The Manual 3-Month PV: a commodity only the system's month carries (CRS 10's OAP FRK; the uploaded July / August
+  // have no such row) is chained, not dropped, and its bags add up — those months held none.
+  const Q = await imp('lib/engine/pvQuarter.ts');
+  const fl = (o) => ({ open: 0, receipt: 0, excess: 0, shortage: 0, transfer: 0, total: 0, sales: 0, closing: 0, ...o });
+  const qm = (label, rows) => ({ label, source: 'pdf', rows, gunny: null, police: null, notes: [] });
+  const quarterRes = Q.chainQuarter(10, [
+    qm('July 2026', { BRA: fl({ open: 10, total: 10, closing: 10, bags: { open: 0, receipt: 0, total: 0, sales: 0, closing: 0 } }) }),
+    qm('August 2026', { BRA: fl({ open: 10, total: 10, closing: 10, bags: { open: 0, receipt: 0, total: 0, sales: 0, closing: 0 } }) }),
+    { ...qm('September 2026', { BRA: fl({ open: 10, total: 10, closing: 10, bags: { open: 0, receipt: 0, total: 0, sales: 0, closing: 0 } }), OAP_FRK: fl({ receipt: 2, total: 2, closing: 2, bags: { open: 0, receipt: 2, total: 2, sales: 2, closing: 0 } }) }), source: 'system' },
+  ]);
+  const qf = quarterRes.ok ? quarterRes.rows.OAP_FRK : null;
+  check(`Manual PV quarter: OAP FRK kgs ${qf?.open} + ${qf?.receipt} − ${qf?.sales} = ${qf?.closing}, bags ${qf?.bags ? `${qf.bags.open} + ${qf.bags.receipt} = ${qf.bags.total} − ${qf.bags.issues} = ${qf.bags.closing}` : 'none'}`,
+    !!qf && qf.open === 0 && qf.receipt === 2 && qf.closing === 2 && J(qf.bags) === J({ open: 0, receipt: 2, total: 2, issues: 2, closing: 0 }), quarterRes.ok ? '' : J(quarterRes.problems));
+
   // The PV: rows in the shop's order, a commodity outside the built-in list under the master's name.
   const { buildPVTable } = await imp('lib/engine/pvStatement.ts');
   const flow = (name) => ({ name, unit: 'KG', open: 0, receipt: 100, total: 100, issues: 12, closing: 88, amount: 0, free: true });
