@@ -404,6 +404,19 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('  the Automatic PV, another period and another shop: untouched',
     PC.pvCommMapWithCorrection(25, quarter.months, map25, 'auto') === map25 && PC.pvCommMapWithCorrection(25, quarterByIndex(2026, 2).months, map25, 'manual') === map25 && PC.pvCommMapWithCorrection(26, quarter.months, map25, 'manual') === map25);
 
+  // CRS 27, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice (Police) bags 0 + 2 = 2 − 1 = 1.
+  const pb27 = police({ name: 'BRA Rice (Police)', open: 26, receipt: 144, total: 170, issues: 126, closing: 44 });
+  const ps27 = police({ name: 'Sugar (Police)', open: 2, receipt: 16, total: 18, issues: 14, closing: 4 });
+  const map27 = { PB_BRA: pb27, PB_SUGAR: ps27 };
+  const snap27 = J(map27);
+  const fx27 = PC.pvCommMapWithCorrection(27, quarter.months, map27, 'manual');
+  const p27 = policeRow(fx27, 'BRA Rice (Police)');
+  check(`CRS 27 Manual PV, BRA Rice (Police): Opening ${p27.open.join(' / ')} · Receipt ${p27.receipt.join(' / ')} · Total ${p27.total.join(' / ')} · Issues ${p27.issues.join(' / ')} · Balance ${p27.balance.join(' / ')}`,
+    J(p27) === J({ open: ['0', '26'], receipt: ['2', '144'], total: ['2', '170'], issues: ['1', '126'], balance: ['1', '44'] }));
+  check('  …Sugar (Police) still prints 0 bags, the input untouched', J(policeRow(fx27, 'Sugar (Police)').receipt) === J(['0', '16']) && fx27.PB_SUGAR === ps27 && J(map27) === snap27);
+  check('  the Automatic PV, another period and another shop: untouched',
+    PC.pvCommMapWithCorrection(27, quarter.months, map27, 'auto') === map27 && PC.pvCommMapWithCorrection(27, quarterByIndex(2026, 2).months, map27, 'manual') === map27 && PC.pvCommMapWithCorrection(28, quarter.months, map27, 'manual') === map27);
+
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
   const wheat14 = police({ name: 'Wheat', open: 2400, receipt: 2620, total: 5020, issues: 2920, closing: 2100, bags: { open: 47, receipt: 52, total: 99, issues: 57, closing: 42 } });

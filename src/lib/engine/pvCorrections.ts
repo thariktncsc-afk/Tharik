@@ -166,6 +166,15 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
     applies: 'manual',
     rows: { PALM: { shortageBags: 0 } },
   },
+  // CRS 27, the July – September 2026 Manual PV (office, 2026-10-07): BRA
+  // Rice (Police) bags 0 + 2 = 2 − 1 = 1 (a police line prints 0 bags
+  // otherwise). Kgs unchanged (26 + 144 = 170 − 126 = 44); the other police
+  // lines as they are.
+  '27|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 27 Jul–Sep 2026 PV only',
+    applies: 'manual',
+    rows: { PB_BRA: { receipt: 2, issues: 1, closing: 1 } },
+  },
   // CRS 30, the July – September 2026 PV, Manual and Automatic (office,
   // 2026-10-07; as CRS 11's): BRA Rice (Police) Receipt +1 bag, Issues +1
   // bag, so Total 1 and Balance 0. Kgs unchanged (Manual PV 25 + 110 = 135
