@@ -312,6 +312,28 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('  the Automatic PV, another period and another shop: Gunny untouched',
     PC.pvGunnyWithCorrection(10, quarter.months, g10, 'auto') === g10 && PC.pvGunnyWithCorrection(10, quarterByIndex(2026, 2).months, g10, 'manual') === g10 && PC.pvGunnyWithCorrection(11, quarter.months, g10, 'manual') === g10);
 
+  // CRS 15, the July – September 2026 Manual PV (office, 2026-10-07): PHH BRA Rice bags 0 + 178 = 178 − 165 = 13
+  // (had 0 + 186 = 186 − 173 = 13), Palm Oil 54 + 190 = 244 − 214 = 30 (had 54 + 189 = 243 − 213 = 30). No kgs move.
+  const phh15 = police({ name: 'PHH BRA Rice', open: 0, receipt: 9305, total: 9305, issues: 8689.97, closing: 615.03, free: false, bags: { open: 0, receipt: 186, total: 186, issues: 173, closing: 13 } });
+  const palm15 = police({ name: 'Palm Oil', unit: 'LTR', open: 536, receipt: 1890, total: 2426, issues: 2113, closing: 313, free: false, bags: { open: 54, receipt: 189, total: 243, issues: 213, closing: 30 } });
+  const wheat15 = police({ name: 'Wheat', open: 100, receipt: 0, total: 100, issues: 50, closing: 50, free: false, bags: { open: 2, receipt: 0, total: 2, issues: 1, closing: 1 } });
+  const map15 = { PHH_BRA: phh15, PALM: palm15, WHEAT: wheat15 };
+  const snap15 = J(map15);
+  const fx15 = PC.pvCommMapWithCorrection(15, quarter.months, map15, 'manual');
+  const tup = (b) => [b.open, b.receipt, b.total, b.issues, b.closing];
+  check(`CRS 15 Manual PV, PHH BRA Rice bags: ${tup(fx15.PHH_BRA.bags).join(' / ')} = 0 + 178 = 178 − 165 = 13`, J(tup(fx15.PHH_BRA.bags)) === J([0, 178, 178, 165, 13]));
+  check(`CRS 15 Manual PV, Palm Oil bags: ${tup(fx15.PALM.bags).join(' / ')} = 54 + 190 = 244 − 214 = 30`, J(tup(fx15.PALM.bags)) === J([54, 190, 244, 214, 30]));
+  check('  …their kgs unchanged, Wheat untouched, the input untouched',
+    J({ ...fx15.PHH_BRA, bags: undefined, bagsFixed: undefined }) === J({ ...phh15, bags: undefined }) && J({ ...fx15.PALM, bags: undefined, bagsFixed: undefined }) === J({ ...palm15, bags: undefined }) && fx15.WHEAT === wheat15 && J(map15) === snap15);
+  const html15 = buildPVTable({ commMap: fx15, periodLabel: 'Q', crsId: 15, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' });
+  const row15 = (name) => [...html15.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === name)?.slice(3) ?? [];
+  const bk = (v) => [[v[5], v[9], v[12], v[14], v[23]], [v[6], v[10], v[13], v[15], v[24]]];
+  const [pb, pk] = bk(row15('PHH BRA Rice')); const [ob, ok] = bk(row15('Palm Oil'));
+  check(`  printed: PHH BRA bags ${pb.join(' / ')} kgs ${pk.join(' / ')}; Palm Oil bags ${ob.join(' / ')} kgs ${ok.join(' / ')}`,
+    J(pb) === J(['0', '178', '178', '165', '13']) && J(pk) === J(['0', '9305', '9305', '8689.970', '615.030']) && J(ob) === J(['54', '190', '244', '214', '30']) && J(ok) === J(['536', '1890', '2426', '2113', '313']));
+  check('  the Automatic PV, another period and another shop: untouched',
+    PC.pvCommMapWithCorrection(15, quarter.months, map15, 'auto') === map15 && PC.pvCommMapWithCorrection(15, quarterByIndex(2026, 2).months, map15, 'manual') === map15 && PC.pvCommMapWithCorrection(16, quarter.months, map15, 'manual') === map15);
+
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
   const wheat14 = police({ name: 'Wheat', open: 2400, receipt: 2620, total: 5020, issues: 2920, closing: 2100, bags: { open: 47, receipt: 52, total: 99, issues: 57, closing: 42 } });
