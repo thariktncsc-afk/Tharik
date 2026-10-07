@@ -432,11 +432,17 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
     }
 
     const cell: Record<string, { BAGS?: number; KGS?: number }> = {};
+    // The row's RATE and AMOUNT: not stock, only the proof of a Sales printed
+    // without its decimals (checkedFlow).
+    const priced: { rate?: number; amount?: number } = {};
     for (const it of l) {
       if (it.x < firstColX - 4 || !NUMBER.test(it.str.trim())) continue;
       const col = columnOf(it, cols);
       if (!col) continue;
-      if (col.sub === 'RATE' || col.sub === 'AMOUNT') continue;
+      if (col.sub === 'RATE' || col.sub === 'AMOUNT') {
+        priced[col.sub === 'RATE' ? 'rate' : 'amount'] = Number(it.str);
+        continue;
+      }
       const slot = (cell[col.field] ??= {});
       if (slot[col.sub] !== undefined) throw new PdfReadError(`CRS PAGE2: ${label} has two figures in ${col.field.toUpperCase()} ${col.sub}.`);
       slot[col.sub] = Number(it.str);
@@ -458,7 +464,7 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
     // Sales (July C.BOX 343 + 55 = 398 → August opens 398; P.GUNNY 118 − 74 →
     // 44). A PRINTED Closing — 0 included — is still read and still checked.
     const closing = cell.closing ? r3(qty('closing') + cs) : r3(total - sales);
-    const flow = checkedFlow(`CRS PAGE2 · ${label}`, { open, receipt, excess, shortage, transferCell, total, sales, closing });
+    const flow = checkedFlow(`CRS PAGE2 · ${label}`, { open, receipt, excess, shortage, transferCell, total, sales, closing }, priced);
     // The printed BAGS (a blank bag cell is 0; a blank Closing bag cell is
     // Total − Sales, as for the kgs). Pieces rows ARE their counts.
     if (PIECES.has(id)) {
@@ -483,6 +489,7 @@ export function readPage2(items: TextItem[], review: string[] = []): Record<stri
 function checkedFlow(
   where: string,
   f: { open: number; receipt: number; excess: number; shortage: number; transferCell: number; total: number; sales: number; closing: number },
+  priced: { rate?: number; amount?: number } = {},
 ): Flow {
   const before = f.open + f.receipt + f.excess - f.shortage;
   // A TOTAL shown without decimals (office, 2026-10-02 — CRS 20 JULY'26 PHH
@@ -506,6 +513,19 @@ function checkedFlow(
     else throw new PdfReadError(`${where}: does not add up — Opening ${f.open} + Receipt ${f.receipt} + Excess ${f.excess} − Shortage ${f.shortage} with Transfer ${f.transferCell} is not the Total ${f.total}.`);
   } else if (!eq(delta, 0)) {
     throw new PdfReadError(`${where}: does not add up — Opening ${f.open} + Receipt ${f.receipt} + Excess ${f.excess} − Shortage ${f.shortage} = ${r3(before)}, but the Total says ${f.total}.`);
+  }
+  // A SALES shown without decimals, as a TOTAL can be (office, 2026-10-07 —
+  // CRS 27 JULY'26 T.DHALL: Sales printed 1014, Amount 30419.40 at 30.00 =
+  // 1013.98 kg, and 1687 − 1013.98 = the printed Closing 673.02). Taken as
+  // Total − Closing ONLY when the row proves it: the printed Sales is a whole
+  // number within half a kilo of it, and — where the row prints a rate and an
+  // amount — rate × that figure is the printed Amount to the paisa. A row
+  // with a rate but no amount, or an amount that does not agree, is refused.
+  if (!eq(f.total - f.sales, f.closing) && Number.isInteger(f.sales)) {
+    const exact = r3(f.total - f.closing);
+    const near = Math.abs(exact - f.sales) < 0.5;
+    const proved = priced.rate ? priced.amount !== undefined && Math.abs(exact * priced.rate - priced.amount) < 0.005 : !priced.amount;
+    if (near && proved) f = { ...f, sales: exact };
   }
   if (!eq(f.total - f.sales, f.closing)) {
     throw new PdfReadError(`${where}: does not add up — Total ${f.total} − Sales ${f.sales} = ${r3(f.total - f.sales)}, but the Closing says ${f.closing}.`);
