@@ -66,6 +66,14 @@ export const PV_GUNNY_CORRECTIONS: Record<string, { note: string; applies: Appli
       cbox: { receipt: 221, issues: 221, closing: 0 },
     },
   },
+  // CRS 17, the July – September 2026 Manual PV (office, 2026-10-07): C.BOX
+  // 0 + 127 = 127 − 127 = 0 (the PV had 0 + 256 = 256 − 256 = 0; September
+  // alone holds 88). 50 KG SS and POLYTHENE as they are.
+  '17|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 17 Jul–Sep 2026 PV only',
+    applies: 'manual',
+    rows: { cbox: { receipt: 127, issues: 127, closing: 0 } },
+  },
 };
 
 /** A commodity row's BAG columns of a PV (its kgs are never touched). */
@@ -131,6 +139,16 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
     note: 'office, 2026-10-07 — CRS 24 Jul–Sep 2026 PV only',
     applies: 'manual',
     rows: { BRA: { receipt: 155, issues: 122, closing: 33 } },
+  },
+  // CRS 17, the July – September 2026 Manual PV (office, 2026-10-07): BRA
+  // Rice (Police) bags 0 + 3 = 3 − 2 = 1 (a police line prints 0 bags
+  // otherwise). Kgs unchanged (21.59 + 287 = 308.59 − 264.016 = 44.574).
+  // Manual only: its Receipt adds up July and August's PDFs, where September
+  // alone holds 117 kg.
+  '17|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 17 Jul–Sep 2026 PV only',
+    applies: 'manual',
+    rows: { PB_BRA: { receipt: 3, issues: 2, closing: 1 } },
   },
   // CRS 30, the July – September 2026 PV, Manual and Automatic (office,
   // 2026-10-07; as CRS 11's): BRA Rice (Police) Receipt +1 bag, Issues +1

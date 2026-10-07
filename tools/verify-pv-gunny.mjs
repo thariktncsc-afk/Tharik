@@ -348,7 +348,7 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   const [b16, k16] = bk(r16);
   check(`  printed: bags ${b16.join(' / ')}, kgs ${k16.join(' / ')}`, J(b16) === J(['15', '191', '206', '172', '34']) && J(k16) === J(['750', '9665', '10415', '8681', '1734']));
   check('  the Automatic PV, another period and another shop: untouched',
-    PC.pvCommMapWithCorrection(16, quarter.months, map16, 'auto') === map16 && PC.pvCommMapWithCorrection(16, quarterByIndex(2026, 2).months, map16, 'manual') === map16 && PC.pvCommMapWithCorrection(17, quarter.months, map16, 'manual') === map16);
+    PC.pvCommMapWithCorrection(16, quarter.months, map16, 'auto') === map16 && PC.pvCommMapWithCorrection(16, quarterByIndex(2026, 2).months, map16, 'manual') === map16 && PC.pvCommMapWithCorrection(19, quarter.months, map16, 'manual') === map16);
 
   // CRS 24, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice bags 0 + 155 = 155 − 122 = 33
   // (had 0 + 156 = 156 − 123 = 33). No kgs move.
@@ -365,6 +365,28 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check(`  printed: bags ${b24.join(' / ')}, kgs ${k24.join(' / ')}`, J(b24) === J(['0', '155', '155', '122', '33']) && J(k24) === J(['0', '7844', '7844', '6188.586', '1655.414']));
   check('  the Automatic PV, another period and another shop: untouched',
     PC.pvCommMapWithCorrection(24, quarter.months, map24, 'auto') === map24 && PC.pvCommMapWithCorrection(24, quarterByIndex(2026, 2).months, map24, 'manual') === map24 && PC.pvCommMapWithCorrection(25, quarter.months, map24, 'manual') === map24);
+
+  // CRS 17, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice (Police) bags 0 + 3 = 3 − 2 = 1
+  // (a police line prints 0 bags otherwise), C.BOX 0 + 127 = 127 − 127 = 0 (had 256). No kgs move.
+  const pb17 = police({ name: 'BRA Rice (Police)', open: 21.59, receipt: 287, total: 308.59, issues: 264.016, closing: 44.574 });
+  const ps17 = police({ name: 'Sugar (Police)', open: 1.5, receipt: 31.5, total: 33, issues: 29.502, closing: 3.498 });
+  const map17 = { PB_BRA: pb17, PB_SUGAR: ps17 };
+  const snap17 = J(map17);
+  const fx17 = PC.pvCommMapWithCorrection(17, quarter.months, map17, 'manual');
+  const p17 = policeRow(fx17, 'BRA Rice (Police)');
+  check(`CRS 17 Manual PV, BRA Rice (Police): Opening ${p17.open.join(' / ')} · Receipt ${p17.receipt.join(' / ')} · Total ${p17.total.join(' / ')} · Issues ${p17.issues.join(' / ')} · Balance ${p17.balance.join(' / ')}`,
+    J(p17) === J({ open: ['0', '21.590'], receipt: ['3', '287'], total: ['3', '308.590'], issues: ['2', '264.016'], balance: ['1', '44.574'] }));
+  check('  …Sugar (Police) still prints 0 bags, the input untouched', J(policeRow(fx17, 'Sugar (Police)').receipt) === J(['0', '31.500']) && fx17.PB_SUGAR === ps17 && J(map17) === snap17);
+  check('  the Automatic PV, another period and another shop: untouched',
+    PC.pvCommMapWithCorrection(17, quarter.months, map17, 'auto') === map17 && PC.pvCommMapWithCorrection(17, quarterByIndex(2026, 2).months, map17, 'manual') === map17 && PC.pvCommMapWithCorrection(18, quarter.months, map17, 'manual') === map17);
+  const g17 = { ss50: { opening: 300, receipt: 900, total: 1200, issues: 974, closing: 226 }, poly: { opening: 0, receipt: 70, total: 70, issues: 70, closing: 0 }, cbox: { opening: 0, receipt: 256, total: 256, issues: 256, closing: 0 } };
+  const g17snap = J(g17);
+  const pg17 = PC.pvGunnyWithCorrection(17, quarter.months, g17, 'manual');
+  check(`CRS 17 Manual PV, C.BOX ${J(tuple(pg17.cbox))} = 0 + 127 = 127 − 127 = 0`, J(tuple(pg17.cbox)) === J([0, 127, 127, 127, 0]));
+  check('  50 KG SS and POLYTHENE as they were, the input untouched', pg17.ss50 === g17.ss50 && pg17.poly === g17.poly && J(g17) === g17snap);
+  check(`  printed: C.BOX ${J(printed(pg17)['C.BOX'])}`, J(printed(pg17)['C.BOX'].slice(1)) === J([0, 127, 127, 127, 0]));
+  check('  the Automatic PV, another period and another shop: Gunny untouched',
+    PC.pvGunnyWithCorrection(17, quarter.months, g17, 'auto') === g17 && PC.pvGunnyWithCorrection(17, quarterByIndex(2026, 2).months, g17, 'manual') === g17 && PC.pvGunnyWithCorrection(18, quarter.months, g17, 'manual') === g17);
 
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
