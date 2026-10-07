@@ -4423,11 +4423,13 @@ function c29StockGrid(d, withMoney){
     // app does not stock, stays the kgs ÷ pack (0).
     var B = row.id ? stmtBagCounts(d, row.id)
       : {open: c29bags(v.open, row.div), receipt: c29bags(v.receipt, row.div), total: c29bags(v.total, row.div), sales: c29bags(v.sales, row.div), close: c29bags(v.close, row.div)};
+    // A kgs-only commodity's bag cells are blank (STMT_KGS_ONLY, 46-shop-commodities.js — KERO).
+    var bg = function(x){ return typeof stmtBagCell === 'function' ? stmtBagCell(row.id, c29n(x)) : c29n(x); };
     var cells =
-      '<td>' + c29n(B.open)    + '</td><td>' + c29n(v.open)    + '</td>' +
-      '<td>' + c29n(B.receipt) + '</td><td>' + c29n(v.receipt) + '</td>' +
-      '<td>' + c29n(B.total)   + '</td><td>' + c29n(v.total)   + '</td>' +
-      '<td>' + c29n(B.sales)   + '</td><td>' + c29n(v.sales)   + '</td>';
+      '<td>' + bg(B.open)    + '</td><td>' + c29n(v.open)    + '</td>' +
+      '<td>' + bg(B.receipt) + '</td><td>' + c29n(v.receipt) + '</td>' +
+      '<td>' + bg(B.total)   + '</td><td>' + c29n(v.total)   + '</td>' +
+      '<td>' + bg(B.sales)   + '</td><td>' + c29n(v.sales)   + '</td>';
     var amt = row.rate ? v.sales * row.rate : 0;
     amtTotal += amt;
     if(money){
@@ -4436,7 +4438,7 @@ function c29StockGrid(d, withMoney){
     } else {
       cells += '<td></td>';
     }
-    cells += '<td>' + c29n(B.close) + '</td><td>' + c29n(v.close) + '</td>';
+    cells += '<td>' + bg(B.close) + '</td><td>' + c29n(v.close) + '</td>';
     n++;
     body += '<tr><td>' + n + '</td><td class="l">' + row.label + '</td>' + cells + '</tr>';
 
@@ -5736,7 +5738,9 @@ function stmtOwnLabel(c){ return String((c && (c.en || c.id)) || '').toUpperCase
 // has them (CRS Page 2, Free Com, B6), and it adds no bags to a total
 // (stmtBagCounts gives it 0). Its kgs print as ever. The same list is
 // src/lib/engine/commodities.ts KGS_ONLY (the PV) — keep the two alike.
-var STMT_KGS_ONLY = ['OAP_FRK'];
+// KERO: CRS 29's kerosene has no bags (office, 2026-10-07) — blank on the
+// camp's Page 2 and B6 (26-crs29.js c29StockGrid).
+var STMT_KGS_ONLY = ['OAP_FRK', 'KERO'];
 function stmtKgsOnly(id){ return STMT_KGS_ONLY.indexOf(id) !== -1; }
 /** A bag cell: blank for a kgs-only commodity, else the figure as given. */
 function stmtBagCell(id, v){ return stmtKgsOnly(id) ? '' : v; }

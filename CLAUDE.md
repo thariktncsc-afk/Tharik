@@ -597,6 +597,19 @@ CRS.
     - Live September copy: only CRS 10's B6, Page 2 and Free Com change;
       the other 415 sections are byte-identical, and `verify:statements`
       is identical.
+  - **CRS 29's Kerosene (KERO) is kgs only too** (office, 2026-10-07:
+    "there is no bags for kerosene in CRS 29"; the camp's own PAGE2 prints
+    none).
+    - It is in both lists. On the camp's Page 2 and B6 (`c29StockGrid`,
+      26-crs29.js) its five bag cells are blank, through `stmtBagCell`;
+      they printed 0 / 43 / 43 / 43 / 0 (litres ÷ 50).
+    - On the PV its bag cells are blank too.
+    - The litres, rate and amount are unchanged. KERO is in no Gunny pack
+      (`PACK_BASE`), so no Gunny figure moves.
+    - Live September copy: only CRS 29's Page 2 and B6 change, in that row's
+      bag cells. The other 416 sections are byte-identical, and the
+      `verify:statements` output is identical.
+      `verify:commodity-scope` holds the rows.
   - **Not covered:** the DSS (compiled lists, unchanged) and All Shops
     additions on the statements (the forms are the office's).
   - **Receipt** lists the shop's master list, as Daily / Monthly do. OAP
