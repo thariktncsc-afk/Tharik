@@ -55,6 +55,17 @@ export const PV_GUNNY_CORRECTIONS: Record<string, { note: string; applies: Appli
       cbox: { receipt: 145, issues: 145, closing: 0 },
     },
   },
+  // CRS 10, the July – September 2026 Manual PV (office, 2026-10-07):
+  // POLYTHENE 3 + 73 = 76 − 76 = 0 (the PV had 3 + 68 = 71 − 71 = 0), C.BOX
+  // 0 + 221 = 221 − 221 = 0 (had 0 + 219 = 219 − 219 = 0). 50 KG SS as it is.
+  '10|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 10 Jul–Sep 2026 PV only',
+    applies: 'manual',
+    rows: {
+      poly: { receipt: 73, issues: 76, closing: 0 },
+      cbox: { receipt: 221, issues: 221, closing: 0 },
+    },
+  },
 };
 
 /** A commodity row's BAG columns of a PV (its kgs are never touched). */
@@ -79,11 +90,16 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
   // CRS 10, the July – September 2026 Manual PV (office, 2026-10-07): BRA
   // Rice (Police) Receipt 5 bags, Issues 5 bags — SET, not added to the
   // 2 / 2 Monthly Sales shows (office: "only 5") — 0 + 5 = 5 − 5 = 0. Kgs
-  // unchanged (53.5 + 404 = 457.5 − 420.5 = 37).
+  // unchanged (53.5 + 404 = 457.5 − 420.5 = 37). BRA Rice bags 0 + 259 =
+  // 259 − 259 = 0 (the PV had 0 + 251 = 251 − 251 = 0); its kgs unchanged
+  // (0 + 12557 = 12557 − 12557 = 0).
   '10|2026-7|2026-9': {
     note: 'office, 2026-10-07 — CRS 10 Jul–Sep 2026 PV only',
     applies: 'manual',
-    rows: { PB_BRA: { receipt: 5, issues: 5, closing: 0 } },
+    rows: {
+      PB_BRA: { receipt: 5, issues: 5, closing: 0 },
+      BRA: { receipt: 259, issues: 259, closing: 0 },
+    },
   },
   // CRS 30, the July – September 2026 PV, Manual and Automatic (office,
   // 2026-10-07; as CRS 11's): BRA Rice (Police) Receipt +1 bag, Issues +1
