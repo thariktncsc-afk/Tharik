@@ -114,6 +114,15 @@ export const PV_BAG_CORRECTIONS: Record<string, { note: string; applies: Applies
       PALM: { receipt: 190, issues: 214, closing: 30 },
     },
   },
+  // CRS 16, the July – September 2026 Manual PV (office, 2026-10-07): BRA
+  // Rice bags 15 + 191 = 206 − 172 = 34 (the PV had 15 + 193 = 208 − 174 =
+  // 34). Kgs unchanged. Manual only: its Receipt adds up July and August's
+  // PDFs (9665 kg), where September alone holds 2884.
+  '16|2026-7|2026-9': {
+    note: 'office, 2026-10-07 — CRS 16 Jul–Sep 2026 PV only',
+    applies: 'manual',
+    rows: { BRA: { receipt: 191, issues: 172, closing: 34 } },
+  },
   // CRS 30, the July – September 2026 PV, Manual and Automatic (office,
   // 2026-10-07; as CRS 11's): BRA Rice (Police) Receipt +1 bag, Issues +1
   // bag, so Total 1 and Balance 0. Kgs unchanged (Manual PV 25 + 110 = 135
