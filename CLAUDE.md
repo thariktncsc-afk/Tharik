@@ -3005,6 +3005,7 @@ verify:pv-gunny` §7).
   | CRS 10 | Manual | C.BOX (O + R = T − I = CB) | 0 + 219 = 219 − 219 = 0 | 0 + 221 = 221 − 221 = 0 (50 KG SS unchanged) |
   | CRS 15 | Manual | PHH BRA Rice BAGS (O + R = T − I = CB) | 0 + 186 = 186 − 173 = 13 | 0 + 178 = 178 − 165 = 13 (kgs 0 + 9305 − 8689.970 = 615.030 unchanged) |
   | CRS 15 | Manual | Palm Oil BAGS (O + R = T − I = CB) | 54 + 189 = 243 − 213 = 30 | 54 + 190 = 244 − 214 = 30 (kgs unchanged) |
+  | CRS 16 | Manual | BRA Rice BAGS (O + R = T − I = CB) | 15 + 193 = 208 − 174 = 34 | 15 + 191 = 206 − 172 = 34 (kgs 750 + 9665 = 10415 − 8681 = 1734 unchanged) |
   | CRS 10 | — | OAP FRK KGS | 0 + 2 = 2 − 0 = 2 | a PV-only override at first, then the real 2 kg sale recorded (below) — no override now |
 
   - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
