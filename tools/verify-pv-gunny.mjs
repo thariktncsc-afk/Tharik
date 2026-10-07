@@ -350,6 +350,22 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('  the Automatic PV, another period and another shop: untouched',
     PC.pvCommMapWithCorrection(16, quarter.months, map16, 'auto') === map16 && PC.pvCommMapWithCorrection(16, quarterByIndex(2026, 2).months, map16, 'manual') === map16 && PC.pvCommMapWithCorrection(17, quarter.months, map16, 'manual') === map16);
 
+  // CRS 24, the July – September 2026 Manual PV (office, 2026-10-07): BRA Rice bags 0 + 155 = 155 − 122 = 33
+  // (had 0 + 156 = 156 − 123 = 33). No kgs move.
+  const bra24 = police({ name: 'BRA Rice', open: 0, receipt: 7844, total: 7844, issues: 6188.586, closing: 1655.414, free: false, bags: { open: 0, receipt: 156, total: 156, issues: 123, closing: 33 } });
+  const map24 = { BRA: bra24, WHEAT: wheat15 };
+  const snap24 = J(map24);
+  const fx24 = PC.pvCommMapWithCorrection(24, quarter.months, map24, 'manual');
+  check(`CRS 24 Manual PV, BRA Rice bags: ${tup(fx24.BRA.bags).join(' / ')} = 0 + 155 = 155 − 122 = 33`, J(tup(fx24.BRA.bags)) === J([0, 155, 155, 122, 33]));
+  check('  …its kgs unchanged, Wheat untouched, the input untouched',
+    J({ ...fx24.BRA, bags: undefined, bagsFixed: undefined }) === J({ ...bra24, bags: undefined }) && fx24.WHEAT === wheat15 && J(map24) === snap24);
+  const html24 = buildPVTable({ commMap: fx24, periodLabel: 'Q', crsId: 24, crsName: '', gunny: system, billClerk: '', pvOfficer: '', pvDate: '' });
+  const r24 = [...html24.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'BRA Rice')?.slice(3) ?? [];
+  const [b24, k24] = bk(r24);
+  check(`  printed: bags ${b24.join(' / ')}, kgs ${k24.join(' / ')}`, J(b24) === J(['0', '155', '155', '122', '33']) && J(k24) === J(['0', '7844', '7844', '6188.586', '1655.414']));
+  check('  the Automatic PV, another period and another shop: untouched',
+    PC.pvCommMapWithCorrection(24, quarter.months, map24, 'auto') === map24 && PC.pvCommMapWithCorrection(24, quarterByIndex(2026, 2).months, map24, 'manual') === map24 && PC.pvCommMapWithCorrection(25, quarter.months, map24, 'manual') === map24);
+
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
   const wheat14 = police({ name: 'Wheat', open: 2400, receipt: 2620, total: 5020, issues: 2920, closing: 2100, bags: { open: 47, receipt: 52, total: 99, issues: 57, closing: 42 } });
