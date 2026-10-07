@@ -268,6 +268,21 @@ console.log('\n9. A shop\'s own commodity at its Order, everywhere (office, 2026
     const plain = rowsOf(base(), 1, sec).html;
     check(`  ${sec}, CRS 1: byte-identical with OAP FRK placed for CRS 10 or not`, rowsOf(m, 1, sec).html === plain && !/OAP FRK<\/td><td>[^<]/.test(plain));
   }
+
+  // CRS 29's kerosene has no bags (office, 2026-10-07): KERO is kgs only on the camp's Page 2 / B6 and on the PV.
+  stores.entryStore['29_2026-09-30'] = { a: { BRA: { open: 1000, receipt: 0, sales: 100, total: 1000, close: 900 }, KERO: { open: 49, receipt: 2179, sales: 2190, total: 2228, close: 38 } }, b: {}, freeRice: 100, costRice: 0 };
+  for (const sec of ['crs_page2', 'b6']) {
+    const { rows } = rowsOf(m, 29, sec);
+    const k = rows.find((c) => c[1] === 'KEROSENE') ?? [];
+    const b = rows.find((c) => c[1] === 'B.RICE') ?? [];
+    const bagIdx = sec === 'crs_page2' ? [2, 4, 6, 8, 13] : [2, 4, 6, 8, 11];
+    check(`CRS 29 ${sec}: KEROSENE bag cells ${bagIdx.map((n) => J(k[n])).join(' ')} blank, litres ${[k[3], k[5], k[7], k[9], k[bagIdx[4] + 1]].join(' / ')}; B.RICE bags still printed (${bagIdx.map((n) => b[n]).join(' / ')})`,
+      bagIdx.every((n) => k[n] === '') && J([k[3], k[5], k[7], k[9], k[bagIdx[4] + 1]]) === J(['49', '2179', '2228', '2190', '38']) && b[2] === '20' && b[bagIdx[4]] === '18');
+  }
+  const keroPv = buildPVTable({ commMap: { BRA: flow('BRA Rice'), KERO: { ...flow('Kerosene'), unit: 'LTR', open: 54, receipt: 6554, total: 6608, issues: 6570, closing: 38, bags: { open: 1, receipt: 131, total: 132, issues: 131, closing: 0 } } }, periodLabel: 'Q', crsId: 29, crsName: '', gunny, staff: {}, commodities: camp });
+  const kr = [...keroPv.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((x) => [...x[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((y) => y[1].replace(/<[^>]+>/g, '').trim())).find((c) => c[1] === 'Kerosene')?.slice(3) ?? [];
+  check(`PV, CRS 29: Kerosene bag cells blank (${[kr[5], kr[9], kr[12], kr[14], kr[23]].map((v) => J(v)).join(' ')}), litres ${[kr[6], kr[10], kr[13], kr[15], kr[24]].join(' / ')}`,
+    [kr[5], kr[9], kr[12], kr[14], kr[23]].every((v) => v === '') && J([kr[6], kr[10], kr[13], kr[15], kr[24]]) === J(['54', '6554', '6608', '6570', '38']));
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nALL COMMODITY-SCOPE CHECKS PASSED');

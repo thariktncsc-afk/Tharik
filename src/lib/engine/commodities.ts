@@ -105,8 +105,10 @@ export const SALES_ONLY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
  * cells print blank, and they add no bags to a total. Monthly Sales and every
  * stored figure are unchanged. The statements' own list is STMT_KGS_ONLY
  * (src/legacy/46-shop-commodities.js) — keep the two alike.
+ * KERO: CRS 29's kerosene has no bags (office, 2026-10-07; its own PAGE2
+ * prints none).
  */
-export const KGS_ONLY = new Set(['OAP_FRK']);
+export const KGS_ONLY = new Set(['OAP_FRK', 'KERO']);
 
 export type EntryRecord = { open?: number; receipt?: number; sales?: number; close?: number; amount?: number };
 export type DayEntry = { a?: Record<string, EntryRecord>; b?: Record<string, EntryRecord> };
