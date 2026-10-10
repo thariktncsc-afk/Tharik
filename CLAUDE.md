@@ -2627,6 +2627,16 @@ system**; they are chained into one quarter PV. `npm run verify:pv-quarter`.
     - Every other office PDF reads as before (268 sheets in 166 files); only
       CRS 27's July PAGE2 changed (refused → read). July closes Toor Dal at
       673.02, where August opens.
+  - **"FRK AAY"** (office, 2026-10-10; §2). CRS 5's PAGE2 prints AAY FRK
+    the other way round. It was left out for review ("the row FRK AAY …
+    is not a commodity this reader knows"). It is now an alias of AAY FRK
+    (`PAGE2_ALIASES`).
+    - It is the sheet's only AAY FRK line, and it chains: July 102 + 633 =
+      735 − 560 = 175, August opens at 175 and closes at 0, and September
+      holds none.
+    - Every other office PDF reads as before (278 sheets in 178 files).
+      Only CRS 5's May, July and August PAGE2s changed: each gained its AAY
+      FRK row and lost the review note.
   - **CRS 29's camp PAGE2** (office, 2026-10-07; §2).
     - **The fault**: CRS 29's July and August sheets print **T.DHALL** with
       the Toor Dal figures AND a **CYL** line of 0s. Both are Toor Dal (the

@@ -425,7 +425,7 @@ console.log('\n2. Built pages — what a real file can throw');
     const rev = [];
     try { return { rows: P.readPage2(items, rev), rev }; } catch (e) { return { err: e.message, rev }; }
   };
-  for (const [label, id] of [['T.DHALL/CYL', 'TOOR'], ['CYL/T.DHALL', 'TOOR'], ['Toor Dal', 'TOOR'], ['T. DHALL', 'TOOR'], ['A A Y', 'AAY'], ['AAY', 'AAY'], ['BRA Rice', 'BRA'], ['SUGAR (AAY)', 'AAY_SUGAR'], ['Sugar(AAY)', 'AAY_SUGAR'], ['SALT (CIS)', 'SALT_CIS'], ['Palm Oil', 'PALM'], ['NPHH FRK RRA Rice', 'NPHH_RRA'], ['PHH  BRA', 'PHH_BRA']]) {
+  for (const [label, id] of [['T.DHALL/CYL', 'TOOR'], ['CYL/T.DHALL', 'TOOR'], ['Toor Dal', 'TOOR'], ['T. DHALL', 'TOOR'], ['A A Y', 'AAY'], ['AAY', 'AAY'], ['BRA Rice', 'BRA'], ['SUGAR (AAY)', 'AAY_SUGAR'], ['Sugar(AAY)', 'AAY_SUGAR'], ['SALT (CIS)', 'SALT_CIS'], ['Palm Oil', 'PALM'], ['NPHH FRK RRA Rice', 'NPHH_RRA'], ['PHH  BRA', 'PHH_BRA'], ['FRK AAY', 'AAY_FRK']]) {
     const r = spelt(label);
     check(`"${label}" reads as ${id} (${r.err ?? Object.keys(r.rows ?? {}).filter((k) => k !== 'SUGAR').join()})`, !r.err && !!r.rows?.[id] && r.rows[id].closing === 764 && !r.rev.length, r.err ?? J(r.rev));
   }
