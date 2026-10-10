@@ -273,6 +273,8 @@ const PAGE2_ALIASES: Record<string, string> = {
   'TOOR DAL': 'TOOR', 'TOOR DHALL': 'TOOR', 'TUR DAL': 'TOOR', DHALL: 'TOOR', 'PALM OIL': 'PALM',
   'AAY SUGAR': 'AAY_SUGAR', 'SUGAR AAY': 'AAY_SUGAR', 'NPHH FRK RRA RICE': 'NPHH_RRA', 'NPHH RRA': 'NPHH_RRA',
   'SALT CIS': 'SALT_CIS', 'SALT RFFS': 'SALT_RFFS', 'POLY': 'EMPTY_BAG', 'POLY GUNNY': 'EMPTY_BAG', 'CBOX': 'EMPTY_BOX',
+  // CRS 5's sheets print AAY FRK the other way round (office, 2026-10-10).
+  'FRK AAY': 'AAY_FRK',
 };
 const page2Label = makeResolver(PAGE2_LABELS, DSS_A, PAGE2_ALIASES);
 
