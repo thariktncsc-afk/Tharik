@@ -433,6 +433,18 @@ console.log('\n7. PV-only corrections (office, 2026-10-06): CRS 9 Gunny, CRS 7 W
   check('  the Automatic PV, another period and another shop: untouched',
     PC.pvCommMapWithCorrection(23, quarter.months, map23, 'auto') === map23 && PC.pvCommMapWithCorrection(23, quarterByIndex(2026, 2).months, map23, 'manual') === map23 && PC.pvCommMapWithCorrection(22, quarter.months, map23, 'manual') === map23);
 
+  // CRS 5, the July – September 2026 Manual PV (office, 2026-10-10): Palm Oil's Shortage BAGS 1 → 0 (13 L ÷ 10).
+  const palm5 = { ...palm25, shortage: 13, closing: 15 };
+  const map5 = { PALM: palm5, WHEAT: wheat15 };
+  const snap5 = J(map5);
+  const fx5 = PC.pvCommMapWithCorrection(5, quarter.months, map5, 'manual');
+  const before5 = cells25(map5), after5 = cells25(fx5);
+  check(`CRS 5 Manual PV, Palm Oil Shortage bags / kgs: before ${before5[16]} / ${before5[17]}, now ${after5[16]} / ${after5[17]}`, before5[16] === '1' && after5[16] === '0' && after5[17] === '13');
+  check('  every other cell of the row as before, Wheat and the input untouched',
+    J(after5.filter((_, i) => i !== 16)) === J(before5.filter((_, i) => i !== 16)) && fx5.WHEAT === wheat15 && J(map5) === snap5 && fx5.PALM.bags === palm5.bags);
+  check('  the Automatic PV, another period and another shop: untouched',
+    PC.pvCommMapWithCorrection(5, quarter.months, map5, 'auto') === map5 && PC.pvCommMapWithCorrection(5, quarterByIndex(2026, 2).months, map5, 'manual') === map5 && PC.pvCommMapWithCorrection(6, quarter.months, map5, 'manual') === map5);
+
   // CRS 14, the July – September 2026 Manual PV: WHEAT bags 47 + 78 = 125 − 83 = 42 (had 47 + 52 = 99 − 57 = 42);
   // BRA Rice (an earlier request, withdrawn the same day) untouched.
   const wheat14 = police({ name: 'Wheat', open: 2400, receipt: 2620, total: 5020, issues: 2920, closing: 2100, bags: { open: 47, receipt: 52, total: 99, issues: 57, closing: 42 } });

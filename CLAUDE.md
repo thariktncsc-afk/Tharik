@@ -3106,6 +3106,7 @@ verify:pv-gunny` §7).
   | CRS 25 | Manual | Palm Oil "Shortage during the period" BAGS | 1 (10 L ÷ 10) | 0 — shortage kgs 10 and every other cell unchanged |
   | CRS 27 | Manual | BRA Rice (Police) BAGS | 0 + 0 = 0 − 0 = 0 | 0 + 2 = 2 − 1 = 1 (kgs 26 + 144 = 170 − 126 = 44 unchanged; other police lines unchanged) |
   | CRS 23 | Manual | PHH BRA Rice BAGS (O + R = T − I = CB) | 0 + 86.3 = 86.3 − 83.3 = 3 (the July PDF prints 38.3 = 1915 kg ÷ 50) | 0 + 86 = 86 − 83 = 3 (kgs 0 + 4361 − 4185 = 176 unchanged) |
+  | CRS 5 | Manual | Palm Oil "Shortage during the period" BAGS | 1 (13 L ÷ 10) | 0 — shortage kgs 13 and every other cell unchanged |
   | CRS 10 | — | OAP FRK KGS | 0 + 2 = 2 − 0 = 2 | a PV-only override at first, then the real 2 kg sale recorded (below) — no override now |
 
   - CRS 7's Wheat kgs (816 / 3716 / 4532 / 3465 / 1067) are unchanged.
