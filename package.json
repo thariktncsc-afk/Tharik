@@ -52,6 +52,7 @@
     "verify:coll-advance": "node tools/verify-coll-advance.mjs",
     "verify:dss-rates": "node tools/verify-dss-rates.mjs",
     "verify:dss-totals": "node tools/verify-dss-totals.mjs",
+    "verify:dss-sales-only": "node tools/verify-dss-sales-only.mjs",
     "verify:gunny-sales": "node tools/verify-gunny-sales.mjs",
     "verify:gunny-save": "node tools/verify-gunny-save.mjs",
     "verify:remittance-save": "node tools/verify-remittance-save.mjs",

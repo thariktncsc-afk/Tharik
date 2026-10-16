@@ -97,6 +97,11 @@ export function stockListsFor(crsId: number | null | undefined): { a: Commodity[
  *
  * DISPLAY ONLY — what is saved on the sheet, what the statements print and
  * what the DSS prices are all untouched.
+ *
+ * The DSS prints these two rows the same way (office, 2026-10-16): Sales
+ * only, Opening / Receipt / Total / Closing blank. Its own copy of this list
+ * is DSS_SALES_ONLY in src/legacy/17-dss-export.js; keep the two alike
+ * (`verify:dss-sales-only` checks they match).
  */
 export const SALES_ONLY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
