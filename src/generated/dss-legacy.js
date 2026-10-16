@@ -170,6 +170,20 @@ function dssRemitOf(sheet){
   return Math.round(t * 100) / 100;
 }
 
+// ── C.Box and Poly: the day's SALES only (office, 2026-10-16) ───────────────
+// Empty Card+Box and Empty Polythene Bag are not stocked on the sales grid:
+// their bags are held in Gunny Stock Management. The day sheet still carries
+// an Opening and Closing for them, which every sale pushes below 0 and every
+// later day carries on, so the DSS printed CRS 1's one 22-box sale of 30-09 as
+// -22.000 Opening / Total / Closing on every October page.
+// Daily and Monthly Entry show these two rows as Sales only (SALES_ONLY in
+// engine/commodities.ts; keep the two lists alike), and so does the DSS now:
+// Opening, Receipt, Total and Closing print blank, and Sales prints the day's
+// saved sale when there is one above 0. The amount is that sale x rate, so a
+// day with no sale prices nothing. Display only: nothing stored changes.
+var DSS_SALES_ONLY = ['EMPTY_BOX', 'EMPTY_BAG'];
+function dssSalesOnly(id){ return DSS_SALES_ONLY.indexOf(id) !== -1; }
+
 // ── Lazy-load the Excel writer (xlsx-js-style — supports cell borders/fonts/merges) ──
 function ensureXLSX(cb){
   if(window.XLSX){ cb(); return; }
@@ -272,12 +286,15 @@ function downloadDSSExcel(){
           var ex=parseFloat(ei.excess||0), trf=parseFloat(ei.transfer||0), sh=parseFloat(ei.shortage||0);
           var total=open+rec+inspNet({excess:ex,shortage:sh,transfer:trf});   // [C1][S2]
           var sales=parseFloat(d.sales||0), closing=total-sales;   // [S2]
+          // C.Box / Poly: Sales only, and only a sale above 0 (dssSalesOnly).
+          var only=dssSalesOnly(c.id);
+          if(only && !(sales>0)) sales=0;
           var amt=c.free?0:sales*c.rate; tot+=amt;
           sum.open+=open; sum.rec+=rec; sum.total+=total; sum.sales+=sales; sum.closing+=closing;
           P(ws,'B'+r,i+1,ctrS);
           P(ws,'C'+r,lbl(c),nameS);
-          P(ws,'D'+r,num(open),numS); P(ws,'E'+r,num(rec),numS); P(ws,'F'+r,num(total),numS);
-          P(ws,'G'+r,num(sales),numS); P(ws,'H'+r,num(closing),numS);
+          P(ws,'D'+r,only?'':num(open),numS); P(ws,'E'+r,only?'':num(rec),numS); P(ws,'F'+r,only?'':num(total),numS);
+          P(ws,'G'+r,num(sales),numS); P(ws,'H'+r,only?'':num(closing),numS);
           P(ws,'I'+r,c.free?NIL:Math.round(c.rate*100)/100,c.free?freeS:moneyS);
           P(ws,'J'+r,c.free?'':(sales?Math.round(amt*100)/100:''),moneyS);
           r++;
@@ -392,16 +409,19 @@ function openDSSPreview(){
       var ex=parseFloat(ei.excess||0), trf=parseFloat(ei.transfer||0), sh=parseFloat(ei.shortage||0);
       var total=open+rec+inspNet({excess:ex,shortage:sh,transfer:trf});   // [C1][S2]
       var sales=parseFloat(d.sales||0), closing=total-sales;   // [S2]
+      // C.Box / Poly: Sales only, and only a sale above 0 (dssSalesOnly).
+      var only=dssSalesOnly(c.id);
+      if(only && !(sales>0)) sales=0;
       var amt=c.free?0:sales*c.rate; tot+=amt;
       sum.open+=open; sum.rec+=rec; sum.total+=total; sum.sales+=sales; sum.closing+=closing;
       body+='<tr>'+
         '<td>'+(i+1)+'</td>'+
         '<td class="nm">'+lbl(c)+'</td>'+
-        '<td>'+f3(open)+'</td>'+
-        '<td>'+f3(rec)+'</td>'+
-        '<td>'+f3(total)+'</td>'+
+        '<td>'+(only?'':f3(open))+'</td>'+
+        '<td>'+(only?'':f3(rec))+'</td>'+
+        '<td>'+(only?'':f3(total))+'</td>'+
         '<td>'+f3(sales)+'</td>'+
-        '<td>'+f3(closing)+'</td>'+
+        '<td>'+(only?'':f3(closing))+'</td>'+
         '<td class="rt">'+(c.free?NIL:Number(c.rate).toFixed(2))+'</td>'+
         '<td class="rt">'+(c.free?'':(sales?amt.toFixed(2):''))+'</td>'+
       '</tr>';
