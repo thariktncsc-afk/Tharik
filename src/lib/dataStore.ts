@@ -59,10 +59,12 @@ export type DataStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 /**
  * Things a screen can wait on that are not stores: the clear-request record
- * (served scoped by /api/clear-requests), payment orders, the activity log and
- * the signed-in person's notifications (their own tables). Each is a revision that changes when the thing does.
+ * (served scoped by /api/clear-requests), payment orders, the activity log,
+ * the signed-in person's notifications (their own tables) and Payment
+ * Management's obligations (`paymgmt`: every shop's for an administrator, the
+ * shop's own otherwise). Each is a revision that changes when the thing does.
  */
-export type LiveTopic = 'clears' | 'payments' | 'activity' | 'inbox';
+export type LiveTopic = 'clears' | 'payments' | 'activity' | 'inbox' | 'paymgmt';
 type WatchedTopic = Exclude<LiveTopic, 'clears'>;
 
 const POLL_MS = 5000;
@@ -94,8 +96,8 @@ class CrsDataStore {
   private inFlight: Promise<boolean> | null = null;
   private loading = false;
   private polling = false;
-  private revisions: Record<LiveTopic, number | string> = { clears: 0, payments: '', activity: '', inbox: '' };
-  private watchers: Record<WatchedTopic, number> = { payments: 0, activity: 0, inbox: 0 };
+  private revisions: Record<LiveTopic, number | string> = { clears: 0, payments: '', activity: '', inbox: '', paymgmt: '' };
+  private watchers: Record<WatchedTopic, number> = { payments: 0, activity: 0, inbox: 0, paymgmt: 0 };
   /** Records the person edited since the last save — sent so the activity log can tell their edit from a recalculation. */
   private edits: EditHints = {};
 
@@ -411,11 +413,11 @@ class CrsDataStore {
       const topics = (Object.keys(this.watchers) as WatchedTopic[]).filter((t) => this.watchers[t] > 0);
       const r = await fetch(`/api/sync${topics.length ? `?topics=${topics.join(',')}` : ''}`, { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!r.ok) return;
-      const b = (await r.json().catch(() => null)) as { versions?: Record<string, number>; clears?: number; payments?: string; activity?: string; inbox?: string } | null;
+      const b = (await r.json().catch(() => null)) as { versions?: Record<string, number>; clears?: number; payments?: string; activity?: string; inbox?: string; paymgmt?: string } | null;
       if (!b) return;
 
       let changed = false;
-      for (const topic of ['clears', 'payments', 'activity', 'inbox'] as const) {
+      for (const topic of ['clears', 'payments', 'activity', 'inbox', 'paymgmt'] as const) {
         const next = b[topic];
         if ((typeof next === 'number' || typeof next === 'string') && next !== this.revisions[topic]) {
           this.revisions = { ...this.revisions, [topic]: next };

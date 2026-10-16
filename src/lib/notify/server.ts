@@ -361,6 +361,55 @@ export async function sendMessage(input: {
   return { id: id as number, recipients: people.length };
 }
 
+// ── Payment reminders (Payment Management) ────────────────────────────────
+
+/**
+ * A payment reminder to ONE shop's own active Bill Clerk and Packer — found
+ * here from the users table, never from the request. Throws, like
+ * sendMessage, because an administrator is waiting to know it went out.
+ *
+ * Type SYSTEM, not MESSAGE: a message would also pop the generic MessagePopup;
+ * the reminder has its own (PaymentReminderPopup, which asks
+ * /api/payment-management/mine). Status 'sent', never 'pending': 0007's unique
+ * index would silently drop a second reminder for the same obligation.
+ */
+export async function notifyShopPayment(input: {
+  sender: Person;
+  crsId: number;
+  title: string;
+  message: string;
+  details: Detail[];
+  link: string;
+  obligationId: string;
+}): Promise<{ notificationId: number | null; recipients: number }> {
+  const audience: Audience = { mode: 'shop', crsId: input.crsId, roles: ['BC', 'Packer'] };
+  const people = resolveAudience(await roster(), audience);
+  if (!people.length) throw Object.assign(new Error(`CRS ${input.crsId} has no active Bill Clerk or Packer to receive the reminder.`), { status: 400 });
+  try {
+    const id = await insertNotification(
+      {
+        type: 'SYSTEM',
+        title: input.title,
+        message: input.message,
+        details: input.details,
+        priority: 'urgent',
+        status: 'sent',
+        sender: input.sender,
+        module: 'payment-management',
+        requestId: input.obligationId,
+        crsId: input.crsId,
+        link: input.link,
+        audience: { ...audience, label: describeAudience(audience) },
+      },
+      people,
+    );
+    return { notificationId: id, recipients: people.length };
+  } catch (e) {
+    if (tablesMissing(e as { code?: string })) throw Object.assign(new Error(MIGRATION_HINT), { status: 503 });
+    throw e;
+  }
+}
+
 // ── Reading one person's inbox ─────────────────────────────────────────────
 
 const INBOX_COLUMNS =
