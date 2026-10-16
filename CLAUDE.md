@@ -276,6 +276,41 @@ Both changed on the office's asking (2026-09-26); `npm run verify:dss-totals`.
   together; the commodity rows, the rates and the OB→CB arithmetic are
   untouched.
 
+### C.Box and Poly print Sales only on the DSS
+
+Office, 2026-10-16 (`17-dss-export.js` `DSS_SALES_ONLY`, `npm run
+verify:dss-sales-only`).
+- **The fault**: the DSS printed C.Box / Poly with a NEGATIVE Opening,
+  Total and Closing. CRS 1's one 22-box sale on 30-09 showed −22.000 on
+  every October page, with no sale on any of them.
+  - These two rows hold no stock on the sales grid: their bags are Gunny
+    Stock Management's (see "C.Box and Poly: the sale is the Gunny issue").
+  - So the day sheet's Closing for them goes below 0 with every sale, and
+    every later day carries it as its Opening.
+  - Daily and Monthly Entry already hide those four cells (`SALES_ONLY`).
+    The DSS printed the stored figures.
+- **Now** the DSS prints the two rows as Sales only, in the preview, Print
+  and the .xlsx alike:
+  - Opening, Receipt, Total and Closing are blank.
+  - Sales is the day's saved sale when it is above 0. A 0 or no entry
+    prints blank, as every 0 on the DSS does. A negative is never printed
+    or priced.
+  - Rate is unchanged, and Amount = Sales × rate.
+- **Display only**: the day sheets, Monthly / Daily Sales, Gunny, the
+  Receipt Register and the statements are untouched.
+  - Every other row prints as before, real negative stock included
+    (CRS 25 Palm Oil 06-10 still shows its −74).
+  - `DSS_SALES_ONLY` is a copy of `SALES_ONLY` (commodities.ts); the
+    verify checks the two match.
+- **Live, read only, 2026-10-16**: every DSS page of every shop, rendered
+  with the engine before and after (389 pages, receipt-only days included,
+  32 shop-months):
+  - 220 C.Box / Poly rows changed, all of them only in Opening / Receipt /
+    Total / Closing; 0 negatives left.
+  - Their 38 real sales print the same quantity and amount.
+  - 0 other rows, 0 TOTAL rows and 0 C A/C lines changed. In the .xlsx, 590
+    C.Box / Poly stock cells changed and 0 other cells.
+
 ### Payment Access Control (shop-wise switches)
 
 `/payment-access` (admin only) sets, per shop, whether the **DSS** and the
@@ -3325,6 +3360,7 @@ npm run verify:pv-uploads      Manual PV uploads saved per CRS + month: save / l
 npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing balance and prints in the ADVANCE table
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
+npm run verify:dss-sales-only  DSS C.Box / Poly print Sales only: no sale → blank, 5 → 5 and its amount, 0 / receipt / inspection / negative → blank, other rows unchanged
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
 npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database
