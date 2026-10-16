@@ -17,6 +17,7 @@ import { useAuth } from '@/lib/authClient';
 import { crsData } from '@/lib/dataStore';
 import NotificationBell from '@/components/NotificationBell';
 import MessagePopup from '@/components/MessagePopup';
+import PaymentReminderPopup from '@/components/PaymentReminderPopup';
 import { inbox } from '@/lib/notify/client';
 
 const MENU = [
@@ -27,8 +28,9 @@ const MENU = [
   { href: '/crs', icon: '🏪', label: 'CRS Shops' },
   { href: '/commodities', icon: '📦', label: 'Commodities' },
   { href: '/statements', icon: '📄', label: 'Statements' },
-  // Not admin-only: an admin sees the approval queue here, a shop user sees
-  // their own download payments and can finish one they left half-done.
+  // Not admin-only: an admin sees the approval queue and Payment Management
+  // here, a shop user sees their own download payments (and can finish one
+  // left half-done) and the payment reminders the office sent the shop.
   { href: '/payments', icon: '💳', label: 'Payments' },
   { href: '/reports', icon: '📈', label: 'Reports' },
   // Not admin-only: an admin decides clear requests here, a shop user watches
@@ -200,6 +202,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       {/* Important and urgent messages, in front of everything until acknowledged. */}
       <MessagePopup />
+      {/* A shop's payment reminders, with their sound, until one of its staff presses OK. */}
+      <PaymentReminderPopup />
     </>
   );
 }

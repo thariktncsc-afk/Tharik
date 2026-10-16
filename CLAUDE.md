@@ -327,6 +327,92 @@ Each change is an activity-log row (`Payment Access`, `ON → OFF`), bulk ones
 too, one per shop. The Statements page and this page re-read on a live-sync
 change to `__paymentGate`. `npm run verify:payment-gate`.
 
+### Payment Management and the shop's UPI reminder
+
+Office, 2026-10-16 (`src/lib/paymentMgmt/`, `/api/payment-management/**`,
+`npm run verify:payment-mgmt`). What each shop OWES the office, apart from the
+paid downloads above. **No migration to run.**
+- **Where it is**: the Payments screen, as the office asked ("i need that in
+  this screen") — never a sidebar page of its own.
+  - **Administrator**: tabs ✅ Download Approvals (the queue, unchanged, the
+    default), 💰 Payment Management, ⚙️ UPI & Reminder Sound. `?tab=management`
+    / `?tab=settings` open those; an address naming neither (the sidebar, a
+    bell link `?id=<order>`) goes back to the queue.
+  - **Shop user**: a Payment Reminders card above its own requests, once the
+    shop has been reminded (`_reminders/ShopReminders.tsx`).
+- **An obligation** is one shop × month × type: Monthly Statement, PV
+  Statement, Previous Month Balance (one each per shop-month, 409 for a
+  second) or Other (any number, with a title). The administrator types the
+  amount due; nothing is assumed per shop.
+  - **Payments are entries, never overwritten**: date, amount, UPI / cash /
+    other, UTR, remarks. A correction keeps what it replaced (`edits`); a
+    payment entered in error is voided with a reason, never deleted.
+  - **Balance = due − paid, worked out, never stored.** Paid at 0. A payment
+    above the balance, or a due below what is paid, is refused.
+  - **Money in paise.** Rupee text is parsed on the server (`parseRupees`:
+    digits, at most two decimals — no commas, signs or `1e3`).
+  - Delete only while it has no payment and no reminder.
+- **Stored in `crs_state` scope `payment_mgmt`** (`pmob:<id>`, id
+  `<crs>-<year>-<month>-<type>`, e.g. `1-2026-10-pv`; `pmset:media`), under
+  `version` like `pv_upload`. Never `'global'`, so /api/state, live sync,
+  clears and the backfill never see it. Files (QR, sounds) go to a PRIVATE
+  bucket `payment-media`, created on first use; what a file is comes from
+  its bytes (PNG / JPEG / WEBP; MP3 / WAV / OGG / M4A), never SVG or HTML.
+- **The UPI ID is the one `payment_settings` row the paid downloads use** —
+  one office UPI ID. Its save writes ONLY `upi_vpa` / `upi_payee_name`; never
+  the full-replace `/api/payments/settings` (it would reset the tariff). A
+  blank or malformed UPI ID is refused (blank would make downloads free).
+- **Send Reminder** → one notification to THAT shop's active BC and Packer
+  (`notifyShopPayment`, type SYSTEM, urgent, status `sent` — not `pending`,
+  or 0007's index would swallow a repeat), link `/payments?ob=<id>`. Each send
+  is a new reminder with the figures of that moment; payments are never
+  touched. A paid obligation is refused (409); nobody at the shop → 400;
+  notifications not installed → 503.
+- **The shop's reminder** (`PaymentReminderPopup`, mounted beside
+  MessagePopup): within a beat (the bell's inbox topic), full screen on a
+  phone. Month, type, due, paid, balance, the office's words ("…the October
+  2026 PV statement is ₹350. Please complete…"), the uploaded QR (none
+  uploaded → none shown, never a made-up one), the UPI ID with Copy, and
+  Google Pay (`tez://upi/pay?`), PhonePe (`phonepe://pay?`), Paytm
+  (`paytmmp://pay?`) and Other (`upi://pay?`) — one query, from `upiUri`,
+  payee / amount / reference pre-filled. An app that does not open says so
+  and points at the QR; a computer is told to scan with a phone.
+  - **The sound**: the active uploaded sound on a loop, else a beep. Only OK
+    acknowledges — showing, sounding and the tap that unblocks sound record
+    nothing. Autoplay blocked → "🔇 Tap anywhere to turn on the reminder
+    sound", and the next tap starts it. One tap is five events (pointerdown
+    … click), each starting it again: only a STOP silences it (`stops`), or
+    the tap could leave it silent. A file the phone cannot play falls back
+    to the beep (its AudioContext is unlocked inside the tap). The file
+    route answers byte ranges (206) — an iPhone will not play a sound
+    served whole.
+  - **OK** stamps every waiting reminder of that obligation (`ackAt`, who)
+    and that person's notification; it changes no money. Another phone of
+    the shop closes its reminder on the `paymgmt` live topic.
+  - It stays on the shop's Payments screen and in its notifications to
+    reopen; a paid one shows "Fully paid" and no app buttons.
+- **Permissions on the server**, every handler: administrators only, except
+  `/mine` and `/mine/ack`, whose shop comes from the session alone. Another
+  shop's obligation answers 404. A shop user may fetch only the current QR
+  and the active sound.
+- **Activity log**, module `Payment Management`: entered, edited, payment
+  recorded / corrected / voided, reminder sent, `acknowledged` (new action),
+  UPI ID, QR, sounds. UTRs and remarks go in `changes`, never the summary.
+- **Live sync**: topic `paymgmt` (`pmFingerprint`: every version for an
+  administrator, the shop's own otherwise).
+- Localhost, the REAL handlers on their memory store, a read-only live copy,
+  three browsers (admin, CRS 1's BC on an Android phone, CRS 2): the
+  office's ten scenarios — ₹350 PV entered; reminder to CRS 1's BC + Packer
+  only; QR, ₹350 and the four links on CRS 1; the sound loops and OK stops
+  it; CRS 2 sees nothing and is refused (403 / 404) on every route;
+  ₹200 → ₹150 Partly paid; ₹150 → ₹0 Paid, reminders refused; a reload
+  keeps all; Monthly ₹500 / ₹100 beside the paid PV; ₹500 against ₹150
+  refused, and tapping Google Pay records nothing — plus autoplay blocked,
+  then a tap. No sideways scroll at 375 px.
+- **Not proven here**: the Supabase store (bucket, `.contains` filter, the
+  UPI-only update) — the first deploy is the test; and the app buttons on a
+  real phone (Android intents, iPhone).
+
 ### Gotchas
 
 - **The payee VPA is NOT in `__config`.** Any signed-in user can write crs_state
@@ -3361,6 +3447,7 @@ npm run verify:coll-advance    COLL: an Advance receipt stays out of the closing
 npm run verify:dss-rates       DSS prices sales at the saved Commodity Master rate, in the preview, the print and the .xlsx
 npm run verify:dss-totals      DSS TOTAL row carries the money alone; the C A/C line is the money banked
 npm run verify:dss-sales-only  DSS C.Box / Poly print Sales only: no sale → blank, 5 → 5 and its amount, 0 / receipt / inspection / negative → blank, other rows unchanged
+npm run verify:payment-mgmt     Payment Management: rupee parsing, one per shop-month, partial payments 350 → 200 → 150 → 0, corrections / voids kept, reminders to that shop only, OK changes no money, shop isolation, UPI links, media sniffing and byte ranges, the Payments-screen wiring
 npm run verify:gunny-sales     C.Box/Poly sales are the Gunny Issues; the gunny figures are admin-only, server-enforced
 npm run verify:gunny-save      Gunny Stock Save: same write as the month-close, passes rule 5 as a shop user, validation, tick after the database
 npm run verify:remittance-save  Monthly Remittance Save: Daily Entry's rule per hand-keyed row, one record per day, statement reads it, tick after the database

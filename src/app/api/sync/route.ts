@@ -28,6 +28,11 @@
  * id (notify/server.ts inboxBeat) — scoped by the session's user id, like every
  * notification query. A change is the bell's cue to fetch its summary, so a
  * request raised at a shop shows on an administrator's badge within one beat.
+ *
+ * `paymgmt` is Payment Management's (paymentMgmt/storageStore.ts pmFingerprint):
+ * every obligation's version for an administrator, the shop's own otherwise —
+ * so an OK pressed at a shop reaches the office's screen, and an OK pressed on
+ * one of the shop's phones closes the reminder on the other.
  */
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
@@ -36,6 +41,7 @@ import { SESSION_COOKIE, decodeSession, type Session } from '@/lib/session';
 import { CLEAR_STORE_KEY } from '@/lib/clearStore';
 import { latestActivityId } from '@/lib/activityLog/server';
 import { inboxBeat } from '@/lib/notify/server';
+import { pmFingerprint } from '@/lib/paymentMgmt/storageStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -76,13 +82,14 @@ export async function GET(req: Request) {
   }
 
   const topics = (new URL(req.url).searchParams.get('topics') ?? '').split(',');
-  const body: { versions: Record<string, number>; clears: number; payments?: string; activity?: string; inbox?: string } = { versions, clears };
+  const body: { versions: Record<string, number>; clears: number; payments?: string; activity?: string; inbox?: string; paymgmt?: string } = { versions, clears };
   if (topics.includes('payments')) body.payments = await paymentsFingerprint(session);
   // The newest activity-log row the caller may see: every shop's for an
   // administrator, the shop's own otherwise (activityLog/server.ts).
   if (topics.includes('activity')) body.activity = await latestActivityId(session.role === 'ADMIN' ? null : Number(session.crsId) || -1);
 
   if (topics.includes('inbox') && Number.isInteger(session.userId)) body.inbox = await inboxBeat(session.userId).catch(() => 'unavailable');
+  if (topics.includes('paymgmt')) body.paymgmt = await pmFingerprint(session).catch(() => 'unavailable');
 
   return NextResponse.json(body, { headers: NO_STORE });
 }
