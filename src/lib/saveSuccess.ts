@@ -121,6 +121,71 @@ export function receiptSaved(receiptId: number, date: string): SaveSuccessReques
   };
 }
 
+// ── Payment Management (office, 2026-10-16) ─────────────────────────────────
+// Amounts arrive already worded ('₹350.00'), so this file needs no money
+// helper and stays loadable by the verify tools as it is.
+
+/** An obligation entered for a shop and month, or its amount / reference changed. */
+export function pmObligationSaved(id: string, crsId: number | string, what: string, month: number, year: number, edited = false, stamp = ''): SaveSuccessRequest {
+  return {
+    title: edited ? 'Payment Record Updated' : 'Payment Record Saved',
+    detail: `CRS ${crsId} — ${what}, ${monthLabel(month, year)} has been ${edited ? 'updated' : 'saved'}.`,
+    // `stamp` (the record's updatedAt) makes a second, different edit its own tick.
+    key: `pm-ob:${id}:${edited ? `edit:${stamp}` : 'new'}`,
+  };
+}
+
+/** A payment recorded, corrected or voided on an obligation. */
+export function pmPaymentSaved(paymentId: string, amount: string, crsId: number | string, what: string, month: number, year: number, kind: 'recorded' | 'corrected' | 'voided', stamp = ''): SaveSuccessRequest {
+  const title = kind === 'recorded' ? 'Payment Recorded' : kind === 'corrected' ? 'Payment Corrected' : 'Payment Voided';
+  return {
+    title,
+    detail: `${amount} for CRS ${crsId} — ${what}, ${monthLabel(month, year)} has been ${kind}.`,
+    key: `pm-pay:${paymentId}:${kind}:${stamp}`,
+  };
+}
+
+/** One reminder sent to a shop's own staff. */
+export function pmReminderSent(reminderId: string, crsId: number | string, recipients: number): SaveSuccessRequest {
+  return {
+    title: 'Reminder Sent',
+    detail: `The payment reminder has been sent to CRS ${crsId} (${recipients} ${recipients === 1 ? 'person' : 'people'}).`,
+    key: `pm-remind:${reminderId}`,
+  };
+}
+
+/** An obligation removed while it had no payments and no reminders. */
+export function pmObligationDeleted(id: string, crsId: number | string, what: string, month: number, year: number): SaveSuccessRequest {
+  return {
+    title: 'Payment Record Deleted',
+    detail: `CRS ${crsId} — ${what}, ${monthLabel(month, year)} has been deleted.`,
+    key: `pm-ob-del:${id}`,
+  };
+}
+
+/** The office UPI ID and payee name (the same ones paid downloads use). */
+export function pmUpiSaved(vpa: string, payeeName: string): SaveSuccessRequest {
+  return {
+    title: 'UPI Details Saved',
+    detail: `UPI ID ${vpa} has been saved.`,
+    key: `pm-upi:${vpa}:${payeeName}`,
+  };
+}
+
+/** The official QR or a reminder sound uploaded, chosen or removed. `ref` names the file or asset. */
+export function pmMediaSaved(kind: 'qr' | 'qr-removed' | 'sound' | 'sound-active' | 'sound-beep' | 'sound-removed', ref: string): SaveSuccessRequest {
+  const words: Record<typeof kind, [string, string]> = {
+    qr: ['QR Code Saved', 'The official UPI QR code has been saved.'],
+    'qr-removed': ['QR Code Removed', 'The official UPI QR code has been removed.'],
+    sound: ['Reminder Sound Saved', `${ref} has been uploaded.`],
+    'sound-active': ['Reminder Sound Saved', `${ref} is now the reminder sound.`],
+    'sound-beep': ['Reminder Sound Saved', 'Shops will hear the plain beep.'],
+    'sound-removed': ['Reminder Sound Removed', `${ref} has been removed.`],
+  };
+  const [title, detail] = words[kind];
+  return { title, detail, key: `pm-media:${kind}:${ref}` };
+}
+
 /**
  * Is this the same save again — a double-tapped button, or a second press
  * while the first was still in flight? Anything else (another date, another

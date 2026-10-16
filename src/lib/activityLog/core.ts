@@ -48,7 +48,9 @@ export type ActivityAction =
   | 'activated'
   | 'deactivated'
   | 'generated'
-  | 'sent';
+  | 'sent'
+  /** A shop pressed OK on a payment reminder (Payment Management). */
+  | 'acknowledged';
 
 export type ActivitySource = 'user' | 'system';
 export type Change = { label: string; before: string; after: string };
@@ -122,6 +124,7 @@ export const ACTION_LABEL: Record<ActivityAction, string> = {
   deactivated: 'Deactivated',
   generated: 'Generated',
   sent: 'Sent',
+  acknowledged: 'Acknowledged',
 };
 
 export const ACTIONS = Object.keys(ACTION_LABEL) as ActivityAction[];
@@ -139,6 +142,7 @@ export const MODULES = [
   'Clear Request',
   'Payment',
   'Payment Access',
+  'Payment Management',
   'Statements',
   'DSS',
   'Reports',

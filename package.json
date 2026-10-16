@@ -31,6 +31,7 @@
     "verify:initial-opening": "node tools/verify-initial-opening.mjs",
     "verify:holidays": "node tools/verify-holidays.mjs",
     "verify:payment-gate": "node tools/verify-payment-gate.mjs",
+    "verify:payment-mgmt": "node tools/verify-payment-mgmt.mjs",
     "verify:dss-days": "node tools/verify-dss-days.mjs",
     "verify:save-success": "node tools/verify-save-success.mjs",
     "verify:sign-in": "node tools/verify-sign-in.mjs",

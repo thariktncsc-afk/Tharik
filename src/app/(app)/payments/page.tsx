@@ -12,8 +12,18 @@
  * then approve. Approving without that check makes the queue theatre, so the
  * screen puts the reference and the amount next to each other and nothing
  * else competing for attention.
+ *
+ * Payment Management lives here too (office, 2026-10-16: "i need that in this
+ * screen"). An administrator gets three tabs: Download Approvals (the queue
+ * above — the default, so /payments and /payments?id=<order> open exactly as
+ * before), Payment Management (what each shop owes, payments, reminders) and
+ * UPI & Reminder Sound; ?tab=management / ?tab=settings open those, and a
+ * reminder's link, ?ob=<id>, opens that record's history. A shop user gets
+ * its Payment Reminders above its own requests, when it has any; ?ob=<id>
+ * opens that reminder's card.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { appAlert, appConfirm } from '@/components/dialog';
 import PaymentDialog from '@/components/PaymentDialog';
 import { useAuth } from '@/lib/authClient';
@@ -21,6 +31,32 @@ import { useShops } from '@/lib/masters';
 import { formatRupees } from '@/lib/payments/pricing';
 import { decideOrder, fetchOrders, STATUS_COLOR, STATUS_LABEL, type Order } from '@/lib/payments/client';
 import { useLiveRevision } from '@/lib/dataStore';
+import PaymentManagement from './_management/PaymentManagement';
+import ShopReminders from './_reminders/ShopReminders';
+
+type Tab = 'approvals' | 'management' | 'settings';
+
+const TABS: { id: Tab; label: string; sub: string }[] = [
+  { id: 'approvals', label: '✅ Download Approvals', sub: 'Verify each reference against the bank statement before approving — nothing else checks it' },
+  { id: 'management', label: '💰 Payment Management', sub: 'What each CRS shop owes the office, what it has paid, and payment reminders to the shop' },
+  { id: 'settings', label: '⚙️ UPI & Reminder Sound', sub: 'The office’s UPI ID and QR code, and the sound a shop hears with a reminder' },
+];
+
+/**
+ * ?tab= and ?ob= — read from the address after mount, and again whenever it
+ * changes (the bell can open /payments?ob=<id> while this page is already
+ * up). useSearchParams wants a Suspense boundary of its own, so it lives in
+ * this small reader rather than in the page.
+ */
+function UrlParams({ onChange }: { onChange: (p: { tab: string | null; ob: string | null }) => void }) {
+  const params = useSearchParams();
+  const tab = params.get('tab');
+  const ob = params.get('ob');
+  useEffect(() => {
+    onChange({ tab, ob });
+  }, [tab, ob, onChange]);
+  return null;
+}
 
 const MONTHS = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -41,6 +77,25 @@ export default function PaymentsPage() {
   const { user } = useAuth();
   const shops = useShops();
   const isAdmin = user?.role === 'ADMIN';
+  const router = useRouter();
+
+  /** The administrator's tab; Download Approvals unless the address asks for another. */
+  const [tab, setTab] = useState<Tab>('approvals');
+  /** A reminder's id from ?ob= (the bell's link). */
+  const [ob, setOb] = useState<string | null>(null);
+  const onParams = useCallback(({ tab: t, ob: o }: { tab: string | null; ob: string | null }) => {
+    setOb(o || null);
+    if (o) setTab('management');
+    else if (t === 'management' || t === 'settings') setTab(t);
+    // An address naming neither (the sidebar's /payments, a bell link to
+    // /payments?id=<order>) is the approval queue, as it always was.
+    else setTab('approvals');
+  }, []);
+  /** A reminder's ?ob= has been dealt with: drop it, staying where the person is. */
+  const doneWithOb = useCallback(() => {
+    setOb(null);
+    router.replace(isAdmin ? '/payments?tab=management' : '/payments', { scroll: false });
+  }, [router, isAdmin]);
 
   const [filter, setFilter] = useState('awaiting_approval');
   const [orders, setOrders] = useState<Order[]>([]);
@@ -142,15 +197,49 @@ export default function PaymentsPage() {
 
   return (
     <div className="page active" id="page-payments">
+      <Suspense fallback={null}>
+        <UrlParams onChange={onParams} />
+      </Suspense>
       <div className="page-header">
         <div className="page-title">Payments</div>
         <div className="page-sub">
-          {isAdmin
-            ? 'Verify each reference against the bank statement before approving — nothing else checks it'
-            : 'Your shop’s download payment requests'}
+          {isAdmin ? TABS.find((t) => t.id === tab)?.sub : 'Your shop’s download payment requests'}
         </div>
       </div>
 
+      {isAdmin ? (
+        <div className="pay-tabs" role="tablist" aria-label="Payments" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                background: tab === t.id ? '#0284C7' : '#fff',
+                color: tab === t.id ? '#fff' : 'var(--text)',
+                border: `1px solid ${tab === t.id ? '#0284C7' : 'var(--border)'}`,
+                borderRadius: 20,
+                padding: '7px 16px',
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {isAdmin && tab !== 'approvals' ? <PaymentManagement view={tab} focusOb={ob} onDoneWithOb={doneWithOb} /> : null}
+
+      {!isAdmin && user ? <ShopReminders ob={ob} onDoneWithOb={doneWithOb} /> : null}
+
+      {isAdmin && tab !== 'approvals' ? null : (
+      <>
       {isAdmin ? (
         <div className="card mb-4">
           <div className="card-body flex gap-3" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
@@ -358,6 +447,8 @@ export default function PaymentsPage() {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {pay ? (
         <PaymentDialog
