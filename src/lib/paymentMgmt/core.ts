@@ -23,6 +23,7 @@ import {
   type PmAsset,
   type PmMedia,
   type PmObligation,
+  type PmPart,
   type PmPayment,
   type PmPaymentFields,
   type PmReminder,
@@ -135,7 +136,7 @@ export function obligationId(crsId: number, year: number, month: number, type: P
 
 /** An id as the routes receive it — anything else is answered as not found. */
 export const validObligationId = (id: unknown): id is string =>
-  typeof id === 'string' && /^\d{1,2}-\d{4}-\d{1,2}-(monthly|pv|prev_balance|other-[a-z0-9]{4,12})$/.test(id);
+  typeof id === 'string' && /^\d{1,2}-\d{4}-\d{1,2}-(monthly|pv|prev_balance|monthly_pv|monthly_prev|pv_prev|monthly_pv_prev|other-[a-z0-9]{4,12})$/.test(id);
 
 // ── Figures ─────────────────────────────────────────────────────────────────
 
@@ -387,7 +388,7 @@ export function mineLists(obs: PmObligation[], upi: PmUpiConfig | null): { pendi
   return { pending, all };
 }
 
-const TYPE_ORDER: Record<PmType, number> = { monthly: 0, pv: 1, prev_balance: 2, other: 3 };
+const TYPE_ORDER = Object.fromEntries(PM_TYPES.map((t, i) => [t.id, i])) as Record<PmType, number>;
 
 /** The administrator's list: newest month first, then shop, then type. */
 export const viewOrder = (a: PmObligation, b: PmObligation) =>
@@ -455,6 +456,27 @@ export function newObligationInput(raw: unknown, today: string): { fields: NewOb
     initial = p.fields;
   }
   return { fields: { crsId, month, year, type, title, reference, duePaise: due, initial } };
+}
+
+/** The parts a type covers: ['monthly', 'pv'] for "Monthly + PV". 'Other' covers none. */
+export const partsOf = (t: PmType): readonly PmPart[] => PM_TYPES.find((x) => x.id === t)?.parts ?? [];
+const PART_LABEL: Record<PmPart, string> = { monthly: 'Monthly Statement', pv: 'PV Statement', prev_balance: 'Previous Month Balance' };
+
+/**
+ * An obligation of the same shop and month that already covers one of this
+ * type's parts — a second record would bill it twice — or null.
+ */
+export function overlapOf<T extends Pick<PmObligation, 'crsId' | 'month' | 'year' | 'type'>>(existing: T[], o: Pick<PmObligation, 'crsId' | 'month' | 'year' | 'type'>): T | null {
+  const mine = partsOf(o.type);
+  if (!mine.length) return null;
+  return existing.find((x) => x.crsId === o.crsId && x.month === o.month && x.year === o.year && partsOf(x.type).some((p) => mine.includes(p))) ?? null;
+}
+
+/** "CRS 1, October 2026 already has a Monthly Statement, which also covers the Monthly Statement — …" */
+export function overlapSentence(o: Pick<PmObligation, 'crsId' | 'month' | 'year' | 'type'>, x: Pick<PmObligation, 'type'>): string {
+  if (x.type === o.type) return duplicateSentence(o);
+  const shared = partsOf(o.type).filter((p) => partsOf(x.type).includes(p)).map((p) => PART_LABEL[p]).join(' and ');
+  return `CRS ${o.crsId}, ${monthText(o.year, o.month)} already has a ${typeLabel(x.type)}, which also covers the ${shared} — edit that one, or delete it first if it has no payments.`;
 }
 
 /** "A PV Statement for CRS 1, October 2026 already exists — edit that one." */

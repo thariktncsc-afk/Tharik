@@ -142,6 +142,35 @@ const FILES = {
     check(`a second ${label} for CRS 1, October 2026: 409 "${again.body.error}"`,
       again.status === 409 && again.body.error === `A ${label} for CRS 1, October 2026 already exists — edit that one.` && rec(st, `1-2026-10-${type}`).duePaise !== 99900);
   }
+  // Combined types (office, 2026-10-17): ONE record, ONE amount — and a part
+  // may be billed only once per shop-month.
+  {
+    const cs = V.memoryStore();
+    const mp = await create(cs, nob(5, 'monthly_pv', '850'));
+    check('"Monthly + PV Statement" for CRS 5: one record 5-2026-10-monthly_pv, one amount ₹850.00',
+      mp.status === 200 && mp.body.obligation.id === '5-2026-10-monthly_pv' && mp.body.obligation.duePaise === 85000 && mp.body.obligation.typeLabel === 'Monthly + PV Statement' && cs.rows.size === 1, mp.body);
+    const m5 = await create(cs, nob(5, 'monthly', '500'));
+    check(`a Monthly Statement beside it is refused (Monthly billed twice): 409 "${m5.body.error}"`,
+      m5.status === 409 && /already has a Monthly \+ PV Statement, which also covers the Monthly Statement/.test(m5.body.error) && cs.rows.size === 1);
+    const all3 = await create(cs, nob(5, 'monthly_pv_prev', '900'));
+    check('so is "Monthly + PV + Previous" (covers both): 409', all3.status === 409 && /Monthly Statement and PV Statement/.test(all3.body.error), all3.body.error);
+    const pb = await create(cs, nob(5, 'prev_balance', '120'));
+    check('the Previous Month Balance on its own is free: 200', pb.status === 200);
+    check('…and then "PV + Previous" overlaps both records: 409', (await create(cs, nob(5, 'pv_prev', '1'))).status === 409);
+    check('Other is never blocked by a combined record', (await create(cs, nob(5, 'other', '10', { title: 'Scale repair' }))).status === 200);
+    const mb = await create(cs, nob(6, 'monthly_prev', '300'));
+    const pv6 = await create(cs, nob(6, 'pv', '200'));
+    check('CRS 6: "Monthly + Previous" ₹300 and a PV ₹200 live side by side', mb.status === 200 && pv6.status === 200 && mb.body.obligation.typeLabel === 'Monthly Statement + Previous Month Balance');
+    const pay6 = await V.recordPayment(cs, deps, admin, mb.body.obligation.id, pay('300'));
+    check('paying the combined ₹300 leaves the PV untouched (₹200 outstanding)', pay6.status === 200 && pay6.body.obligation.status === 'paid' && rec(cs, '6-2026-10-pv').payments.length === 0);
+    const msg = C.reminderMessage({ month: 10, year: 2026, type: 'monthly_pv', title: '', duePaise: 85000, payments: [] });
+    check(`the reminder names the combined type: "${msg.slice(0, 70)}…"`, msg.startsWith('Your payment balance for the October 2026 Monthly + PV statement is ₹850. '));
+    check('UPI reference codes: CRS5-MSPV-102026, CRS5-MSPVPB-102026; every note ≤ 50 characters',
+      C.linkReference({ crsId: 5, type: 'monthly_pv', month: 10, year: 2026, title: '' }) === 'CRS5-MSPV-102026' && C.linkReference({ crsId: 5, type: 'monthly_pv_prev', month: 10, year: 2026, title: '' }) === 'CRS5-MSPVPB-102026' &&
+      C.linkNote({ crsId: 30, type: 'monthly_pv_prev', month: 12, year: 2026, title: '' }).length <= 50);
+    check('the four combined ids are valid ids; nonsense is not',
+      ['1-2026-10-monthly_pv', '1-2026-10-monthly_prev', '1-2026-10-pv_prev', '1-2026-10-monthly_pv_prev'].every(C.validObligationId) && !C.validObligationId('1-2026-10-pv_monthly'));
+  }
   check('the same type for November, or for another shop, is its own: 200, 200',
     (await create(st, nob(1, 'pv', '100', { month: 11 }))).status === 200 && (await create(st, nob(2, 'pv', '100'))).status === 200);
   const others = [];

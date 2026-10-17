@@ -8,7 +8,7 @@
  * the server refuses the same things again, in its own words.
  */
 import { PAY_METHODS, PM_TYPES, type PayMethod, type PmShopObligation, type PmStatus, type PmType, type PmUpiConfig, type PmView } from '@/lib/paymentMgmt/types';
-import { MAX_MEDIA_BYTES, parseRupees, toShopView, typeLabel as coreTypeLabel, whatOf } from '@/lib/paymentMgmt/core';
+import { MAX_MEDIA_BYTES, overlapOf, parseRupees, toShopView, typeLabel as coreTypeLabel, whatOf } from '@/lib/paymentMgmt/core';
 import { dmyTime } from '@/lib/dateFormat';
 
 export const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -72,9 +72,9 @@ export function applyFilters(list: PmView[], f: Filters): PmView[] {
 }
 
 /** Another Monthly / PV / Previous Balance record for that shop and month, which the server would refuse. */
+/** A record of that shop-month already covering one of this type's parts (the server refuses the same). */
 export function duplicateOf(list: PmView[], crsId: number, month: number, year: number, type: PmType): PmView | null {
-  if (type === 'other') return null;
-  return list.find((o) => o.crsId === crsId && o.month === month && o.year === year && o.type === type) ?? null;
+  return overlapOf(list, { crsId, month, year, type });
 }
 
 // ── Summary ─────────────────────────────────────────────────────────────────

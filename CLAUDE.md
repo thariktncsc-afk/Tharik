@@ -344,6 +344,14 @@ paid downloads above. **No migration to run.**
   Statement, Previous Month Balance (one each per shop-month, 409 for a
   second) or Other (any number, with a title). The administrator types the
   amount due; nothing is assumed per shop.
+  - **Combined types** (office, 2026-10-17): Monthly + PV, Monthly +
+    Previous Month, PV + Previous Month, Monthly + PV + Previous Month. ONE
+    record with ONE amount (office's choice) — its parts are not tracked
+    apart. `PM_TYPES[].parts` says what each covers, and a shop-month may
+    hold a part only once (`overlapOf`): a Monthly Statement beside a
+    "Monthly + PV" would bill the Monthly twice, so the second is refused
+    (409, the form warns first). Other is never blocked. Reference codes
+    MSPV / MSPB / PVPB / MSPVPB.
   - **Payments are entries, never overwritten**: date, amount, UPI / cash /
     other, UTR, remarks. A correction keeps what it replaced (`edits`); a
     payment entered in error is voided with a reason, never deleted.

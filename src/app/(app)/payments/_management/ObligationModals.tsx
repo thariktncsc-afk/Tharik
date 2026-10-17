@@ -16,6 +16,7 @@ import { saveSuccess } from '@/components/SaveSuccess';
 import { createObligation, correctPayment, recordPayment, updateObligation } from '@/lib/paymentMgmt/client';
 import { PAY_METHODS, PM_TYPES, type PayMethod, type PmPayment, type PmType, type PmView } from '@/lib/paymentMgmt/types';
 import { formatRupees } from '@/lib/payments/pricing';
+import { overlapSentence } from '@/lib/paymentMgmt/core';
 import { pmObligationSaved, pmPaymentSaved } from '@/lib/saveSuccess';
 import { SHOPS } from '@/lib/engine/shops';
 import { dmy } from '@/lib/dateFormat';
@@ -66,7 +67,7 @@ export function NewObligationModal({
   const problems = useMemo(() => {
     const p: string[] = [];
     if (!crsId) p.push('Choose the CRS shop.');
-    if (dup) p.push(`A ${typeLabel(type)} for CRS ${crsId}, ${monthYear(Number(month), Number(year))} already exists — edit that one.`);
+    if (dup) p.push(overlapSentence({ crsId, month: Number(month), year: Number(year), type }, dup));
     if (type === 'other' && !title.trim()) p.push('Say what this payment is for (Title).');
     if (title.trim().length > 80) p.push('The title can be at most 80 characters.');
     if (reference.trim().length > 60) p.push('The reference can be at most 60 characters.');
@@ -242,7 +243,7 @@ export function NewObligationModal({
 
       {dup && !tried ? (
         <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginTop: 10 }}>
-          CRS {crsId} already has a {typeLabel(type)} for {monthYear(Number(month), Number(year))} — edit that one instead.
+          {overlapSentence({ crsId, month: Number(month), year: Number(year), type }, dup)}
         </div>
       ) : null}
       <Problems items={tried ? problems : []} />
