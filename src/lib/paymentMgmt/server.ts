@@ -39,6 +39,8 @@ import {
   newObligationInput,
   obligationId,
   overBalanceSentence,
+  overlapOf,
+  overlapSentence,
   paidOf,
   parseRupees,
   paymentCorrectedDraft,
@@ -185,6 +187,10 @@ export async function createObligation(store: PmStore, deps: Deps, a: Actor | nu
     updatedBy: who.by,
     updatedByName: who.byName,
   };
+  // A part already billed for this shop-month (a Monthly Statement, and now
+  // "Monthly + PV"): refused, so nothing is billed twice.
+  const clash = overlapOf((await store.listShop(f.crsId)).map((s) => s.ob), ob);
+  if (clash) return fail(409, overlapSentence(ob, clash));
   const saved = await store.insertObligation(ob, byName(a!));
   if (!saved) return fail(409, duplicateSentence(ob));
   await log(deps, [createdDraft(saved.ob), f.initial ? paymentRecordedDraft(saved.ob, f.initial) : null]);

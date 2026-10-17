@@ -15,13 +15,27 @@
  * converted on the server (parseRupees in core.ts).
  */
 
-export type PmType = 'monthly' | 'pv' | 'prev_balance' | 'other';
+export type PmType = 'monthly' | 'pv' | 'prev_balance' | 'monthly_pv' | 'monthly_prev' | 'pv_prev' | 'monthly_pv_prev' | 'other';
 
-export const PM_TYPES: readonly { id: PmType; label: string; code: string }[] = [
-  { id: 'monthly', label: 'Monthly Statement', code: 'MS' },
-  { id: 'pv', label: 'PV Statement', code: 'PV' },
-  { id: 'prev_balance', label: 'Previous Month Balance', code: 'PB' },
-  { id: 'other', label: 'Other', code: 'OT' },
+/** The three things a shop can owe for a month; a combined type is several of them under ONE amount. */
+export type PmPart = 'monthly' | 'pv' | 'prev_balance';
+
+/**
+ * The types in the order the screens list them. A combined type (office,
+ * 2026-10-17: "Monthly + PV …") is ONE record with ONE amount due — its parts
+ * are not tracked apart — so a shop-month may hold a part only once: a
+ * Monthly Statement and a "Monthly + PV" for the same month would bill the
+ * Monthly twice.
+ */
+export const PM_TYPES: readonly { id: PmType; label: string; code: string; parts: readonly PmPart[] }[] = [
+  { id: 'monthly', label: 'Monthly Statement', code: 'MS', parts: ['monthly'] },
+  { id: 'pv', label: 'PV Statement', code: 'PV', parts: ['pv'] },
+  { id: 'prev_balance', label: 'Previous Month Balance', code: 'PB', parts: ['prev_balance'] },
+  { id: 'monthly_pv', label: 'Monthly + PV Statement', code: 'MSPV', parts: ['monthly', 'pv'] },
+  { id: 'monthly_prev', label: 'Monthly Statement + Previous Month Balance', code: 'MSPB', parts: ['monthly', 'prev_balance'] },
+  { id: 'pv_prev', label: 'PV Statement + Previous Month Balance', code: 'PVPB', parts: ['pv', 'prev_balance'] },
+  { id: 'monthly_pv_prev', label: 'Monthly + PV Statement + Previous Month Balance', code: 'MSPVPB', parts: ['monthly', 'pv', 'prev_balance'] },
+  { id: 'other', label: 'Other', code: 'OT', parts: [] },
 ];
 
 export type PayMethod = 'upi' | 'cash' | 'other';
