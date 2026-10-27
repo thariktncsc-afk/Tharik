@@ -2042,6 +2042,28 @@ record (`45-bag-counts.js`).
   rice, 54 / 36 / 18 — the app has no such line) is ADDED INTO Police B.R.A,
   which therefore reads 26 + 54 − 36 = 44 where the POS shows B.R.A 26 and
   P FRK BR 18 apart. Backup `backups/day-sheet-27_2026-09-30-…`.
+- **CRS 19, October 2026, 01-10 → 27-10** (office, 2026-10-27, from
+  `CRS19_October_2026_DSS.xlsx`, a table read off the shop's handwritten
+  sheets): 20 day sheets (01, 03–08, 10–15, 17, 18, 21, 23, 24, 26, 27; the
+  other dates are holidays), Sales only, no remittance (none in the file).
+  - **Receipts** first, with `add-receipts.mjs`, Regular, numbered by date
+    (the file gives no challan numbers): `POS/19/10/2026-05` Palm Oil 350;
+    `POS/19/10/2026-13` BRA 1597, PHH BRA 1414, AAY 485, RRA 1000, Wheat
+    1200, Sugar 398, AAY Sugar 26.5, Toor Dal 305, Palm Oil 356. Receipt
+    cells marked "Not legible" were left out, never entered as 0.
+  - **Office's answers** where the file was unsure: 01-10 Sugar 103 (the
+    file's own ₹3,565 for that day fits 59; the office chose 103, so the day
+    is ₹4,665) and Wheat 34; 11-10 BRA 578 (illegible in the file; BRA
+    closes at exactly 0 that day); 05-10 PHH FRK 9 left out (CRS 19 held no
+    PHH FRK).
+  - Every sheet was written with `--expect` for all 14 commodities, worked
+    out independently from 30-09's closings; all matched, none below 0.
+    Month: amount ₹66,509.25; BRA 3589 + 1597 − 3859 = 1327, NPHH FRK 2500 −
+    1887 = 613, PHH BRA 3776 + 1414 − 4028 = 1162, Sugar 878.5 + 398 −
+    1065.5 = 211 … A read of live before and after: only CRS 19's October
+    keys (and the receipt counter) changed. Backups
+    `backups/receipts-crs19-2026-10-27T17-07-16-637Z.json` and
+    `backups/day-sheet-19_2026-10-…`.
 
 ## Receipts keyed from a shop's POS challans
 
