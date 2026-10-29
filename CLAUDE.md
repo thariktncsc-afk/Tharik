@@ -219,6 +219,33 @@ wrapper and `dssv-*` class names, so every figure is identical (all 10 of CRS
 19's September pages compared old vs new), and tablet, desktop and the printed
 page lay out exactly as before (compared position for position at 768 and 1280).
 
+### The DSS prints one full A4 sheet per day
+
+Office, 2026-10-29 (`17-dss-export.js`, the viewer's `@media print` block).
+The printed / PDF DSS filled only the top ~60% of the page, small and
+narrow.
+- **The cause**: the app behind the viewer was hidden with `visibility`,
+  which still takes up its width, so the printed document was wider than
+  the paper and Chrome shrank every page to ~81%. On paper the viewer is
+  now the only thing laid out (`body>*:not(#dss-viewer){display:none}`).
+- **The page**: `@page A4 portrait, 8 mm margins`; each `.dss-page` is
+  280 mm tall (1 mm spare) as a column. The title, the box and the meta
+  line keep their size; the table takes the height left, so its rows
+  stretch down to the C A/C line and the signature.
+- **Widths on paper**: A4's printable width (≈ 733 px) is narrower than
+  the screen's 840 px page, so the columns are re-set on paper so every
+  figure and word is whole (விலையில்லா and the headings were clipped on
+  screen too): S.No 48, commodity 156 (a long name wraps), rate 92,
+  amount 100, the five quantity columns share the rest; table type 12.5 px,
+  headings 9.5 px (a long heading may break), units 8.5 px.
+- **Print only**: the markup, every figure, the screen view (840 px, 13 px
+  cells) and the .xlsx are unchanged; the DSS verifies pass unchanged.
+- Localhost, read-only live copy, the app's own viewer printed to PDF by
+  Chrome (CRS 8 Oct 18 days, CRS 19 Oct 20, CRS 29 Sep 9, CRS 5 Sep 4):
+  one A4 portrait page per day, text from 14–15 mm to 287 mm of 297, the
+  title on one line, no cell clipped, the table never overlapping the
+  C A/C line.
+
 ### The DSS prices sales at the SAVED rate
 
 `DSS_A` / `DSS_B` are sliced out of `03-daily-entry.js` by the module builder,

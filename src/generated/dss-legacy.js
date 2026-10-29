@@ -537,6 +537,45 @@ function openDSSPreview(){
       '#dss-scroll{overflow:visible!important;padding:0!important}'+
       '.dss-page{box-shadow:none!important;margin:0 auto!important;width:100%!important;page-break-after:always}'+
       '.dss-page:last-child{page-break-after:auto}'+
+      // ── One day fills its A4 sheet (office, 2026-10-29). It printed at its
+      //    screen size and stopped at ~60% of the page. On paper only: the
+      //    page is the printable height (A4 less 8 mm margins, 1 mm spare),
+      //    the type is larger, and the height left goes into the table's
+      //    rows. Same markup, same figures; the screen and the .xlsx are
+      //    untouched.
+      '@page{size:A4 portrait;margin:8mm}'+
+      // The app behind the viewer is hidden above but still takes up its
+      // width, so the printed document was wider than the paper and Chrome
+      // shrank every page to ~81%. On paper the viewer is the only thing laid
+      // out (it is a direct child of body).
+      'body>*:not(#dss-viewer){display:none!important}'+
+      'html,body{width:auto!important;min-width:0!important;height:auto!important;overflow:visible!important}'+
+      '#dss-viewer{position:static!important;width:auto!important}'+
+      '.dss-page{padding:0!important;height:280mm;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;break-inside:avoid}'+
+      // A4's printable width (194 mm ≈ 733 px) is narrower than the screen's
+      // 840 px page, so the type stays near its screen size (the title on one
+      // line, every figure and heading whole) and the height goes to the rows.
+      '.dss-title{font-size:20px;margin-bottom:10px;white-space:nowrap}'+
+      '.dss-sub{font-size:15px;padding:5px 10px;margin-bottom:12px;max-width:520px}'+
+      '.dss-meta{font-size:13.5px;margin-bottom:8px}'+
+      '.dss-tbl-wrap{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}'+
+      '.dss-tbl{height:100%}'+
+      // Widths in which every word fits whole on paper (on screen the free
+      // rate's விலையில்லா and the headings were clipped).
+      '.dss-tbl col:nth-child(1){width:48px!important}'+
+      '.dss-tbl col:nth-child(2){width:156px!important}'+
+      '.dss-tbl td.nm{white-space:normal;line-height:1.2}'+
+      '.dss-tbl col:nth-child(8){width:92px!important}'+
+      '.dss-tbl col:nth-child(9){width:100px!important}'+
+      '.dss-tbl td{font-size:12.5px}'+
+      '.dss-tbl td:nth-child(8){font-size:10.5px}'+
+      '.dss-tbl thead th{font-size:9.5px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}'+
+      '.dss-tbl thead tr.u th{font-size:8.5px;padding:1px;white-space:nowrap}'+
+      '.dss-tbl th,.dss-tbl td{height:auto;padding:1px 3px}'+
+      '.dss-tbl td.nm{padding-left:5px}'+
+      '.dss-acc{flex:0 0 auto;font-size:16px;margin:12px 0 2px}'+
+      '.dss-foot{flex:0 0 auto;font-size:13px;margin-top:16px}'+
+      '.dss-foot .sign{font-size:14px}'+
     '}';
 
   openDSSViewer('DSS \u2014 CRS '+crsId+(crs?' \u2014 '+crs.name:'')+' \u2014 '+moLabel,
