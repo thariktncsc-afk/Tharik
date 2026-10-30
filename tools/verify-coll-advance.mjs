@@ -176,5 +176,21 @@ console.log('\n4. The sheet the office files');
   check('the report keeps its seven columns', (coll.match(/<th>/g) ?? []).length === 7, String((coll.match(/<th>/g) ?? []).length));
 }
 
+console.log('\n5. An Advance Load keyed for the same stock as the Advance receipts is not taken off twice (office, 2026-10-30)');
+{
+  // CRS 8 October: the advance receipts AND the same figures typed as the
+  // Advance Load on Monthly Entry. COLL read BRA received 2004 → 0, closing −967.
+  const same = mainRows(render({ receiptStore: RECEIPTS, meAdvanceStore: { [KEY]: { BRA: 500, PHH_BRA: 1950, AAY: 250 } } }).coll);
+  check('same figures: BRA still receives the regular 300 and closes at 1100, as with the receipts alone', same.BRA[2] === 300 && same.BRA[5] === 1100, JSON.stringify(same.BRA));
+  check('…PHH BRA closes at 0, never below', same['PHH BRA'][2] === 0 && same['PHH BRA'][5] === 0, JSON.stringify(same['PHH BRA']));
+  const sameColl = render({ receiptStore: RECEIPTS, meAdvanceStore: { [KEY]: { BRA: 500, PHH_BRA: 1950, AAY: 250 } } }).coll;
+  check('…and no "net of an advance load" note (nothing more was netted off)', !/net of an advance load/.test(sameColl));
+  const more = mainRows(render({ receiptStore: RECEIPTS, meAdvanceStore: { [KEY]: { BRA: 600 } } }).coll);
+  check('a load 100 above the advance receipt nets off only that 100: BRA received 200, closing 1000', more.BRA[2] === 200 && more.BRA[5] === 1000, JSON.stringify(more.BRA));
+  const asRegular = RECEIPTS.map((r) => (r.type === 'advance' && r.crsId === CRS && r.date.startsWith('2026-09') ? { ...r, type: 'regular' } : r));
+  const loadOnly = mainRows(render({ receiptStore: asRegular, meAdvanceStore: { [KEY]: { BRA: 500 } } }).coll);
+  check('a load with no advance receipt works as before: BRA 800 − 500 = 300 received, closing 1100', loadOnly.BRA[2] === 300 && loadOnly.BRA[5] === 1100, JSON.stringify(loadOnly.BRA));
+}
+
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');
 process.exit(failures ? 1 : 0);

@@ -136,10 +136,14 @@ stmtGetData = function(crsId, month, year){
       }
 
       // Advance LOAD (Monthly Entry -> Allotment) is a separate, older lever
-      // that also reduces what this month claims to have received; it is
-      // clamped to what is left after the Advance receipts are already out, so
-      // the two cannot subtract the same stock twice.
-      var advance = Math.min(meAdvanceQty(key, id), regular);
+      // that also reduces what this month claims to have received. It states
+      // the SAME stock as the month's Advance receipts when both are keyed, so
+      // it nets off only the part those receipts have not already taken out
+      // (office, 2026-10-30: CRS 8 October keyed both, BRA 2250 each, and
+      // COLL took the advance off twice — RECEIVED 2004 → 0, CLOSING 1037 →
+      // −967). Clamped to the regular receipts, as before.
+      var advReceipt = (typeof rcpAdvanceQty === 'function') ? rcpAdvanceQty(crsId, month, year, id) : 0;
+      var advance = Math.min(Math.max(0, meAdvanceQty(key, id) - advReceipt), regular);
       var rec     = regular - advance;
 
       var shortage = d.getVal(id, 'shortage');
@@ -155,7 +159,6 @@ stmtGetData = function(crsId, month, year){
       // figure (C.S, and any other monthly adjustment) is left exactly as the
       // month published it. The advance itself prints in the ADVANCE FOR THE
       // MONTH OF … table at the foot of the sheet.
-      var advReceipt = (typeof rcpAdvanceQty === 'function') ? rcpAdvanceQty(crsId, month, year, id) : 0;
       var cb = d.hasVal(id, 'close')
         ? d.getVal(id, 'close') - advReceipt - advance   // stored close: take the advance back off
         : tot - sal;                                     // worked out: `tot` already excludes it

@@ -1766,8 +1766,31 @@ is byte-identical outside that block.
   PHH BRA 1950, WHEAT 500, T.DHALL 500, P.OIL 400, SUGAR 700, AAY 250, AAY
   SUGAR 13). Every other shop's COLL changes only in that row label.
 - The **Advance LOAD** (`meAdvanceStore`, keyed on Monthly Entry) is a
-  different, older lever and is unchanged: it still only nets off RECEIVED and
-  says so in the note under the table. No shop has ever keyed one.
+  different, older lever: it nets off RECEIVED and says so in the note under
+  the table.
+- **An Advance Load and Advance receipts for the same stock are taken off
+  ONCE** (office, 2026-10-30; `collRow`, `verify:coll-advance` §5).
+  - **The fault**: CRS 8, October 2026, had its advance receipts (22-10 and
+    28-10: BRA 2250, RRA 250, SUGAR 300, T.DHALL 300, AAY 100, AAY SUGAR 4,
+    PHH BRA 2000, P.OIL 280) AND the same figures typed as the Advance Load.
+  - COLL left the receipts out of RECEIVED, then took the load off the
+    REGULAR receipts again, and took both off the stored Closing.
+  - BRA printed RECEIVED 0 and CLOSING **−967**, where the shop received
+    2004 and closed at 1037. Seven rows went negative, and the sheet said
+    "net of an advance load of 4096".
+  - **Now** the load nets off only what exceeds the month's Advance
+    receipts for that commodity (`max(0, load − advance receipt)`, still at
+    most the regular receipts). A load with no advance receipt works as
+    before.
+  - **Live, read only**: CRS 8 October is the only Advance Load in the
+    database. Only its COLL changed, out of 836 sections (September and
+    October, every shop).
+  - Every row now equals an independent count from the raw records:
+    Opening (30-09's Closing) + regular receipts − October's sales.
+    Examples: BRA 2500 + 2004 − 3467 = 1037, SUGAR 496.5 + 503 − 823 =
+    176.5, P.OIL 88 + 562 − 574 = 76.
+  - The ADVANCE FOR NOV'2026 table is unchanged. Preview = PDF.
+  - ALLOTMENT prints 0 because no October allotment is saved for CRS 8.
 
 **COLL has no signature line** — the staff name and AREA SUPERVISOR under
 its tables were taken off (office, 2026-09-21); it ends with the Advance
