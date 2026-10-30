@@ -1792,6 +1792,33 @@ is byte-identical outside that block.
   - The ADVANCE FOR NOV'2026 table is unchanged. Preview = PDF.
   - ALLOTMENT prints 0 because no October allotment is saved for CRS 8.
 
+**COLL's TOTAL is Opening + Received from Godown** (office, 2026-10-30;
+`collRow`, `verify:coll-advance` §6).
+- **ALLOTMENT is not stock.** It still prints in its own column, but it is
+  no longer added to TOTAL. The grain arrives as the godown receipts, so
+  adding both counted it twice.
+  - CRS 8 October BRA printed 2500 + 5504.4 + 2004 = **10008.4** beside
+    SALES 3467 and CLOSING 1037. It now prints TOTAL **4504**.
+- **The rule, per row**: TOTAL = Opening + Received (− shortage + excess,
+  as before), and CLOSING = TOTAL − SALES.
+  - The TOTAL row adds the rows' totals.
+  - A stored Closing is still used where the month has one.
+- **The only CLOSINGs that moved** are months not yet keyed, whose Closing is
+  worked out as TOTAL − SALES. An allotment alone showed there as stock in
+  hand (CRS 5 October BRA 6295.5, CRS 12 PHH BRA 3435, CRS 10 OAP 5); they
+  now read 0.
+- **Live, read only**, September and October 2026, every section of every
+  shop, before and after:
+  - only COLL sheets changed: 9 in September, 8 in October;
+  - in 360 rows, 154 TOTALs and 13 not-yet-keyed CLOSINGs moved, and no
+    other cell;
+  - every row now reads TOTAL = Opening + Received. Three rows also carry
+    their inspection shortage (e.g. CRS 10 September PHH FRK: 1195.982 +
+    2587 − 20).
+  - Preview = PDF for CRS 8 October.
+- Daily / Monthly Sales, the DSS, every other statement and all saved data
+  (allotments included) are unchanged.
+
 **COLL has no signature line** — the staff name and AREA SUPERVISOR under
 its tables were taken off (office, 2026-09-21); it ends with the Advance
 table. Every other sheet keeps its own. COLL also stretches to its page like
@@ -2342,10 +2369,9 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   - Police columns are left out, as before.
   - Page 1 read back for all nine shops, line by line.
   - Backup `backups/allotment-10-2026-…`. A re-run writes nothing.
-  - **COLL adds ALLOTMENT into TOTAL** (`collRow`, as September does). CRS 5
-    has no October entries yet, so its COLL CLOSING shows the allotment
-    (BRA 6295.5) until the month is keyed. That rule is unchanged and is the
-    office's to judge.
+  - COLL used to add ALLOTMENT into TOTAL, and so showed an un-keyed month's
+    allotment as its CLOSING. It no longer does: see "COLL's TOTAL is
+    Opening + Received from Godown".
 
 ## Monthly Sales Close needs both sections SAVED
 

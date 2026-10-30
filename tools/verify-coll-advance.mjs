@@ -119,9 +119,9 @@ const R = mainRows(coll);
   check('SUGAR, nothing received: closing is its opening 100', R.SUGAR[5] === 100, JSON.stringify(R.SUGAR));
   check('POLICE BRA keeps its regular receipt: 15 + 10 − 5 = 20', R.police.BRA[2] === 10 && R.police.BRA[5] === 20, JSON.stringify(R.police.BRA));
   const every = [...Object.entries(R), ...Object.entries(R.police)].filter(([k, v]) => k !== 'TOTAL' && k !== 'police' && Array.isArray(v));
-  check('every row still reads Opening + Allotment + Received − Sales = Closing',
-    every.every(([, v]) => Math.abs(v[0] + v[1] + v[2] - v[4] - v[5]) < 0.001),
-    JSON.stringify(Object.fromEntries(every.filter(([, v]) => Math.abs(v[0] + v[1] + v[2] - v[4] - v[5]) >= 0.001))));
+  check('every row still reads Opening + Received − Sales = Closing',
+    every.every(([, v]) => Math.abs(v[0] + v[2] - v[4] - v[5]) < 0.001),
+    JSON.stringify(Object.fromEntries(every.filter(([, v]) => Math.abs(v[0] + v[2] - v[4] - v[5]) >= 0.001))));
   check('another shop\'s advance (9999) never reaches this sheet', !coll.includes('9999'));
   check('another month\'s advance (8888) never reaches this sheet', !coll.includes('8888'));
 }
@@ -190,6 +190,25 @@ console.log('\n5. An Advance Load keyed for the same stock as the Advance receip
   const asRegular = RECEIPTS.map((r) => (r.type === 'advance' && r.crsId === CRS && r.date.startsWith('2026-09') ? { ...r, type: 'regular' } : r));
   const loadOnly = mainRows(render({ receiptStore: asRegular, meAdvanceStore: { [KEY]: { BRA: 500 } } }).coll);
   check('a load with no advance receipt works as before: BRA 800 − 500 = 300 received, closing 1100', loadOnly.BRA[2] === 300 && loadOnly.BRA[5] === 1100, JSON.stringify(loadOnly.BRA));
+}
+
+console.log('\n6. TOTAL = Opening + Received from Godown; ALLOTMENT prints but is not added (office, 2026-10-30)');
+{
+  // CRS 8 October printed BRA 2500 + 5504.4 + 2004 = 10008.4 beside CLOSING 1037.
+  const allotted = { meAllotStore: { [KEY]: { BRA: 5504.4, WHEAT: 962.283, SUGAR: 803 } } };
+  const R = mainRows(render({ receiptStore: RECEIPTS, ...allotted }).coll);
+  check('BRA: ALLOTMENT 5504.4 shown, TOTAL 1000 + 300 = 1300 (not 6804.4), CLOSING 1100', R.BRA[1] === 5504.4 && R.BRA[3] === 1300 && R.BRA[5] === 1100, JSON.stringify(R.BRA));
+  check('WHEAT: ALLOTMENT 962.283 shown, TOTAL 500 + 300 = 800, CLOSING 700', R.WHEAT[1] === 962.283 && R.WHEAT[3] === 800 && R.WHEAT[5] === 700, JSON.stringify(R.WHEAT));
+  check('SUGAR, allotted but nothing received: TOTAL is its opening 100', R.SUGAR[1] === 803 && R.SUGAR[3] === 100 && R.SUGAR[5] === 100, JSON.stringify(R.SUGAR));
+  const rows = Object.entries(R).filter(([k, v]) => k !== 'TOTAL' && k !== 'police' && Array.isArray(v));
+  check('every row: TOTAL = Opening + Received, and TOTAL − Sales = Closing',
+    rows.every(([, v]) => Math.abs(v[0] + v[2] - v[3]) < 0.001 && Math.abs(v[3] - v[4] - v[5]) < 0.001),
+    JSON.stringify(rows.filter(([, v]) => Math.abs(v[0] + v[2] - v[3]) >= 0.001 || Math.abs(v[3] - v[4] - v[5]) >= 0.001)));
+  if (R.TOTAL) check('the TOTAL row adds its rows\' totals, not the allotment', Math.abs(R.TOTAL[3] - (R.TOTAL[0] + R.TOTAL[2])) < 0.001, JSON.stringify(R.TOTAL));
+  // A month with no stored figures (nothing keyed yet) works its Closing out as
+  // TOTAL − SALES: an allotment alone must not appear as stock in hand.
+  const empty = mainRows(render({ monthlyStore: {}, ...allotted }).coll);
+  check('a month not yet keyed: BRA allotted 5504.4 closes at 0, not 5504.4', empty.BRA[1] === 5504.4 && empty.BRA[3] === 0 && empty.BRA[5] === 0, JSON.stringify(empty.BRA));
 }
 
 console.log(failures ? `\n${failures} FAILED\n` : '\nall passed\n');

@@ -3982,8 +3982,13 @@ stmtGetData = function(crsId, month, year){
 
     // The month's figures for one commodity.
     //
-    //   Total   = Opening + Allotment + Regular Receipt - Shortage + Excess
+    //   Total   = Opening + Regular Receipt - Shortage + Excess
     //   Closing = Total - Sales
+    //
+    // ALLOTMENT prints in its own column but is NOT stock: it is what the
+    // department issued, and the grain arrives as the godown receipts, so
+    // adding both counted it twice (office, 2026-10-30: CRS 8 October BRA
+    // printed TOTAL 2500 + 5504.4 + 2004 = 10008.4 beside CLOSING 1037).
     //
     // Receipt counts REGULAR godown receipts only; Advance receipts are typed
     // on the Receipt Entry page (33-receipt-type.js) and never reach COLL.
@@ -4018,7 +4023,7 @@ stmtGetData = function(crsId, month, year){
 
       var shortage = d.getVal(id, 'shortage');
       var excess   = d.getVal(id, 'excess');
-      var tot      = ob + allot + rec - shortage + excess;
+      var tot      = ob + rec - shortage + excess;
       var sal      = d.getVal(id, 'sales');
 
       // The CLOSING BALANCE must not carry an advance either (office,
