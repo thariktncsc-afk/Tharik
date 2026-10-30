@@ -23,6 +23,34 @@
 // buildRemittance itself is untouched; tools/verify-remit-total.mjs holds the
 // two equal for every shop.
 // ═══════════════════════════════════════════════════════════════════════════
+// ── A day's C.Box deposit (office, 2026-10-30) ─────────────────────────────
+// A day sheet keeps every deposit for its sales date in `remits`, and
+// `remitAmount` is their sum. CRS 20, 30-10-2026: ₹515 of sales and a second
+// deposit of ₹150 with the reason C.Box printed on the Remittance sheet as ONE
+// row of 665, with the sheet's own POLY GUNNY & C.BOX row left empty. The
+// Remittance sheet (buildRemittance) now prints the C.Box deposits in that
+// row; this returns, for one date, the C.Box money and the date of the other
+// deposits (the earliest, as `remitDate` is). Only the reason C.Box moves —
+// Missed / Tea / Salt have no row of their own and stay on their date. The
+// month's TOTAL is unchanged (the same money, printed in another row), so
+// stmtRemitTotal below needs no change.
+function stmtRemitCBox(d, day){
+  var ds = d.year + '-' + String(d.month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  var ent = (typeof entryStore !== 'undefined') ? (entryStore[d.crsId + '_' + ds] || entryStore[String(d.crsId) + '_' + ds]) : null;
+  var list = ent && Array.isArray(ent.remits) ? ent.remits : [];
+  var r = { cbox: 0, cboxDate: '', restDate: '' };
+  list.forEach(function(t){
+    var a = parseFloat(t && t.amount) || 0;
+    if (t && t.reason === 'C.Box') {
+      r.cbox += a;
+      if (t.date && t.date > r.cboxDate) r.cboxDate = t.date;
+    } else if (t && t.date && (!r.restDate || t.date < r.restDate)) {
+      r.restDate = t.date;
+    }
+  });
+  return r;
+}
+
 function stmtRemitTotal(d){
   var days = new Date(d.year, d.month, 0).getDate();
   var moKey = d.crsId + '_' + d.month + '_' + d.year;

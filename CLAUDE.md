@@ -2490,6 +2490,38 @@ drifting.
 
 `npm run verify:remittance-admin`.
 
+### A C.Box deposit prints in POLY GUNNY & C.BOX, not in its date's row
+
+Office, 2026-10-30 (`buildRemittance`, `stmtRemitCBox` in
+`44-remit-total.js`; `verify:remit-total` §5).
+- **The fault**: CRS 20, 30-10-2026, holds two deposits on the day sheet:
+  ₹515 of sales and ₹150 with the reason C.Box. Monthly Remittance shows
+  them as two rows. The Remittance statement printed ONE row of **665**
+  and left its own POLY GUNNY & C.BOX row empty, because `remitByDay`
+  carries the day sheet's `remitAmount`, which is the sum of all deposits.
+- **Now**, on the Remittance sheet only:
+  - a deposit with the reason **C.Box** prints in the POLY GUNNY & C.BOX
+    row, added to any hand-keyed e1 figure;
+  - that row takes the C.Box deposit's date unless a hand-keyed date
+    exists;
+  - the date row keeps the other deposits. Its remittance date is the
+    earliest of those. A date whose only deposit is C.Box prints blank.
+- **Missed / Tea / Salt stay on their date**: they have no row of their
+  own.
+- **A date with a hand-keyed row is unchanged**: that row still wins.
+- **The TOTAL is the same money**, so `stmtRemitTotal`, Page 2, Cost Com,
+  Sale Tax and the reconciliation are unchanged.
+- **Unchanged too**: the Daily Sale sheet's remittance column, the DSS
+  C A/C line and Monthly Remittance.
+- **Live, read only**: September and October 2026, every section of every
+  shop, before and after.
+  - Only 8 Remittance sheets changed: September CRS 8, 12, 15, 19, 24 and
+    29, October CRS 20 and 24.
+  - In each, only the date row and the POLY GUNNY & C.BOX row changed.
+    Every TOTAL is identical.
+  - Preview = PDF for CRS 20 October (515 / 150 / TOTAL 99468), 24, 19, 8
+    and 29.
+
 ### Monthly Remittance's own Save
 
 Office, 2026-09-29. `npm run verify:remittance-save`.
