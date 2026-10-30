@@ -45,8 +45,17 @@ async function main() {
   const dataFile = arg('data');
   const write = process.argv.includes('--write');
   const replace = process.argv.includes('--replace');
+  // --fill: a figure the shop has already saved is kept exactly as saved; the
+  // report fills only the commodities with no saved value (office,
+  // 2026-10-30: "the report is to fill missing allotment entries, not to
+  // replace data that users have already entered").
+  const fill = process.argv.includes('--fill');
+  if (fill && replace) {
+    console.error('--fill and --replace contradict each other: --fill never overwrites a saved figure.');
+    return 2;
+  }
   if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year) || year < 2020 || !dataFile) {
-    console.error('Usage: node tools/set-allotment.mjs --month=<1-12> --year=<yyyy> --data=<file.json> [--replace] [--write]');
+    console.error('Usage: node tools/set-allotment.mjs --month=<1-12> --year=<yyyy> --data=<file.json> [--replace | --fill] [--write]');
     return 2;
   }
   const input = JSON.parse(readFileSync(resolve(dataFile), 'utf8'));
@@ -70,17 +79,30 @@ async function main() {
     const key = `${crsId}_${month}_${year}`;
     keys.push(key);
     const code = master.data.find((m) => Number(m.id) === crsId)?.code;
-    if (!code || code !== row.fps) problems.push(`CRS ${crsId}: report FPS code ${row.fps} ≠ CRS master code ${code ?? '(none)'}`);
+    // A shop the CRS master gives no code (CRS 6) is matched by the report's
+    // FPS NAME instead, which must name exactly that shop ("TNCSC CRS 6") —
+    // never "CRS 60" or another number.
+    const nameOk = !code && typeof row.name === 'string' && new RegExp(`\\bCRS\\s*0*${crsId}\\b`, 'i').test(row.name);
+    if (!nameOk && (!code || code !== row.fps)) problems.push(`CRS ${crsId}: report FPS code ${row.fps} ≠ CRS master code ${code ?? '(none)'}`);
+    const had = allot.data[key];
     const figures = {};
     for (const [id, v] of Object.entries(row)) {
-      if (id === 'fps') continue;
+      if (id === 'fps' || id === 'name') continue;
       if (!allotIds.has(id)) problems.push(`CRS ${crsId}: ${id} is not an Allotment field`);
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) problems.push(`CRS ${crsId}: ${id} = ${v} is not a quantity`);
       figures[id] = v;
     }
-    const had = allot.data[key];
+    if (fill && had) {
+      const kept = [];
+      for (const [id, v] of Object.entries(had)) {
+        if (v === '' || v === null || v === undefined) continue;
+        if (id in figures && Number(figures[id]) !== Number(v)) kept.push(`${id} ${v} (report ${figures[id]})`);
+        figures[id] = v;
+      }
+      if (kept.length) console.log(`        keeps the shop's own: ${kept.join(', ')}`);
+    }
     const same = had && canon(had) === canon(figures);
-    if (had && !same && !replace) problems.push(`CRS ${crsId}: ${key} already has a different allotment ${JSON.stringify(had)} — pass --replace to overwrite it`);
+    if (had && !same && !replace && !fill) problems.push(`CRS ${crsId}: ${key} already has a different allotment ${JSON.stringify(had)} — pass --replace to overwrite it`);
     console.log(`  CRS ${String(crsId).padStart(2)} (${code}): ${had ? (same ? 'already so' : 'replace ' + JSON.stringify(had)) : 'new'}`);
     console.log(`        → ${Object.entries(figures).map(([id, v]) => `${id} ${v}`).join(', ')}; saved mark: ${!!confirmed.data[key]} → true`);
     next[key] = figures;
