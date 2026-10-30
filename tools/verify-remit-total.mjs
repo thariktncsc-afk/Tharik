@@ -117,15 +117,15 @@ function renderHtml(entryStore, meRemitStore) {
 }
 const both = renderHtml({ [`${CRS}_2026-09-30`]: sheet([dep(515, '2026-09-30'), cbox(150)]) }, {});
 check(`CRS 20's case: the date row prints 515 (${dayRow(both, 30)})`, /^\|30\|30\/09\/2026\|30\/09\/2026\|515(\.00)?\|515(\.00)?\|$/.test(dayRow(both, 30) || ''), dayRow(both, 30));
-check(`…POLY GUNNY & C.BOX prints 150, dated 30-09 (${polyRow(both)})`, /\|30\/09\/2026\|POLY GUNNY & C\.BOX\|150(\.00)?\|$/.test(polyRow(both) || ''), polyRow(both));
+check(`…POLY GUNNY & C.BOX prints 150: date of sales 30-09, date of remittance 30-09 (${polyRow(both)})`, /^\|\d+\|30\/09\/2026\|30\/09\/2026\|POLY GUNNY & C\.BOX\|150(\.00)?\|$/.test(polyRow(both) || ''), polyRow(both));
 check('…no row prints the two together (665)', !rows(both.rmHtml).some((r) => /\|665(\.00)?\|/.test(r) && !/TOTAL/.test(r)));
 check(`…the TOTAL is still every deposit: sheet ${both.sheetTotal} = Remittance Amount ${both.remit} = 665`, both.sheetTotal === 665 && both.remit === 665);
 const only = renderHtml({ [`${CRS}_2026-09-28`]: sheet([cbox(130, '2026-09-27')]) }, {});
-check(`a date whose only deposit is C.Box prints blank (${dayRow(only, 28)}); 130 in POLY GUNNY & C.BOX dated 27-09`, dayRow(only, 28) === '|28|28/09/2026|' && /\|27\/09\/2026\|POLY GUNNY & C\.BOX\|130(\.00)?\|$/.test(polyRow(only) || '') && only.sheetTotal === 130, `${dayRow(only, 28)} / ${polyRow(only)}`);
+check(`a date whose only deposit is C.Box prints blank (${dayRow(only, 28)}); 130 in POLY GUNNY & C.BOX, sales 28-09, banked 27-09`, dayRow(only, 28) === '|28|28/09/2026|' && /^\|\d+\|28\/09\/2026\|27\/09\/2026\|POLY GUNNY & C\.BOX\|130(\.00)?\|$/.test(polyRow(only) || '') && only.sheetTotal === 130, `${dayRow(only, 28)} / ${polyRow(only)}`);
 const withHand = renderHtml({ [`${CRS}_2026-09-30`]: sheet([dep(515, '2026-09-30'), cbox(150)]) }, { [KEY]: { extra: { e1nc: 90, e1date: '2026-09-15' } } });
-check(`a hand-keyed Poly & C.Box row adds to it, keeping its own date (${polyRow(withHand)}), TOTAL ${withHand.sheetTotal}`, /\|15\/09\/2026\|POLY GUNNY & C\.BOX\|240(\.00)?\|$/.test(polyRow(withHand) || '') && withHand.sheetTotal === 755 && withHand.remit === 755, polyRow(withHand));
+check(`a hand-keyed Poly & C.Box row adds to it, keeping its own sales date, the deposit its remittance date (${polyRow(withHand)}), TOTAL ${withHand.sheetTotal}`, /^\|\d+\|15\/09\/2026\|30\/09\/2026\|POLY GUNNY & C\.BOX\|240(\.00)?\|$/.test(polyRow(withHand) || '') && withHand.sheetTotal === 755 && withHand.remit === 755, polyRow(withHand));
 const missed = renderHtml({ [`${CRS}_2026-09-30`]: sheet([dep(515, '2026-09-30'), cbox(80, '2026-09-30', 'Missed')]) }, {});
-check(`a Missed deposit stays on its date — it has no row of its own (${dayRow(missed, 30)})`, /\|595(\.00)?\|$/.test(dayRow(missed, 30) || '') && /POLY GUNNY & C\.BOX\|$/.test(polyRow(missed) || ''), `${dayRow(missed, 30)} / ${polyRow(missed)}`);
+check(`a Missed deposit stays on its date — it has no row of its own (${dayRow(missed, 30)})`, /\|595(\.00)?\|$/.test(dayRow(missed, 30) || '') && /^\|\d+\|POLY GUNNY & C\.BOX\|$/.test(polyRow(missed) || ''), `${dayRow(missed, 30)} / ${polyRow(missed)}`);
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll remit-total checks passed.');
 process.exitCode = failures ? 1 : 0;

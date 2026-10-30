@@ -1236,7 +1236,7 @@ function buildRemittance(d){
   // A deposit saved with the reason C.Box prints in the POLY GUNNY & C.BOX row
   // below, not inside its sales date's row (office, 2026-10-30; stmtRemitCBox
   // in 44-remit-total.js). The TOTAL is the same money.
-  var cboxSum=0, cboxDate='';
+  var cboxSum=0, cboxDate='', cboxSales='';
   for(var day=1; day<=daysInMonth; day++){
     var rec=store[day]||{};
     // Daily Entry is the primary source for the day's banking; the Monthly
@@ -1247,7 +1247,7 @@ function buildRemittance(d){
     if(dayRec && dayRec.src==='daily' && !nc && !ce){
       cb=stmtRemitCBox(d, day);
       nc=(dayRec.amount||0)-cb.cbox;
-      if(cb.cbox){ cboxSum+=cb.cbox; if(cb.cboxDate>cboxDate) cboxDate=cb.cboxDate; }
+      if(cb.cbox){ cboxSum+=cb.cbox; if(cb.cboxDate>cboxDate) cboxDate=cb.cboxDate; cboxSales=d.year+'-'+String(d.month).padStart(2,'0')+'-'+String(day).padStart(2,'0'); }
     }
     var tot=nc+ce;
     grand+=tot;
@@ -1260,14 +1260,15 @@ function buildRemittance(d){
   // ── Extra rows (poly gunny & c.box, inspection charges, custom) ───────────
   var ex=store['extra']||{};
   var sno=daysInMonth;
-  function extraRow(labelDefault, e, always, add, addDate){
+  function extraRow(labelDefault, e, always, add, addSales, addRemit){
     var nc=(parseFloat(ex[e+'nc'])||0)+(add||0), ce=parseFloat(ex[e+'ce'])||0, tot=nc+ce;
     var label=ex[e+'label']||labelDefault;
     if(!always && !label && !nc && !ce) return '';
     sno++; grand+=tot;
-    return '<tr>'+C(sno)+C(fmtDate(ex[e+'date']||addDate))+C('')+L(label)+C('')+R(tot?amt2(tot):'')+'</tr>';
+    // C.Box deposits from the day sheets: their sales date, and the date they were banked.
+    return '<tr>'+C(sno)+C(fmtDate(ex[e+'date']||addSales))+C(add?fmtDate(addRemit):'')+L(label)+C('')+R(tot?amt2(tot):'')+'</tr>';
   }
-  body+=extraRow('POLY GUNNY & C.BOX','e1',true,cboxSum,cboxDate);
+  body+=extraRow('POLY GUNNY & C.BOX','e1',true,cboxSum,cboxSales,cboxDate);
   body+=extraRow('INSPEC.CHARGES','e2',true);
   body+=extraRow('','e3',false);
 

@@ -2502,8 +2502,10 @@ Office, 2026-10-30 (`buildRemittance`, `stmtRemitCBox` in
 - **Now**, on the Remittance sheet only:
   - a deposit with the reason **C.Box** prints in the POLY GUNNY & C.BOX
     row, added to any hand-keyed e1 figure;
-  - that row takes the C.Box deposit's date unless a hand-keyed date
-    exists;
+  - that row's DATE OF SALES is the day sheet's date (a hand-keyed e1
+    date wins), and its DATE OF REMITTANCE is the C.Box deposit's own date
+    (office, same day: "where is the date?" — the remittance date was
+    blank). A hand-keyed e1 row with no C.Box deposit prints as before;
   - the date row keeps the other deposits. Its remittance date is the
     earliest of those. A date whose only deposit is C.Box prints blank.
 - **Missed / Tea / Salt stay on their date**: they have no row of their
