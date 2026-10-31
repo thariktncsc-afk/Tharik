@@ -2162,6 +2162,23 @@ record (`45-bag-counts.js`).
     sales). OOTY (100, not on the POS) is as it was. Backups
     `backups/correct-receipt-crs14-R_2026_150-…`,
     `correct-receipt-crs14-S_184608038-…`, `day-sheet-14_2026-10-31-…`.
+  - **Advance for November, added the same evening** (POS பொருட்கள் வருகை
+    வரலாறு, TN59Q7470, month 11/2026), three ADVANCE receipts:
+    - S184608588, 24-10: RRA 1000 (பச்சை அரிசி), BRA 4500, AAY SUGAR 8,
+      TOOR 600, SUGAR 1000, WHEAT 200;
+    - S184608589, 24-10: AAY 250 ("புழுங்கல் அரிசி ஏழையம்"), PHH BRA 2000;
+    - S184608748, 27-10: PALM 650 (ச.எண்ணெய், litres).
+    - The partly hidden row on S184608588 is its Toor Dal 600 (the
+      screens scroll), so it was not entered twice.
+    - Dated as the challans say, so, as Advance receipts always are, they
+      count as October stock received. October's Closings rose by exactly
+      those quantities (BRA 4500.33, PHH BRA 2445, AAY 250, Sugar
+      1552.68, …) and no longer equal the POS summary, which leaves them
+      out. November opens with them.
+    - AAY 170 + 250 = 420 and PHH BRA 2083 + 2000 = 4083 equal October's
+      allotment, which bears the mapping out.
+    - Vehicle numbers are not stored: the register has no field for them.
+    - Backup `backups/receipts-crs14-2026-10-31T16-42-…`.
 
 ## Receipts keyed from a shop's POS challans
 
