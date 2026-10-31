@@ -2857,6 +2857,14 @@ in `26-crs29.js`; `verify:page1-card-allot`).
     figure for figure.
   - One A4 portrait page, Preview = PDF.
   - CRS 8 is still drawn on the office's sheet.
+- **It fills its page** (office, same day: "need in full page").
+  - The page keeps the office's CRS PAGE1 margins: 25 mm top and sides,
+    6 mm at the foot, about 266 mm to use. The sheet is a 262 mm column
+    (4 mm in hand), so it never runs onto a second page.
+  - The header and the signature stay at the head and foot. The allotment
+    block takes the height between, its seven lines spread evenly down it.
+  - Type is larger: title 22 px, lines 20 px, signature 13 px.
+  - The figures and the wording are unchanged. One page, measured on the PDF.
 
 ## The 3-month PV from uploaded PDFs
 

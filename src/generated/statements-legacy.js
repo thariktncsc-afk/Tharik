@@ -4430,29 +4430,38 @@ function c29CrsPage1(d){
     var v = parseFloat(raw[row.allotId]);
     var shown = saved ? c29n(isNaN(v) ? 0 : v) : '';
     if(saved && shown === '') shown = '0';
-    return '<div style="font-size:13px;font-weight:bold;padding:1px 0">' +
-      (String(i + 1) + '.' + row.label).padEnd(14, ' ').replace(/ /g, '&nbsp;') +
-      ' : ' + shown + '</div>';
+    return '<div style="font-size:20px;font-weight:bold;display:flex">' +
+      '<span style="display:inline-block;width:38%">' + String(i + 1) + '.' + row.label + '</span>' +
+      '<span> : ' + shown + '</span></div>';
   }).join('');
 
+  // The sheet fills its A4 portrait page (office, 2026-10-31: "need in full
+  // page"). The page keeps the office's CRS PAGE1 margins (25 mm top / sides,
+  // 6 mm foot), which leave about 266 mm; the sheet is 262 mm tall, 4 mm in
+  // hand, so it is never carried onto a second page. Header and signature
+  // stay at the head and foot; the allotment block takes the height between,
+  // its seven lines spread evenly down it. Figures and wording are unchanged.
   return c29page(
-    '<div class="c29-h1" style="font-size:17px">TAMIL NADU CIVIL SUPPLIES CORPORATION<br>MADURAI REGION</div>' +
-    '<div class="c29-h2" style="font-size:15px">CRS : MONTHLY PROFORMA ACCOUNT</div>' +
-    '<div style="height:14px"></div>' +
-    '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:bold">' +
+    '<div style="height:262mm;display:flex;flex-direction:column;box-sizing:border-box">' +
+    '<div class="c29-h1" style="font-size:22px;line-height:1.35">TAMIL NADU CIVIL SUPPLIES CORPORATION<br>MADURAI REGION</div>' +
+    '<div class="c29-h2" style="font-size:19px;margin-top:4px">CRS : MONTHLY PROFORMA ACCOUNT</div>' +
+    '<div style="height:22px"></div>' +
+    '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:bold;line-height:1.6">' +
       '<div>NAME OF THE CRS :' + d.crsId + '</div>' +
       '<div>TOTAL NUMBER OF CARDS : ' + d.cards.total + '</div>' +
     '</div>' +
-    staffJoin(d, function(p){ return '<div style="font-size:13px;font-weight:bold">NAME OF THE ' + p.short + ' : ' + p.name + '</div>'; }, '') +
-    '<div style="font-size:13px;font-weight:bold;margin-bottom:8px">MONTH :' + d.mo.toUpperCase() + "'" + d.yr + '</div>' +
-    '<div style="border-top:2px solid #000;border-bottom:1px solid #000;text-align:center;font-size:13px;font-weight:bold;padding:3px 0;margin-bottom:4px">ALLOTMENT</div>' +
-    lines +
-    '<div class="c29-note">NOTE:</div>' +
-    '<div class="c29-note">1. The quantity of the commodities sold and the amount realised under each variety should be tallied with the quantity made in the statement I and &lsquo;c&rsquo; register</div>' +
-    '<div class="c29-note">2. The total quantity furnished in the statement should be tallied with the closing balance of the stock register</div>' +
-    c29sign(d) +
-    staffJoin(d, function(p){ return '<div style="font-size:10px;font-weight:bold;margin-top:6px">' + staffPhoneLabel(d, p, 'MOBILE NO : ') + staffPhone(p) + '</div>'; }, '') +
-    '<div style="font-size:10px;font-weight:bold">T.N.C.S.C MADURAI REGION</div>'
+    staffJoin(d, function(p){ return '<div style="font-size:16px;font-weight:bold;line-height:1.6">NAME OF THE ' + p.short + ' : ' + p.name + '</div>'; }, '') +
+    '<div style="font-size:16px;font-weight:bold;line-height:1.6;margin-bottom:12px">MONTH :' + d.mo.toUpperCase() + "'" + d.yr + '</div>' +
+    '<div style="border-top:2px solid #000;border-bottom:1px solid #000;text-align:center;font-size:18px;font-weight:bold;padding:5px 0;margin-bottom:6px">ALLOTMENT</div>' +
+    '<div style="flex:1;display:flex;flex-direction:column;justify-content:space-evenly;padding:0 4px">' + lines + '</div>' +
+    '<div class="c29-note" style="font-size:13px">NOTE:</div>' +
+    '<div class="c29-note" style="font-size:13px">1. The quantity of the commodities sold and the amount realised under each variety should be tallied with the quantity made in the statement I and &lsquo;c&rsquo; register</div>' +
+    '<div class="c29-note" style="font-size:13px">2. The total quantity furnished in the statement should be tallied with the closing balance of the stock register</div>' +
+    '<div style="height:28px"></div>' +
+    c29sign(d).replace('class="c29-sign"', 'class="c29-sign" style="font-size:13px"') +
+    staffJoin(d, function(p){ return '<div style="font-size:12px;font-weight:bold;margin-top:8px">' + staffPhoneLabel(d, p, 'MOBILE NO : ') + staffPhone(p) + '</div>'; }, '') +
+    '<div style="font-size:12px;font-weight:bold">T.N.C.S.C MADURAI REGION</div>' +
+    '</div>'
   );
 }
 
