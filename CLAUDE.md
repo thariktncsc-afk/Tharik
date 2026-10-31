@@ -2396,6 +2396,15 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   - COLL used to add ALLOTMENT into TOTAL, and so showed an un-keyed month's
     allotment as its CLOSING. It no longer does: see "COLL's TOTAL is
     Opening + Received from Godown".
+- **CRS 14, October 2026** (office, 2026-10-31, the POS's இருப்புப் பொருள்
+  ஒதுக்கீடு rows 3–16; FPS code 22CA002PN): BRA 13169.247, AAY 420, PHH_BRA
+  4083, WHEAT 1777.05, SUGAR 1953.82, AAY_SUGAR 13.5, TOOR 1134.964, PALM
+  1134, OAP 0, APS 0 ("ANP Rice"). This was a new record (none saved). The
+  police rows are 0 and have no field.
+  - Rows 1–2 were not in the photos, so nothing is stored for them. The
+    office will send them.
+  - Page 1's Preview and PDF were read back. Backup
+    `backups/allotment-10-2026-2026-10-31T16-39-…`.
 
 ## Monthly Sales Close needs both sections SAVED
 
