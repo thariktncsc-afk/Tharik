@@ -1449,6 +1449,9 @@ function buildReceipt(d){
     {id:'SALT_CIS',  label:'SALT(CIS)',     u1:'bag', u2:'Pkts'},
     {id:'SALT_RFFS', label:'SALT(RFFS)',    u1:'bag', u2:'Pkts'},
   ];
+  // CRS 29 prints its own commodities only (c29ReceiptComms, 26-crs29.js).
+  var c29Comms = (typeof c29ReceiptComms === 'function') ? c29ReceiptComms(d) : null;
+  if(c29Comms) comms = c29Comms;
 
   // Compute totals per commodity from receiptStore
   function getQty(commId){
@@ -1497,7 +1500,7 @@ function buildReceipt(d){
 
   // Build commodity header row (2 levels)
   var commHdrRow1 = comms.map(function(c){
-    if(!c.u1) return '<th class="comm-hdr pj-col" colspan="1" rowspan="2">'+c.label+'</th>';
+    if(!c.u1) return '<th class="comm-hdr pj-col" colspan="1" rowspan="2"'+(c.width?' style="width:'+c.width+'"':'')+'>'+c.label+'</th>';
     return '<th class="comm-hdr" colspan="2">'+c.label+'</th>';
   }).join('');
 
@@ -4327,6 +4330,37 @@ function crs29AllotItems(mo){
     .map(function(r){
       return {sec:'a', c:{id:r.allotId, en:r.label, ta:r.ta, unit:r.unit}};
     });
+}
+
+// The Receipt statement's columns for the camp (office, 2026-10-31). The
+// standard Receipt (buildReceipt, 12-statement-builders.js) prints its own
+// fixed 18 columns for every shop, so CRS 29's sheet carried AAY, OOTY, TAN,
+// PHH BRA … columns it never stocks, and none for KEROSENE: October's two
+// Kerosene receipts (R/2026/167, 168) printed as empty rows.
+// The camp's columns are its own list — the rows above in their order, less
+// CYL, which no receipt can carry (no commodity record) — then any commodity
+// the Commodity Master scopes to this shop alone, at its Order, so a camp
+// commodity added by an administrator gets a column with no code change.
+// Bag / kgs / Pkts sub-units are the standard sheet's own for the same
+// commodity; KEROSENE is litres only (STMT_KGS_ONLY), one column, no bags.
+// Returns null for every other shop: their Receipt is untouched.
+var C29_RECEIPT_UNITS = { PALM: 'Pkts' };
+function c29ReceiptComms(d){
+  if(!d || !isCrs29(d.crsId)) return null;
+  var list = CRS29_ROWS.filter(function(r){ return r.id; }).map(function(r){
+    if(r.id === 'KERO') return {id:'KERO', label:'KEROSENE<br>(LTR)', u1:'', u2:'', width:'58px'};
+    return {id:r.id, label:r.label, u1:'bag', u2:C29_RECEIPT_UNITS[r.id] || 'kgs'};
+  });
+  var have = {};
+  list.forEach(function(c){ have[c.id] = true; });
+  var m = (typeof STMT_COMMODITY_MASTER !== 'undefined' && STMT_COMMODITY_MASTER) || [];
+  var rows = Array.isArray(m) ? m : Object.keys(m).map(function(k){ return m[k]; });
+  rows.filter(function(c){
+    return c && c.id && !have[c.id] && c.scope === 'shop' && parseInt(c.shopId, 10) === CRS29_ID && (c.section || 'a') === 'a';
+  }).sort(function(a, b){ return (Number(a.order) || 0) - (Number(b.order) || 0); }).forEach(function(c){
+    list.push({id:c.id, label:String(c.en || c.id).toUpperCase(), u1:'bag', u2:'kgs'});
+  });
+  return list;
 }
 
 // ── SHARED HELPERS ──────────────────────────────────────────────────────────

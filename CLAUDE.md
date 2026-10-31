@@ -2800,6 +2800,33 @@ day, and `0` is an answer where blank is not. No other shop has these fields.
   the A3-landscape `@page` another builder carries cannot reach it.
   `verify:crs29-sales` checks it against the PDF's own figures.
 
+### CRS 29's Receipt statement: the camp's own commodities
+
+Office, 2026-10-31 (`c29ReceiptComms` in `26-crs29.js`, read by
+`buildReceipt`; `verify:receipt-rows`).
+- **The fault**: the Receipt sheet printed the standard 18 columns for every
+  shop. CRS 29 got AAY, OOTY, TAN, PHH BRA, PHH FRK, AAY FRK, NPHH, PJ 100
+  and the SALTs, none of which it stocks, and no column for KEROSENE.
+  October's two Kerosene receipts (R/2026/167 1200 L, R/2026/168 990 L)
+  printed as empty rows.
+- **The columns, in order**:
+  - the camp's own list, `CRS29_ROWS`, less CYL (no commodity record, so no
+    receipt can carry it): B.RICE, R.R.A, SUGAR, WHEAT, T.DHALL, P.OIL,
+    KEROSENE;
+  - then any commodity the Commodity Master scopes to CRS 29 alone, at its
+    Order.
+- **Kerosene** is one column of litres, with no bags (it is kgs-only, like
+  `STMT_KGS_ONLY`). Its header carries its own width; there is no new CSS
+  rule, so other shops' markup is untouched.
+- The bag / kgs / Pkts units and every figure are the standard sheet's own.
+- **Live, read only**: September and October 2026, every section of every
+  shop, before and after.
+  - Only CRS 29's Receipt changed, in both months.
+  - Every receipt quantity in the register prints. October: BRA 464 /
+    23201, KEROSENE 1200 + 990 = 2190.
+  - The gunny report under the table is identical.
+  - Preview = PDF = the Excel parse. CRS 8 keeps the standard columns.
+
 ## The 3-month PV from uploaded PDFs
 
 Reports → 3-Month PV → Manual (office, 2026-09-22). Past months of the quarter
