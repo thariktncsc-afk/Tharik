@@ -6,6 +6,11 @@
  *   node tools/correct-receipt.mjs --crs=14 --receipt-no=S184606559 --move=PHH_BRA:PHH_FRK,AAY:AAY_FRK --write    apply
  *
  *   node tools/correct-receipt.mjs --crs=10 --receipt-no=R/2026/046 --set=PB_SUGAR:16,PB_WHEAT:16      a line's quantity
+ *   node tools/correct-receipt.mjs --crs=14 --receipt-no=R/2026/150 --delete                          remove a duplicate
+ *
+ * --delete removes the whole receipt, as the Receipt page's delete does (an
+ * administrator's; the same republish follows). Used when the register holds
+ * the same delivery twice under two numbers.
  *
  * Each FROM:TO takes the line's quantity off FROM and puts the same quantity
  * on TO — nothing is added or lost. Each --set ID:qty changes the quantity of
@@ -75,9 +80,10 @@ async function main() {
   const crsId = Number(arg('crs'));
   const receiptNo = arg('receipt-no');
   const moves = (arg('move') ?? '').split(',').filter(Boolean).map((p) => p.split(':'));
+  const del = process.argv.includes('--delete');
   const sets = (arg('set') ?? '').split(',').filter(Boolean).map((p) => { const [id, q] = p.split(':'); return [id, Number(q)]; });
-  if (!Number.isInteger(crsId) || !receiptNo || !(moves.length || sets.length) || moves.some((m) => m.length !== 2 || !m[0] || !m[1])) {
-    console.error('Usage: node tools/correct-receipt.mjs --crs=N --receipt-no=NO [--move=FROM:TO,…] [--set=ID:qty,…] [--write]');
+  if (!Number.isInteger(crsId) || !receiptNo || !(moves.length || sets.length || del) || (del && (moves.length || sets.length)) || moves.some((m) => m.length !== 2 || !m[0] || !m[1])) {
+    console.error('Usage: node tools/correct-receipt.mjs --crs=N --receipt-no=NO [--move=FROM:TO,…] [--set=ID:qty,…] [--delete] [--write]');
     return 2;
   }
 
@@ -119,7 +125,8 @@ async function main() {
   const fixed = { ...row, items };
   const next = Object.fromEntries(WRITABLE.map((k) => [k, clone(stored[k] ?? (k === 'receiptStore' ? [] : {}))]));
   const before = clone(next.receiptStore);
-  next.receiptStore[idx] = fixed;
+  if (del) next.receiptStore.splice(idx, 1);
+  else next.receiptStore[idx] = fixed;
   const [y, m] = row.date.split('-').map(Number);
   const patch = resyncReceiptMonth({ ...next, inspectionStore: stored.inspectionStore ?? {} }, crsId, m, y, { dateIso: row.date, before, lists });
   for (const [k, v] of Object.entries(patch)) next[k] = v;
@@ -130,14 +137,16 @@ async function main() {
     const g = refreshGunnyMonths(next.meGunnyStore, crsId, mm, yy, next.monthlyStore, (mo, yr) => packTypesFor(next.receiptStore, crsId, mo, yr));
     if (g) next.meGunnyStore = g;
   }
-  console.log(`  ${receiptNo} · ${row.date} · ${String(row.type ?? 'regular').toUpperCase()} · ${[...moves.map(([f, t]) => `${f} ${row.items[f].qty} → ${t}`), ...sets.map(([id, q]) => `${id} ${row.items[id].qty} → ${q}`)].join(', ')}`);
+  if (del) console.log(`  ${receiptNo} · ${row.date} · ${String(row.type ?? 'regular').toUpperCase()} · DELETE · ${Object.entries(row.items ?? {}).map(([id, v]) => `${id} ${v.qty}`).join(', ')}`);
+  else console.log(`  ${receiptNo} · ${row.date} · ${String(row.type ?? 'regular').toUpperCase()} · ${[...moves.map(([f, t]) => `${f} ${row.items[f].qty} → ${t}`), ...sets.map(([id, q]) => `${id} ${row.items[id].qty} → ${q}`)].join(', ')}`);
 
   const changed = WRITABLE.filter((k) => canon(next[k]) !== canon(stored[k] ?? (k === 'receiptStore' ? [] : {})));
   for (const k of changed) {
     const b = stored[k] ?? {}, a = next[k];
     if (k === 'receiptStore') {
-      const other = a.map((r, i) => [r, i]).filter(([r, i]) => i !== idx && canon(r) !== canon(b[i]));
-      if (a.length !== b.length || other.length) { console.error('Refused: receiptStore would change a row other than the one being corrected'); return 1; }
+      const kept = del ? b.filter((_r, i) => i !== idx) : b;
+      const other = a.map((r, i) => [r, i]).filter(([r, i]) => (del || i !== idx) && canon(r) !== canon(kept[i]));
+      if (a.length !== kept.length || other.length) { console.error('Refused: receiptStore would change a row other than the one being corrected'); return 1; }
       continue;
     }
     const moved = [...new Set([...Object.keys(b), ...Object.keys(a)])].filter((x) => canon(b[x]) !== canon(a[x]));
@@ -150,13 +159,13 @@ async function main() {
   const broken = inspectStockWrite(stored, incoming, true);
   if (broken.length) { console.error(`Refused by the stock guard: ${describeStock(broken)}`); return 1; }
   const key = `${crsId}_${m}_${y}`, pa = { ...stored.monthlyStore?.[key]?.a, ...stored.monthlyStore?.[key]?.b }, na = { ...next.monthlyStore?.[key]?.a, ...next.monthlyStore?.[key]?.b };
-  for (const id of new Set([...moves.flat(), ...sets.map(([id]) => id)])) console.log(`  ${key} ${id.padEnd(10)} Receipt ${pa[id]?.receipt ?? 0} → ${na[id]?.receipt ?? 0} · Closing ${pa[id]?.close ?? 0} → ${na[id]?.close ?? 0}`);
+  for (const id of new Set(del ? Object.keys(row.items ?? {}) : [...moves.flat(), ...sets.map(([id]) => id)])) console.log(`  ${key} ${id.padEnd(10)} Receipt ${pa[id]?.receipt ?? 0} → ${na[id]?.receipt ?? 0} · Closing ${pa[id]?.close ?? 0} → ${na[id]?.close ?? 0}`);
   console.log('  stock guard ✓');
   if (!write) { console.log('DRY RUN — pass --write to apply.'); return 0; }
 
   mkdirSync(join(root, 'backups'), { recursive: true });
   const bk = join(root, 'backups', `correct-receipt-crs${crsId}-${receiptNo.replace(/[^\w-]/g, '_')}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  writeFileSync(bk, JSON.stringify({ crsId, receiptNo, moves, sets, versions, before: Object.fromEntries(changed.map((k) => [k, stored[k]])) }, null, 1));
+  writeFileSync(bk, JSON.stringify({ crsId, receiptNo, moves, sets, deleted: del ? row : undefined, versions, before: Object.fromEntries(changed.map((k) => [k, stored[k]])) }, null, 1));
   console.log(`Backed up ${changed.join(', ')} to ${bk}`);
   const landed = {};
   for (const k of ['receiptStore', ...changed.filter((x) => x !== 'receiptStore')].filter((x) => changed.includes(x))) {
@@ -171,7 +180,7 @@ async function main() {
   const session = { userId: 1, username: 'admin', role: 'ADMIN', crsId: null, iat: Math.floor(Date.now() / 1000) };
   await recordActivity(session, diffStateWrite(stored, landed, {}));
   await reconcileShops([crsId], 'admin');
-  console.log(`Done: ${receiptNo} corrected for CRS ${crsId} — activity logged.`);
+  console.log(`Done: ${receiptNo} ${del ? 'deleted' : 'corrected'} for CRS ${crsId} — activity logged.`);
   return 0;
 }
 process.exitCode = await main();
