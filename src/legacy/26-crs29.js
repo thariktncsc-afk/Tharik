@@ -139,14 +139,23 @@ function c29CrsPage1(d){
   // One line per commodity the camp carries, from the month's allotment.
   // d.allotQty is filtered to the standard commodity ids, so the two the app
   // has no record for are read from the store directly.
+  //
+  // The lines are the commodities the Allotment screen offers the camp
+  // (crs29AllotItems: CYL is not allotted), and the figures are the SAVED
+  // allotment only, the rule every other shop's Page 1 keeps: a saved month
+  // prints 0 for a commodity it did not allot, a month with nothing saved
+  // prints the captions alone. It used to fall back to the month's godown
+  // receipts and print a CYL line nobody can allot (office, 2026-10-31).
   var raw = (typeof meAllotStore !== 'undefined')
     ? (meAllotStore[d.crsId + '_' + d.month + '_' + d.year] || {}) : {};
-  var lines = CRS29_ROWS.map(function(row, i){
+  var saved = Object.keys(raw).some(function(k){ return raw[k] !== '' && raw[k] != null; });
+  var lines = CRS29_ROWS.filter(function(row){ return row.allotId !== 'CYL'; }).map(function(row, i){
     var v = parseFloat(raw[row.allotId]);
-    if(isNaN(v)) v = row.id ? d.getVal(row.id, 'receipt') : 0;
+    var shown = saved ? c29n(isNaN(v) ? 0 : v) : '';
+    if(saved && shown === '') shown = '0';
     return '<div style="font-size:13px;font-weight:bold;padding:1px 0">' +
       (String(i + 1) + '.' + row.label).padEnd(14, ' ').replace(/ /g, '&nbsp;') +
-      ' : ' + c29n(v) + '</div>';
+      ' : ' + shown + '</div>';
   }).join('');
 
   return c29page(
