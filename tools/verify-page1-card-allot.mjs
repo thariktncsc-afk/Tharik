@@ -193,5 +193,28 @@ console.log('\n8. Print and Excel carry the preview\'s figures');
   }
 }
 
+console.log('\nCRS 29 prints the camp\'s own Page 1 (office, 2026-10-31)');
+{
+  const camp = (allot, monthly = {}) => {
+    const e = engine({ cards: { '29_10_2026': { rice: card(773) } }, allot, monthly });
+    return e.buildSection('crs_page1', e.getData(29, 10, 2026));
+  };
+  const txt = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+  const html = camp({ '29_10_2026': { BRA: 23201, RRA: 1500, SUGAR: 1048, TOOR: 771, PALM: 771, KERO: 2190 } });
+  check('never drawn on the office\'s sheet: preview, print and Excel show the camp\'s own markup',
+    P.templateSheetPreview('crs_page1', html) === null && A.officeSheetFor('crs_page1', html) === null
+      && W.templatePlan({ id: 'crs_page1', label: 'CRS Page 1', html }, new Set()) === null);
+  check('the card total prints: TOTAL NUMBER OF CARDS : 773', /TOTAL NUMBER OF CARDS : 773/.test(txt(html)));
+  const lines = [...txt(html).matchAll(/(\d)\.([A-Z.]+) +: ([\d.]*)/g)].map((m) => `${m[2]} ${m[3]}`);
+  check('the Allotment screen\'s seven commodities, saved figures: B.RICE 23201 … WHEAT 0 … KEROSENE 2190',
+    lines.join(' | ') === 'B.RICE 23201 | R.R.A 1500 | SUGAR 1048 | WHEAT 0 | T.DHALL 771 | P.OIL 771 | KEROSENE 2190', lines.join(' | '));
+  check('no CYL line (nothing can be allotted under it), no standard commodity', !/CYL|AAY|PHH|NPHH/.test(txt(html)));
+  const none = camp({}, { '29_10_2026': { a: { BRA: { receipt: 999 } } } });
+  const blank = [...txt(none).matchAll(/(\d)\.([A-Z.]+) +: ?([\d.]*?) ?(?=\d\.[A-Z]|NOTE)/g)].map((m) => m[3]);
+  check('nothing saved: the captions alone — never the month\'s receipts (999)', blank.length === 7 && blank.every((v) => v === '') && !/999/.test(none), JSON.stringify(blank));
+  const std = page1({ cards: { [KEY]: CARDS }, allot: { [KEY]: ALLOT } });
+  check('another shop is still drawn on the office\'s sheet', A.officeSheetFor('crs_page1', std.html) !== null);
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nPAGE 1 CARD + ALLOTMENT OK');
 process.exit(failures ? 1 : 0);

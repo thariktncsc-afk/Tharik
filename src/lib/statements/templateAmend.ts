@@ -152,6 +152,11 @@ function page1Staff(base: TemplateSheet, html: string): TemplateSheet {
  * the statement itself. Preview, Print and Excel all come through here.
  */
 export function officeSheetFor(sectionId: string, html: string): TemplateSheet | null {
+  // CRS 29 (the refugee camp) files its own sheets (26-crs29.js): its Page 1
+  // has the camp's allotment lines, not the office's card / allotment captions,
+  // so on the office's sheet nothing filled and the standard commodity lines
+  // printed blank (office, 2026-10-31). The camp's markup is shown as built.
+  if (html.includes('class="c29-wrap"')) return null;
   const sheet = officeSheet(sectionId);
   if (!sheet) return null;
   return sectionId === 'crs_page1' ? page1Staff(sheet, html) : sheet;

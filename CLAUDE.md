@@ -2827,6 +2827,45 @@ Office, 2026-10-31 (`c29ReceiptComms` in `26-crs29.js`, read by
   - The gunny report under the table is identical.
   - Preview = PDF = the Excel parse. CRS 8 keeps the standard columns.
 
+### CRS 29's Page 1: the camp's own sheet, its own allotment lines
+
+Office, 2026-10-31 (`officeSheetFor` in `templateAmend.ts`, `c29CrsPage1`
+in `26-crs29.js`; `verify:page1-card-allot`).
+- **The fault**: every shop's CRS Page 1 is drawn on the office's workbook
+  sheet, filled by caption (`RICE CARD :`, `1.RICE&AAY :` …). CRS 29's
+  Page 1 is the camp's own markup, with different captions.
+  - So nothing filled. Preview, Print and Excel showed the standard card and
+    allotment lines, all blank, although Card Details (773) and the
+    Allotment were saved.
+- **Now** `officeSheetFor` returns null for the camp's markup
+  (`class="c29-wrap"`). Preview, Print / PDF and Excel then show the camp's
+  own Page 1:
+  - TOTAL NUMBER OF CARDS (the camp's sheet counts cards as one total);
+  - the allotment.
+- **The allotment lines** are the seven the Allotment screen offers the camp
+  (`crs29AllotItems`): B.RICE, R.R.A, SUGAR, WHEAT, T.DHALL, P.OIL,
+  KEROSENE. CYL is gone: nothing can be allotted under it.
+- **The figures** are the SAVED allotment only, every other shop's rule:
+  - a saved month prints 0 for a commodity it did not allot;
+  - a month with nothing saved prints the captions alone.
+  - It used to fall back to the month's godown receipts.
+- **Live, read only**: every section of every shop, September and October,
+  before and after.
+  - Only CRS 29's Page 1 changed.
+  - October reads 773 cards, B.RICE 23201, R.R.A 1500, SUGAR 1048,
+    WHEAT 0, T.DHALL 771, P.OIL 771, KEROSENE 2190: the Allotment screen,
+    figure for figure.
+  - One A4 portrait page, Preview = PDF.
+  - CRS 8 is still drawn on the office's sheet.
+- **It fills its page** (office, same day: "need in full page").
+  - The page keeps the office's CRS PAGE1 margins: 25 mm top and sides,
+    6 mm at the foot, about 266 mm to use. The sheet is a 262 mm column
+    (4 mm in hand), so it never runs onto a second page.
+  - The header and the signature stay at the head and foot. The allotment
+    block takes the height between, its seven lines spread evenly down it.
+  - Type is larger: title 22 px, lines 20 px, signature 13 px.
+  - The figures and the wording are unchanged. One page, measured on the PDF.
+
 ## The 3-month PV from uploaded PDFs
 
 Reports → 3-Month PV → Manual (office, 2026-09-22). Past months of the quarter
