@@ -148,5 +148,36 @@ console.log('\nThe rest of the statement is untouched');
     String((rowsOf(html).rows[0].match(/<td/g) ?? []).length));
 }
 
+console.log('\nCRS 29 prints its own commodities only (office, 2026-10-31; c29ReceiptComms)');
+{
+  const camp = (master = []) => {
+    const engine = createStatementEngine({
+      stores: {
+        entryStore: {}, inspectionStore: {}, monthlyStore: {}, meManualStore: {}, meSourceStore: {}, meRemitStore: {},
+        meGunnyStore: {}, meCardStore: {}, salesCloseStore: {}, meAllotStore: {}, meCardConfirmed: {}, meAdvanceStore: {},
+        receiptStore: [
+          { id: 1, crsId: 29, date: '2026-10-12', receiptNo: 'R/2026/165', type: 'regular', items: { BRA: { qty: 12500 }, RRA: { qty: 1000 }, PALM: { qty: 400 }, TOOR: { qty: 400 }, SUGAR: { qty: 600 } } },
+          { id: 2, crsId: 29, date: '2026-10-27', receiptNo: 'R/2026/167', type: 'regular', items: { KERO: { qty: 1200 } } },
+          { id: 3, crsId: 29, date: '2026-10-28', receiptNo: 'R/2026/168', type: 'regular', items: { KERO: { qty: 990 } } },
+        ],
+      },
+      users: [], CRS_LIST, CRS_MASTER: [], APP_CONFIG: {}, CRS_ACCOUNTS: {}, currentUser: null, commodityMaster: master,
+    });
+    return engine.buildSection('receipt', engine.getData(29, 10, 2026));
+  };
+  const html = camp();
+  const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>')).replace(/<br>/g, ' ').replace(/<[^>]+>/g, '|').replace(/\|+/g, '|');
+  check('the camp\'s seven columns, in its order: B.RICE, R.R.A, SUGAR, WHEAT, T.DHALL, P.OIL, KEROSENE',
+    /B\.RICE\|R\.R\.A\|SUGAR\|WHEAT\|T\.DHALL\|P\.OIL\|KEROSENE \(LTR\)/.test(head), head);
+  check('no column the camp does not stock (AAY, OOTY, TAN, PHH, NPHH, SALT, PJ 100, CYL)', !/AAY|OOTY|TAN|PHH|SALT|PJ 100|CYL/.test(head), head);
+  const r = rowsOf(html).rows.map((x) => x.replace(/<[^>]+>/g, '|').replace(/\|+/g, '|'));
+  check('the Kerosene receipts print their litres (1200, 990), no bags', r.some((x) => /R\/2026\/167\|1200\|$/.test(x)) && r.some((x) => /R\/2026\/168\|990\|$/.test(x)), JSON.stringify(r));
+  check('every other figure is the register\'s: BRA 250 bags / 12500 kgs …', r.some((x) => /R\/2026\/165\|250\|12500\|20\|1000\|12\|600\|8\|400\|40\|400\|$/.test(x)), JSON.stringify(r));
+  check('the TOTAL row ends with the Kerosene litres, 2190', /2190<\/td><\/tr>/.test(html.slice(html.indexOf('>TOTAL<'))));
+  const scoped = camp([{ id: 'CAMP_DAL', en: 'Camp Dal', scope: 'shop', shopId: 29, order: 30, section: 'a' }, { id: 'OTHER', en: 'Other Shop Only', scope: 'shop', shopId: 14, order: 31, section: 'a' }]);
+  check('a commodity the master gives CRS 29 alone gets a column; another shop\'s does not', /CAMP DAL/.test(scoped) && !/OTHER SHOP ONLY/.test(scoped));
+  check('another shop keeps the standard columns (CRS 7: AAY, OOTY, PJ 100, no KEROSENE)', /OOTY/.test(render(2)) && /PJ 100/.test(render(2)) && !/KEROSENE/.test(render(2)));
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nRECEIPT ROWS OK');
 process.exitCode = failures ? 1 : 0;
