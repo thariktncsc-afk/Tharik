@@ -2141,6 +2141,44 @@ record (`45-bag-counts.js`).
     keys (and the receipt counter) changed. Backups
     `backups/receipts-crs19-2026-10-27T17-07-16-637Z.json` and
     `backups/day-sheet-19_2026-10-…`.
+- **CRS 14, October 2026, 01-10 → 31-10** (office, 2026-10-31, POS stock
+  summary): RECEIPT AND SALES only; Opening, Allotment and Gunny untouched.
+  - **Register first.** The 12-10 delivery was saved twice: R/2026/150 and
+    S.184608038, same quantities. R/2026/150 was removed
+    (`correct-receipt.mjs --delete`, office's answer). On S.184608038,
+    PHH FRK 2083 → PHH BRA and AAY FRK 170 → AAY, as the POS has them
+    (`--move`). October's receipts now equal the POS: BRA 3606, RRA 1000,
+    PHH BRA 2083, NPHH FRK 3563, AAY 170, Sugar 953, AAY Sugar 4.5, Wheat
+    1677, Toor 484, Palm 584 + 550 (R/2026/151, 06-10) = 1134.
+  - **Sales**: 03–11 October already had seven day sheets. What the POS
+    sold beyond them went on ONE sheet dated 31-10 (office's choice),
+    `--expect` on all 13 POS closings, no remittance. The month: BRA
+    2000.33 + 3606 − 5606 = 0.33, NPHH FRK 5953 + 3563 − 6872 = 2644, PHH BRA
+    0 + 2083 − 1638 = 445, PHH FRK 2587 − 2587 = 0, RRA 1000 − 800 = 200,
+    Sugar 552.68, Wheat 2300, Toor 142.914, Palm 149, AAY Sugar 0.5, AAY /
+    AAY FRK 0, NPHH RRA 0.01. Every closing equals the POS.
+  - Live before and after: only CRS 14's October keys changed. Gunny moved
+    only in its derived Receipt / Total / Closing (the bags of the new
+    sales). OOTY (100, not on the POS) is as it was. Backups
+    `backups/correct-receipt-crs14-R_2026_150-…`,
+    `correct-receipt-crs14-S_184608038-…`, `day-sheet-14_2026-10-31-…`.
+  - **Advance for November, added the same evening** (POS பொருட்கள் வருகை
+    வரலாறு, TN59Q7470, month 11/2026), three ADVANCE receipts:
+    - S184608588, 24-10: RRA 1000 (பச்சை அரிசி), BRA 4500, AAY SUGAR 8,
+      TOOR 600, SUGAR 1000, WHEAT 200;
+    - S184608589, 24-10: AAY 250 ("புழுங்கல் அரிசி ஏழையம்"), PHH BRA 2000;
+    - S184608748, 27-10: PALM 650 (ச.எண்ணெய், litres).
+    - The partly hidden row on S184608588 is its Toor Dal 600 (the
+      screens scroll), so it was not entered twice.
+    - Dated as the challans say, so, as Advance receipts always are, they
+      count as October stock received. October's Closings rose by exactly
+      those quantities (BRA 4500.33, PHH BRA 2445, AAY 250, Sugar
+      1552.68, …) and no longer equal the POS summary, which leaves them
+      out. November opens with them.
+    - AAY 170 + 250 = 420 and PHH BRA 2083 + 2000 = 4083 equal October's
+      allotment, which bears the mapping out.
+    - Vehicle numbers are not stored: the register has no field for them.
+    - Backup `backups/receipts-crs14-2026-10-31T16-42-…`.
 
 ## Receipts keyed from a shop's POS challans
 
@@ -2251,6 +2289,9 @@ quantity to the commodity it belongs to on ONE receipt (date, number, type
 and every other line kept), then republishes as the Receipt page's save
 does. Refuses a FROM the receipt lacks, a TO it already carries or that is
 not on the shop's list, another shop's keys, or the stock guard.
+`--delete` removes the whole receipt instead, as the Receipt page's delete
+does, with the same republish. It is for a delivery saved twice under two
+numbers.
 
 ## A month keyed BY MONTH, closed from a POS stock summary
 
@@ -2372,6 +2413,15 @@ input) to `backups/`, writes under version; a re-run writes nothing.
   - COLL used to add ALLOTMENT into TOTAL, and so showed an un-keyed month's
     allotment as its CLOSING. It no longer does: see "COLL's TOTAL is
     Opening + Received from Godown".
+- **CRS 14, October 2026** (office, 2026-10-31, the POS's இருப்புப் பொருள்
+  ஒதுக்கீடு rows 3–16; FPS code 22CA002PN): BRA 13169.247, AAY 420, PHH_BRA
+  4083, WHEAT 1777.05, SUGAR 1953.82, AAY_SUGAR 13.5, TOOR 1134.964, PALM
+  1134, OAP 0, APS 0 ("ANP Rice"). This was a new record (none saved). The
+  police rows are 0 and have no field.
+  - Rows 1–2 were not in the photos, so nothing is stored for them. The
+    office will send them.
+  - Page 1's Preview and PDF were read back. Backup
+    `backups/allotment-10-2026-2026-10-31T16-39-…`.
 
 ## Monthly Sales Close needs both sections SAVED
 
