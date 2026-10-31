@@ -214,6 +214,9 @@ function buildReceipt(d){
     {id:'SALT_CIS',  label:'SALT(CIS)',     u1:'bag', u2:'Pkts'},
     {id:'SALT_RFFS', label:'SALT(RFFS)',    u1:'bag', u2:'Pkts'},
   ];
+  // CRS 29 prints its own commodities only (c29ReceiptComms, 26-crs29.js).
+  var c29Comms = (typeof c29ReceiptComms === 'function') ? c29ReceiptComms(d) : null;
+  if(c29Comms) comms = c29Comms;
 
   // Compute totals per commodity from receiptStore
   function getQty(commId){
@@ -262,7 +265,7 @@ function buildReceipt(d){
 
   // Build commodity header row (2 levels)
   var commHdrRow1 = comms.map(function(c){
-    if(!c.u1) return '<th class="comm-hdr pj-col" colspan="1" rowspan="2">'+c.label+'</th>';
+    if(!c.u1) return '<th class="comm-hdr pj-col" colspan="1" rowspan="2"'+(c.width?' style="width:'+c.width+'"':'')+'>'+c.label+'</th>';
     return '<th class="comm-hdr" colspan="2">'+c.label+'</th>';
   }).join('');
 
