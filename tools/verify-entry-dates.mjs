@@ -71,6 +71,15 @@ console.log('\n1. What counts as an entry date');
   check('the latest date is the latest, whatever order the keys are in',
     E.entrySummary({ '4_2026-09-20': day(1), '4_2026-08-31': day(1), '4_2026-09-02': day(1) }, 4).last === '2026-09-20');
   check('a shop with nothing: no last date, 0', J(E.entrySummary(store, 2)) === J({ last: null, count: 0 }) && J(E.entrySummary(undefined, 2)) === J({ last: null, count: 0 }));
+
+  // Total Entry Dates is the month on screen's (office, 2026-11-01: "46 days" across two months).
+  const two = { ...store, '19_2026-10-01': day(2), '19_2026-10-03': day(2), '19_2026-08-31': day(1), '19_2026-10-05': { a: { BRA: { open: 0, sales: 0 } } } };
+  check('September on screen → 8 dates; October → 2; August → 1; a month with none → 0',
+    E.entrySummary(two, 19, '2026-09').count === 8 && E.entrySummary(two, 19, '2026-10').count === 2 &&
+    E.entrySummary(two, 19, '2026-08').count === 1 && E.entrySummary(two, 19, '2026-11').count === 0, J(E.entrySummary(two, 19, '2026-10')));
+  check('…the months add up to the shop\'s total (11), and an emptied October sheet is not counted', E.entrySummary(two, 19).count === 11);
+  check('Last Entry Date is still the shop\'s latest, whatever month is on screen', E.entrySummary(two, 19, '2026-08').last === '2026-10-03');
+  check('another shop\'s October does not count for CRS 19', E.entrySummary({ ...two, '190_2026-10-09': day(1), '1_2026-10-09': day(1) }, 19, '2026-10').count === 2);
 }
 
 console.log('\n2. Saved, not typed (the data layer against a stand-in server)');

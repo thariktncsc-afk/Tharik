@@ -2,7 +2,7 @@
  * Shared types and rules for the Monthly Entry screen — ported from
  * 05-monthly-entry.js, 15-monthly-extras.js, 22-allotment.js, 40-cs-column.js.
  */
-import { CRS29_STOCK, DSS_A, isCrs29, type Commodity } from '@/lib/engine/commodities';
+import { ALLOT_IDS, CRS29_STOCK, DSS_A, isCrs29, type Commodity } from '@/lib/engine/commodities';
 export { SALES_ONLY } from '@/lib/engine/commodities';
 import type { MonthlyBlock } from '@/lib/engine/monthlyRollup';
 import { dmy } from '@/lib/dateFormat';
@@ -225,13 +225,10 @@ export const ME_CARD_TYPES = [
 export const NO_GUNNY = new Set(['EMPTY_BOX', 'EMPTY_BAG', 'PB_SUGAR', 'PB_WHEAT', 'PB_TOOR', 'PB_PALM', 'KERO']);
 
 
-/** Not allotted: packet lines, packing materials, police ration (22-allotment). */
-const ME_ALLOT_EXCLUDE = new Set(['SALT_CIS', 'SALT_RFFS', 'OOTY', 'TAN', 'EMPTY_BOX', 'EMPTY_BAG']);
-
 /** Compiled fallback only — screens pass the database list via useAllotItems. */
 export function meAllotItems(crsId: number | null): Commodity[] {
   if (isCrs29(crsId)) return CRS29_STOCK; // the camp's seven, incl. kerosene
-  return DSS_A.filter((c) => !ME_ALLOT_EXCLUDE.has(c.id));
+  return ALLOT_IDS.map((id) => DSS_A.find((c) => c.id === id)).filter((c): c is Commodity => !!c);
 }
 
 export function mePrevKey(crsId: number, month: number, year: number): string {

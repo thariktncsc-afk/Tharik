@@ -133,8 +133,9 @@ console.log('\n7. The next month opens where this one closes');
 const withOct = { ...crs20, '20_2026-10-01': sheet({ SUGAR: row({ open: 999, total: 999, close: 999 }), EMPTY_BOX: row({ open: 5, total: 5, close: 5 }), EMPTY_BAG: row() }) };
 const r13 = syncGunnyToSales(stores(withOct, manual20), 20, 9, 2026, { EMPTY_BOX: 108, EMPTY_BAG: 72 }, lists(20), '2026-09-30');
 const es13 = r13.patch.entryStore;
-check(`01-10 re-carried from the new 30-09: SUGAR ${es13['20_2026-10-01'].a.SUGAR.open} (= 30-09 close ${es13['20_2026-09-30'].a.SUGAR.close}), C.Box ${es13['20_2026-10-01'].a.EMPTY_BOX.open} (= ${es13['20_2026-09-30'].a.EMPTY_BOX.close})`,
-  es13['20_2026-10-01'].a.SUGAR.open === es13['20_2026-09-30'].a.SUGAR.close && es13['20_2026-10-01'].a.EMPTY_BOX.open === es13['20_2026-09-30'].a.EMPTY_BOX.close);
+// C.Box carries nothing (office, 2026-11-01): 01-10 opens it at 0, never at 30-09's 0 − sales.
+check(`01-10 re-carried from the new 30-09: SUGAR ${es13['20_2026-10-01'].a.SUGAR.open} (= 30-09 close ${es13['20_2026-09-30'].a.SUGAR.close}), C.Box ${es13['20_2026-10-01'].a.EMPTY_BOX.open} (sales only: 0, not 30-09's ${es13['20_2026-09-30'].a.EMPTY_BOX.close})`,
+  es13['20_2026-10-01'].a.SUGAR.open === es13['20_2026-09-30'].a.SUGAR.close && es13['20_2026-10-01'].a.EMPTY_BOX.open === 0);
 // The Gunny table: September stored with the synced sales, October opens at its Closing.
 const ctx = { crsId: 20, month: 9, year: 2026, key: '20_9_2026' };
 // Receipt is Monthly Sales' own bags (never typed): BRA 21250 kg = 425 sacks, SUGAR 1600 kg = 32 poly, PALM 1070 pkts = 107 boxes.

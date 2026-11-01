@@ -180,7 +180,8 @@ console.log('\n7. Cost Com never prints a negative CLOSING BALANCE (office, 2026
   const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((c) => c[1]));
   const row = (label) => rows.find((r) => r[1] === label) ?? [];
   const box = row('C.BOX'), poly = row('POLY'), sugar = row('SUGAR');
-  check(`C.BOX CB "${box[13]}", POLY CB "${poly[13]}" (stored −62 / −22)`, box[13] === '0' && poly[13] === '0');
+  // C.BOX / POLY are Sales only (office, 2026-11-01): Opening and CB blank, not 0.
+  check(`C.BOX CB "${box[13]}", POLY CB "${poly[13]}" (stored −62 / −22): blank, Sales only`, box[13] === '' && poly[13] === '' && box[2] === '' && poly[2] === '');
   check(`a kgs row below zero prints 0 too: SUGAR CB bags "${sugar[13]}", kgs "${sugar[14]}"`, sugar[13] === '0' && sugar[14] === '0');
   check(`no negative figure anywhere on the sheet but EXCESS`, rows.every((r) => r[1] === 'EXCESS' || r.every((c) => !/^-\d/.test(c))));
   check(`display only: the stored close is still −62 / −22 / −5, and the amounts stand (C.BOX ${box[12]}, POLY ${poly[12]}, SUGAR ${sugar[12]})`,

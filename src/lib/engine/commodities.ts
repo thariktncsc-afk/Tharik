@@ -95,8 +95,12 @@ export function stockListsFor(crsId: number | null | undefined): { a: Commodity[
  *
  * Rate and Amount stay as they are, so the money still reaches remittance.
  *
- * DISPLAY ONLY — what is saved on the sheet, what the statements print and
- * what the DSS prices are all untouched.
+ * The screens hide those four cells, and they CARRY NOTHING (office,
+ * 2026-11-01): each day and each month opens them at 0. Before, the day
+ * chain carried a day's Closing (0 − sales) into the next Opening, so every
+ * month after the first opened below zero. CRS 15 October printed C.BOX
+ * −71 and P.GUNNY −20 on Page 2. See stockChain.ts and monthlyRollup.ts.
+ * The statements print them as Sales only (47-sales-only.js).
  *
  * The DSS prints these two rows the same way (office, 2026-10-16): Sales
  * only, Opening / Receipt / Total / Closing blank. Its own copy of this list
@@ -104,6 +108,15 @@ export function stockListsFor(crsId: number | null | undefined): { a: Commodity[
  * (`verify:dss-sales-only` checks they match).
  */
 export const SALES_ONLY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
+
+/**
+ * The Allotment section's commodities, in its order (office, 2026-11-01): RICE,
+ * AAY RICE, SUGAR, AAY SUGAR, WHEAT, T.DHALL, P.OIL, PHH RICE — the department's
+ * allocation report. Quantity and Advance Load are keyed for these alone.
+ * Figures saved earlier for any other commodity stay stored, and every reader
+ * (CRS Page 1, COLL) still reads them. CRS 29 keeps the camp's own list.
+ */
+export const ALLOT_IDS = ['BRA', 'AAY', 'SUGAR', 'AAY_SUGAR', 'WHEAT', 'TOOR', 'PALM', 'PHH_BRA'] as const;
 
 /**
  * Kept in KGS ONLY on the PV and the statements (office, 2026-10-07): their bag

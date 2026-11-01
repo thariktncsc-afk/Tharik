@@ -17,7 +17,7 @@
  */
 import { useMemo } from 'react';
 import { useStore } from '@/lib/dataStore';
-import { CRS29_ENTRY_A, CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity } from '@/lib/engine/commodities';
+import { ALLOT_IDS, CRS29_ENTRY_A, CRS29_STOCK, DSS_A, DSS_B, isCrs29, type Commodity } from '@/lib/engine/commodities';
 import { SHOPS, type Shop } from '@/lib/engine/shops';
 import { inScope } from '@/lib/engine/commodityScope';
 
@@ -104,13 +104,11 @@ export function useStockLists(crsId: number | null | undefined): { a: Commodity[
   }, [master, crsId]);
 }
 
-/** Not allotted: packet lines, packing materials, police (22-allotment.js). */
-const ALLOT_EXCLUDE = new Set(['SALT_CIS', 'SALT_RFFS', 'OOTY', 'TAN', 'EMPTY_BOX', 'EMPTY_BAG']);
-
+/** The Allotment section: ALLOT_IDS, in that order (office, 2026-11-01); CRS 29 its own seven. */
 export function useAllotItems(crsId: number | null | undefined): Commodity[] {
   const lists = useStockLists(crsId);
   return useMemo(() => {
     if (isCrs29(crsId)) return lists.a; // the camp's seven, incl. kerosene
-    return lists.a.filter((c) => !ALLOT_EXCLUDE.has(c.id));
+    return ALLOT_IDS.map((id) => lists.a.find((c) => c.id === id)).filter((c): c is Commodity => !!c);
   }, [lists, crsId]);
 }
