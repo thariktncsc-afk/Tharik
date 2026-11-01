@@ -338,6 +338,44 @@ verify:dss-sales-only`).
   - 0 other rows, 0 TOTAL rows and 0 C A/C lines changed. In the .xlsx, 590
     C.Box / Poly stock cells changed and 0 other cells.
 
+### C.Box and Poly carry nothing, and print Sales only on the statements
+
+Office, 2026-11-01 (`stockChain.ts`, `monthlyRollup.ts`, `nosRow` /
+`emptyRow` in `12-statement-builders.js`; `verify:gunny-sync` §7,
+`verify:reconcile` §7).
+- **The fault**: CRS 15 October's Page 2 printed C.BOX Opening and Total
+  **−71**, P.GUNNY **−20**: September's sales, carried.
+  - These rows hold no stock on the grid (their bags are Gunny Stock
+    Management's), so a day's Closing is 0 − sales.
+  - The day chain carried that into the next day's Opening, so every month
+    after the first opened below zero (live: 613 day-sheet rows, and every
+    shop's October and November month rows).
+- **The calculation now**:
+  - The chain carries nothing into EMPTY_BOX / EMPTY_BAG
+    (`buildChainIndex`, `walk`). Every day opens them at 0, so a sale is
+    that day's alone.
+  - The roll-up opens the month at 0 for them, whatever an older stored
+    first sheet says.
+  - Closing stays 0 − sales, the grid's own arithmetic, which the stock
+    guard keeps; nothing shows it.
+- **The statements**: CRS Page 2 (rows 21 / 22) and Cost Com print Sales,
+  rate and amount only. Opening, Receipt, Total and Closing are blank. Sale
+  Tax was already Sales only, and the DSS since 2026-10-16.
+- **Unchanged**: every sale, every amount, TOTAL, EXCESS, the
+  reconciliation, Gunny (its Issues are these sales), the PV (Gunny rows)
+  and 50 KG SS.
+- **Live, read only**, every section of every shop, September and October,
+  before and after:
+  - only Cost Com (29 shops, both months) and Page 2 (17 shops, October)
+    changed, in those two rows only;
+  - CRS 15 October reads C.BOX 72 / ₹43.20 and P.GUNNY 21 / ₹52.50. Preview
+    = PDF.
+- **Stored sheets**: the old negative Openings stay in the database until
+  rewritten. Every reader now ignores them, and the next save of a day
+  re-carries the days after it. `node tools/repair-stock-chain.mjs
+  [--write]` rewrites them all at once. Dry run 2026-11-01: 318 day sheets
+  in 17 shops, only these two rows' Opening / Total / Closing, sales kept.
+
 ### Payment Access Control (shop-wise switches)
 
 `/payment-access` (admin only) sets, per shop, whether the **DSS** and the
@@ -909,6 +947,14 @@ from `engine/entryDates.ts`:
   it at once. `save()` now emits when a save lands, so readers of the saved
   copy hear about it.
 - Live, 2026-09-28: CRS 19 19-09-2026 | 14 days, CRS 7 26-09-2026 | 22 days.
+- **Total Entry Dates is the month on screen's** (office, 2026-11-01): the
+  month of the date Daily Entry shows (`entrySummary(store, crs, 'YYYY-MM')`),
+  recounted when the date moves into another month. It used to count every
+  month together: CRS 15 read "46 days" (September 22 + October 23 +
+  November 1). Last Entry Date is still the shop's latest entry, any month.
+  - Live, read only: every shop's months add up to its old total.
+  - It is worked out in the browser from the saved day sheets. No server
+    query counts it.
 
 ## Phones: dashboard order and the header bell
 
@@ -1898,6 +1944,24 @@ npm run verify:daily-date-nav  Daily Entry ← Previous | Current | Next →: fr
   sheets checked); the rest change only in their staff lines.
 - Live, 2026-09-21: only BC 1, 9–12, 14–17, 23, 26, 27, 30; only Packer 5, 8,
   19, 28, 29; both 7, 20, 24, 25; none 2–4, 6, 13, 18, 21, 22.
+
+### The Allotment section lists eight commodities
+
+Office, 2026-11-01 (`ALLOT_IDS` in engine/commodities.ts, read by
+`useAllotItems` / `meAllotItems`).
+- **The rows**: RICE (BRA), AAY RICE, SUGAR, AAY SUGAR, WHEAT, T.DHALL,
+  P.OIL, PHH RICE (PHH BRA), in that order. Quantity and Advance Load are
+  keyed for these alone. CRS 29 keeps the camp's own seven.
+- **Display only**: a figure saved earlier for another commodity stays
+  stored and is still read. Live 2026-11-01 there are three:
+  - CRS 19 September PHH FRK 4293 (Page 1 line 5);
+  - CRS 10 October OAP 5 (COLL's ALLOTMENT column);
+  - CRS 8 October Advance Load RRA 250 (COLL).
+  They can no longer be changed on the screen; `tools/set-allotment.mjs`
+  can still write any Section A commodity.
+- Page 1's lines 6 and 7 (NPHH & AAY FRK, RRA & NPHH RRA) are not keyed
+  here any more, so they print 0 on a saved month. That is the office's
+  call (they were added at its request on 2026-09-21).
 
 ## Dashboard → Card Details & Allotment
 

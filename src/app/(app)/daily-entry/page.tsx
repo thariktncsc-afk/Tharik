@@ -362,7 +362,9 @@ export default function DailyEntryPage() {
 
   // Sorted once per shop rather than per commodity — derive() runs it 30+ times.
   const priorDates = useMemo(() => (crsVal ? entryDatesDesc(entryStore, crsVal) : []), [entryStore, crsVal]);
-  const entries = useMemo(() => (crsVal ? entrySummary(savedEntryStore, crsVal) : null), [savedEntryStore, crsVal]);
+  // Total Entry Dates counts the month of the date on screen (office, 2026-11-01).
+  const entryMonth = date.slice(0, 7);
+  const entries = useMemo(() => (crsVal ? entrySummary(savedEntryStore, crsVal, entryMonth) : null), [savedEntryStore, crsVal, entryMonth]);
 
   /**
    * The stock chain for this shop, indexed once and asked per commodity.

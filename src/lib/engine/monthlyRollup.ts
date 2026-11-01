@@ -24,7 +24,7 @@
  * clerk's number is wrong, and silently rewriting it would alter statutory
  * paperwork with nothing on screen to show for it.
  */
-import { bagsOf, entryListsFor, type Commodity, type DayEntry } from '@/lib/engine/commodities';
+import { SALES_ONLY, bagsOf, entryListsFor, type Commodity, type DayEntry } from '@/lib/engine/commodities';
 import { receiptQtyForMonth, type ReceiptRow } from '@/lib/engine/receiptRollup';
 import { isProjectedSheet } from '@/lib/engine/monthProjection';
 
@@ -206,7 +206,10 @@ export function dailyRollupForMonth(
   }
 
   const finalize = (acc: Acc, id: string): MonthlyRec & { days: number; godown: boolean } => {
-    const open = acc.open ?? 0;
+    // Empty Card+Box / Polythene Bag carry nothing into a month: their stock is
+    // Gunny's, and a first sheet saved before the chain stopped carrying them
+    // can still hold a negative Opening (office, 2026-11-01).
+    const open = SALES_ONLY.has(id) ? 0 : (acc.open ?? 0);
     const total = open + acc.receipt + acc.excess - acc.shortage - acc.transfer;
     const close = total - acc.sales;
     return {

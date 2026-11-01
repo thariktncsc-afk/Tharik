@@ -44,7 +44,7 @@
  * Entry render asks this 26 times and would otherwise rescan the register each
  * time.
  */
-import type { DayEntry } from '@/lib/engine/commodities';
+import { SALES_ONLY, type DayEntry } from '@/lib/engine/commodities';
 import { type ReceiptRow } from '@/lib/engine/receiptRollup';
 
 type InspRec = { excess?: unknown; shortage?: unknown; transfer?: unknown };
@@ -188,7 +188,13 @@ export function buildChainIndex(
           close = num(row.close);
         } else {
           const prev = last.get(key);
-          const open = isOpenFixed(row)
+          // Empty Card+Box / Polythene Bag hold no stock on the grid (their
+          // bags are Gunny Stock Management's), so nothing carries into them:
+          // every day opens at 0 and a sale is that day's alone. Carrying the
+          // day's 0 − sales opened each later day, and month, below zero.
+          const open = SALES_ONLY.has(id)
+            ? 0
+            : isOpenFixed(row)
             ? num(row.open)
             : prev
               ? prev.close + movedBetween(prev.date, ds, id, key)
@@ -277,6 +283,8 @@ function walk(ix: ChainIndex, upto: string, commId: string, sec: Section, inclus
     }
   }
 
+  // Empty Card+Box / Polythene Bag carry nothing (see buildChainIndex).
+  if (SALES_ONLY.has(commId)) return { from, received: 0, adjusted: 0, movedOn: [], value: 0 };
   return { from, received, adjusted, movedOn: [...movedOn].sort(), value: kg(from.close + received + adjusted) };
 }
 
