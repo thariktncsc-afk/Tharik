@@ -1945,6 +1945,24 @@ npm run verify:daily-date-nav  Daily Entry ← Previous | Current | Next →: fr
 - Live, 2026-09-21: only BC 1, 9–12, 14–17, 23, 26, 27, 30; only Packer 5, 8,
   19, 28, 29; both 7, 20, 24, 25; none 2–4, 6, 13, 18, 21, 22.
 
+### The Allotment section lists eight commodities
+
+Office, 2026-11-01 (`ALLOT_IDS` in engine/commodities.ts, read by
+`useAllotItems` / `meAllotItems`).
+- **The rows**: RICE (BRA), AAY RICE, SUGAR, AAY SUGAR, WHEAT, T.DHALL,
+  P.OIL, PHH RICE (PHH BRA), in that order. Quantity and Advance Load are
+  keyed for these alone. CRS 29 keeps the camp's own seven.
+- **Display only**: a figure saved earlier for another commodity stays
+  stored and is still read. Live 2026-11-01 there are three:
+  - CRS 19 September PHH FRK 4293 (Page 1 line 5);
+  - CRS 10 October OAP 5 (COLL's ALLOTMENT column);
+  - CRS 8 October Advance Load RRA 250 (COLL).
+  They can no longer be changed on the screen; `tools/set-allotment.mjs`
+  can still write any Section A commodity.
+- Page 1's lines 6 and 7 (NPHH & AAY FRK, RRA & NPHH RRA) are not keyed
+  here any more, so they print 0 on a saved month. That is the office's
+  call (they were added at its request on 2026-09-21).
+
 ## Dashboard → Card Details & Allotment
 
 A Quick Action (🪪, office 2026-09-28; `npm run verify:card-jump`) that

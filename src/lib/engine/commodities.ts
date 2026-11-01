@@ -110,6 +110,15 @@ export function stockListsFor(crsId: number | null | undefined): { a: Commodity[
 export const SALES_ONLY = new Set(['EMPTY_BOX', 'EMPTY_BAG']);
 
 /**
+ * The Allotment section's commodities, in its order (office, 2026-11-01): RICE,
+ * AAY RICE, SUGAR, AAY SUGAR, WHEAT, T.DHALL, P.OIL, PHH RICE — the department's
+ * allocation report. Quantity and Advance Load are keyed for these alone.
+ * Figures saved earlier for any other commodity stay stored, and every reader
+ * (CRS Page 1, COLL) still reads them. CRS 29 keeps the camp's own list.
+ */
+export const ALLOT_IDS = ['BRA', 'AAY', 'SUGAR', 'AAY_SUGAR', 'WHEAT', 'TOOR', 'PALM', 'PHH_BRA'] as const;
+
+/**
  * Kept in KGS ONLY on the PV and the statements (office, 2026-10-07): their bag
  * cells print blank, and they add no bags to a total. Monthly Sales and every
  * stored figure are unchanged. The statements' own list is STMT_KGS_ONLY
