@@ -61,13 +61,17 @@ export function fillSheets(root: ParentNode): void {
         let clipped = false;
         const cells = content.querySelectorAll<HTMLElement>('th,td');
         for (let k = 0; k < cells.length && !clipped; k++) if (cells[k].scrollWidth > cells[k].clientWidth + 1) clipped = true;
+        // A table whose columns cannot shrink that far grows wider than its
+        // box instead of clipping a cell, and the zoom would then carry its
+        // right-hand columns off the paper.
+        if (content.scrollWidth > content.clientWidth + 1) clipped = true;
         // Taller than the page at this size (a heading wrapped): smaller too.
         if (!clipped && content.offsetHeight * g <= h * 0.985) break;
         g = Math.max(1, g * 0.97);
       }
       if (g <= 1) content.style.width = '';
     }
-    const cw = content.offsetWidth;
+    const cw = Math.max(content.offsetWidth, content.scrollWidth);
     const ch = content.offsetHeight;
     if (!cw || !ch) return;
     // As big as the page allows in both directions, with a hair to spare so
@@ -85,5 +89,19 @@ export function fillSheets(root: ParentNode): void {
   });
 }
 
-/** The same function, as a script the print window can run on its own. */
-export const FILL_SCRIPT = `(${fillSheets.toString()})(document);`;
+/**
+ * The same function, as a script the print window can run on its own.
+ *
+ * It runs as the document is read, and AGAIN once its fonts have loaded and
+ * before it is printed (office, 2026-11-02: CRS 23 October's Page 2 PDF came
+ * out cut). Measured before a font arrives, a sheet is sized for the fallback
+ * face; a wider face arriving afterwards no longer fits the narrowed table.
+ * The function starts from natural size every time, so a second run is safe.
+ */
+export const FILL_SCRIPT =
+  `(function(){var f=${fillSheets.toString()};f(document);` +
+  `if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){f(document);});` +
+  `window.addEventListener('beforeprint',function(){f(document);});})();`;
+
+/** Re-run the fill in a page that already holds FILL_SCRIPT's document (the server's PDF). */
+export const REFILL_SCRIPT = `(${fillSheets.toString()})(document);`;

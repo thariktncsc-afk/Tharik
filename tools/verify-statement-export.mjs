@@ -99,7 +99,9 @@ console.log('\nPDF — Remittance, Sale Tax and COLL fill their page');
     const doc = P.buildPrintDocument('T', '', [s]);
     check(`${id}: wrapped to stretch its rows to the foot of the page`,
       /class="stmt-fill"[^>]*data-fill-stretch="1"/.test(doc) && doc.includes(s.html));
-    check(`${id}: …and the print window runs the fill before printing`, /<script>\(function fillSheets[\s\S]*data-fill-stretch/.test(doc));
+    // The fill runs as the page is read, again once fonts have loaded, and before printing.
+    check(`${id}: …and the print window runs the fill before printing`,
+      /<script>\(function\(\)\{var f=function fillSheets[\s\S]*data-fill-stretch/.test(doc) && /document\.fonts\.ready\.then[\s\S]*beforeprint/.test(doc));
   }
   // B6 was the example here until the office named it to fill its page
   // (2026-10-01, pageSetup.ts growsToPage); Cost Com is still left as it is.

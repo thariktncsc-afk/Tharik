@@ -1966,8 +1966,11 @@ function buildCrsPage2(d){
   var policeAmt = (DSS_B||[]).reduce(function(s,c){
     var a=d.getVal(c.id,'amount'); if(!a && !c.free) a=d.getVal(c.id,'sales')*(c.rate||0); return s+(a||0);
   },0);
+  // 17 cells like every other row (office, 2026-11-02): it had 16, so the
+  // amount printed under RATE and the row's last CLOSING cell was missing,
+  // breaking the right-hand border.
   bodyRows += '<tr>'+ C('20') + L('POLICE') +
-    C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+R(policeAmt?n2(policeAmt):'')+C('')+C('') + '</tr>';
+    C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+C('')+R(policeAmt?n2(policeAmt):'')+C('')+C('') + '</tr>';
   // 21 C.BOX (EMPTY_BOX) and 22 P.GUNNY (EMPTY_BAG)
   var cboxRate = rateOf('EMPTY_BOX'), gunnyRate = rateOf('EMPTY_BAG');
   var cboxAmt  = gSal('EMPTY_BOX')*cboxRate, gunnyAmt = gSal('EMPTY_BAG')*gunnyRate;

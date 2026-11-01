@@ -1765,6 +1765,22 @@ its caption (`p`: `"RICE CARD : "`, `"POLICE RECEIPT FOR THE MONTH OF "`,
   - **Preview = Print = PDF**: the preview runs the same `fillSheets` on the
     same wrapper (`SheetPreview`), and Print / 📄 PDF are the server's
     headless-Chrome PDF of the print document, which carries the fill script.
+- **The fill re-measures once fonts are in, and in print** (office,
+  2026-11-02: CRS 23 October's Page 2 PDF came out cut at the right).
+  - `fillSheets` ran once, while the page was still loading. A sheet sized
+    for one face no longer fits when a wider face arrives later, and the
+    server's Chrome substitutes its own fonts for Calibri.
+  - Reproduced locally by loading a wider "Calibri" late: Page 2's headings
+    were clipped.
+  - Now `FILL_SCRIPT` runs again on `document.fonts.ready` and on
+    `beforeprint`. `htmlToPdf` re-runs it in print media
+    (`REFILL_SCRIPT`) just before `page.pdf()`. A table wider than its box
+    also counts as clipped, so the zoom never carries columns off the paper.
+  - **CRS Page 2's POLICE row had 16 cells, not 17**: its amount printed
+    under RATE, and its last CLOSING cell was missing, breaking the
+    right-hand border. It now has 17, with the amount under AMOUNT. Live
+    October: only that row changed, on 29 shops' Page 2.
+  - Not proven on Vercel; the first deployed PDF is the test.
 - **Remittance and Sale Tax stretch to the foot of the page**
   (`stretchesToPage`, office request 2026-09-21; COLL too). They are fit-to-page,
   which only shrinks, so `fillSheets` enlarges them as far as the width

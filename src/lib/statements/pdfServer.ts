@@ -23,6 +23,7 @@
  */
 import type { Browser } from 'puppeteer-core';
 import { pdfFontCss } from '@/lib/statements/pdfFonts';
+import { REFILL_SCRIPT } from '@/lib/statements/fillPage';
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -137,6 +138,15 @@ export async function htmlToPdf(doc: string): Promise<Uint8Array> {
       await document.fonts?.ready;
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     });
+    // Size them once more as the PDF will lay them out — print media, every
+    // font in — so a face this server substitutes cannot leave a sheet sized
+    // for another and cut its right-hand figures (office, 2026-11-02, CRS 23
+    // October's Page 2).
+    if (doc.includes('stmt-fill')) {
+      await page.emulateMediaType('print');
+      await page.evaluate(REFILL_SCRIPT);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    }
     const pdf = await page.pdf({
       preferCSSPageSize: true,
       printBackground: true,
