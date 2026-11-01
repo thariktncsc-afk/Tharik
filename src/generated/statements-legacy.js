@@ -1946,13 +1946,17 @@ function buildCrsPage2(d){
   });
 
   // ── Special rows (19–22). Empties are counted in NOS, shown in the KGS cols ──
+  // C.BOX / P.GUNNY are Sales only (office, 2026-11-01): their stock is Gunny
+  // Stock Management's, so Opening, Receipt and Total stay blank — they
+  // printed a carried 0 − sales (CRS 15 October: −71 / −20). A sale of 0 or
+  // below prints blank; the amount is the sale's.
   function nosRow(sl,label,id,rt){
-    var ob=gOpen(id),rec=gRec(id),tot=gTot(id),sal=gSal(id);
+    var sal=gSal(id); if(!(sal>0)) sal=0;
     var amt = sal*rt;
     return '<tr>'+ C(sl) + L(label) +
-      C('')+C(ob?nk(ob):'') + C('')+C(rec?nk(rec):'') +
+      C('')+C('') + C('')+C('') +
       C('')+C('')+C('') +
-      C('')+C(tot?nk(tot):'') + C('')+C(sal?nk(sal):'') +
+      C('')+C('') + C('')+C(sal?nk(sal):'') +
       C(n2(rt)) + R(amt?n2(amt):'') + C('')+C('') + '</tr>';
   }
   // 19 PALM JAGGERY'S (no dedicated monthly field — shown blank)
@@ -2359,14 +2363,14 @@ function buildCostCom(d){
       C(rateDash?'-':'')+R(amount===''?'':amt2(amount))+C('')+C('')+'</tr>';
   }
   // empty-goods row (counts shown in BAGS columns, kgs blank)
+  // C.BOX / POLY are Sales only (office, 2026-11-01): Opening, Receipt, Total
+  // and Closing are Gunny Stock Management's, so they print blank here.
   function emptyRow(sl,label,id){
-    var ob=d.getVal(id,'open'),rec=d.getVal(id,'receipt');
-    var tot=d.getVal(id,'total')||(ob+rec), sal=d.getVal(id,'sales');
-    var cb=d.hasVal(id,'close')?d.getVal(id,'close'):Math.max(0,tot-sal);   // [C3]
-    var rt=rateOf(id), am=d.getVal(id,'amount')||sal*rt;
+    var sal=d.getVal(id,'sales'); if(!(sal>0)) sal=0;
+    var rt=rateOf(id), am=sal?(d.getVal(id,'amount')||sal*rt):0;
     return '<tr>'+C(sl)+L(label)+
-      C(ob||'0')+C('')+ C(rec||'')+C('')+ C('')+ C(tot||'')+C('')+
-      C(sal||'')+C('')+ C(amt2(rt))+R(am?amt2(am):'')+ C(cbShown(cb)||'0')+C('')+'</tr>';
+      C('')+C('')+ C('')+C('')+ C('')+ C('')+C('')+
+      C(sal||'')+C('')+ C(amt2(rt))+R(am?amt2(am):'')+ C('')+C('')+'</tr>';
   }
 
   var jaggery=0;

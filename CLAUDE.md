@@ -338,6 +338,44 @@ verify:dss-sales-only`).
   - 0 other rows, 0 TOTAL rows and 0 C A/C lines changed. In the .xlsx, 590
     C.Box / Poly stock cells changed and 0 other cells.
 
+### C.Box and Poly carry nothing, and print Sales only on the statements
+
+Office, 2026-11-01 (`stockChain.ts`, `monthlyRollup.ts`, `nosRow` /
+`emptyRow` in `12-statement-builders.js`; `verify:gunny-sync` §7,
+`verify:reconcile` §7).
+- **The fault**: CRS 15 October's Page 2 printed C.BOX Opening and Total
+  **−71**, P.GUNNY **−20**: September's sales, carried.
+  - These rows hold no stock on the grid (their bags are Gunny Stock
+    Management's), so a day's Closing is 0 − sales.
+  - The day chain carried that into the next day's Opening, so every month
+    after the first opened below zero (live: 613 day-sheet rows, and every
+    shop's October and November month rows).
+- **The calculation now**:
+  - The chain carries nothing into EMPTY_BOX / EMPTY_BAG
+    (`buildChainIndex`, `walk`). Every day opens them at 0, so a sale is
+    that day's alone.
+  - The roll-up opens the month at 0 for them, whatever an older stored
+    first sheet says.
+  - Closing stays 0 − sales, the grid's own arithmetic, which the stock
+    guard keeps; nothing shows it.
+- **The statements**: CRS Page 2 (rows 21 / 22) and Cost Com print Sales,
+  rate and amount only. Opening, Receipt, Total and Closing are blank. Sale
+  Tax was already Sales only, and the DSS since 2026-10-16.
+- **Unchanged**: every sale, every amount, TOTAL, EXCESS, the
+  reconciliation, Gunny (its Issues are these sales), the PV (Gunny rows)
+  and 50 KG SS.
+- **Live, read only**, every section of every shop, September and October,
+  before and after:
+  - only Cost Com (29 shops, both months) and Page 2 (17 shops, October)
+    changed, in those two rows only;
+  - CRS 15 October reads C.BOX 72 / ₹43.20 and P.GUNNY 21 / ₹52.50. Preview
+    = PDF.
+- **Stored sheets**: the old negative Openings stay in the database until
+  rewritten. Every reader now ignores them, and the next save of a day
+  re-carries the days after it. `node tools/repair-stock-chain.mjs
+  [--write]` rewrites them all at once. Dry run 2026-11-01: 318 day sheets
+  in 17 shops, only these two rows' Opening / Total / Closing, sales kept.
+
 ### Payment Access Control (shop-wise switches)
 
 `/payment-access` (admin only) sets, per shop, whether the **DSS** and the
