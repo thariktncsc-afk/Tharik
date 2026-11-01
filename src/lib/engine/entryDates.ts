@@ -14,6 +14,10 @@
  *     that day on Daily Entry.
  * Calendar days, working days, holidays and missing days play no part.
  *
+ * Total Entry Dates is the MONTH ON SCREEN's (office, 2026-11-01): the month
+ * of the date Daily Entry shows, so CRS 1 read "46 days" across September and
+ * October. Last Entry Date is still the shop's latest entry, any month.
+ *
  * The page reads the saved copy of the store (dataStore `useSavedStore`), so a
  * sheet still being sent, or one the server refused, is not counted.
  */
@@ -31,12 +35,12 @@ export function isDailyEntry(sheet: unknown): boolean {
 export type EntrySummary = {
   /** ISO date of the latest entry, or null when the shop has none. */
   last: string | null;
-  /** Unique entry dates. */
+  /** Unique entry dates — in `month` (`YYYY-MM`) when one is given, else all. */
   count: number;
 };
 
 /** The shop's entry dates, from a (saved) entryStore. */
-export function entrySummary(entryStore: Record<string, unknown> | undefined, crsId: number | string): EntrySummary {
+export function entrySummary(entryStore: Record<string, unknown> | undefined, crsId: number | string, month?: string): EntrySummary {
   const prefix = `${crsId}_`;
   let last: string | null = null;
   let count = 0;
@@ -44,7 +48,7 @@ export function entrySummary(entryStore: Record<string, unknown> | undefined, cr
     if (!key.startsWith(prefix)) continue; // CRS 2 must not match CRS 23: the prefix carries the underscore
     const ds = key.slice(prefix.length);
     if (!DAY.test(ds) || !isDailyEntry(sheet)) continue;
-    count++;
+    if (!month || ds.startsWith(`${month}-`)) count++;
     if (!last || ds > last) last = ds; // ISO dates sort as text
   }
   return { last, count };

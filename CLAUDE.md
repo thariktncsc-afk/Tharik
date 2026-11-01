@@ -947,6 +947,14 @@ from `engine/entryDates.ts`:
   it at once. `save()` now emits when a save lands, so readers of the saved
   copy hear about it.
 - Live, 2026-09-28: CRS 19 19-09-2026 | 14 days, CRS 7 26-09-2026 | 22 days.
+- **Total Entry Dates is the month on screen's** (office, 2026-11-01): the
+  month of the date Daily Entry shows (`entrySummary(store, crs, 'YYYY-MM')`),
+  recounted when the date moves into another month. It used to count every
+  month together: CRS 15 read "46 days" (September 22 + October 23 +
+  November 1). Last Entry Date is still the shop's latest entry, any month.
+  - Live, read only: every shop's months add up to its old total.
+  - It is worked out in the browser from the saved day sheets. No server
+    query counts it.
 
 ## Phones: dashboard order and the header bell
 
